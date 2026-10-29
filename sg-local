@@ -1,0 +1,29 @@
+#!/bin/sh
+# Wrapper for running the local tool without installing it system-wide.
+set -eu
+
+SOURCE=$0
+while [ -h "$SOURCE" ]; do
+    SOURCE_DIR=$(CDPATH= cd -P -- "$(dirname -- "$SOURCE")" && pwd)
+    SOURCE=$(readlink "$SOURCE")
+    case $SOURCE in
+        /*) ;;
+        *) SOURCE=$SOURCE_DIR/$SOURCE ;;
+    esac
+done
+SCRIPT_DIR=$(CDPATH= cd -P -- "$(dirname -- "$SOURCE")" && pwd)
+
+if [ -n "${SG_LOCAL_PYTHON:-}" ]; then
+    PYTHON=$SG_LOCAL_PYTHON
+elif [ -x /opt/homebrew/Caskroom/miniforge/base/bin/python3 ]; then
+    PYTHON=/opt/homebrew/Caskroom/miniforge/base/bin/python3
+elif command -v python3 >/dev/null 2>&1; then
+    PYTHON=$(command -v python3)
+else
+    echo "error: python3 not found; set SG_LOCAL_PYTHON" >&2
+    exit 1
+fi
+
+PYTHONPATH="$SCRIPT_DIR${PYTHONPATH:+:$PYTHONPATH}"
+export PYTHONPATH
+exec "$PYTHON" -m sg_local "$@"
