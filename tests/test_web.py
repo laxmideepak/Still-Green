@@ -403,11 +403,40 @@ class SecurityTests(WebTestCase):
         status, _, _ = self.request("/api/state", code=self.code)
         self.assertEqual(status, 200)
 
-    def test_port_comes_from_port_env(self) -> None:
-        with mock.patch.dict(os.environ, {"SG_LOCAL_WEB_PORT": "", "PORT": "10001"}):
-            self.assertEqual(web.port_from_env(), 10001)
-        with mock.patch.dict(os.environ, {"SG_LOCAL_WEB_PORT": "9000", "PORT": "10001"}):
-            self.assertEqual(web.port_from_env(), 9000)
+    def test_shell_port_does_not_move_the_local_page(self) -> None:
+        # PORT=3000 is common in a developer's shell; only `sg-local cloud` reads it.
+        with mock.patch.dict(os.environ, {"SG_LOCAL_WEB_PORT": "", "PORT": "3000"}):
+            self.assertEqual(web.port_from_env(), web.DEFAULT_PORT)
+
+    def test_one_visitor_cannot_lock_out_another_behind_a_proxy(self) -> None:
+        with mock.patch.dict(os.environ, {"SG_LOCAL_TRUSTED_PROXY": "caddy"}):
+            for _ in range(12):
+                self.request("/api/state", code="SG-WRNG-WRNG-WRNG",
+                             extra_headers={"X-Forwarded-For": "203.0.113.7"})
+            status, _, _ = self.request("/api/state", code="SG-WRNG-WRNG-WRNG",
+                                        extra_headers={"X-Forwarded-For": "203.0.113.7"})
+            self.assertEqual(status, 429)
+            status, _, _ = self.request("/api/state", code=self.code,
+                                        extra_headers={"X-Forwarded-For": "198.51.100.4"})
+            self.assertEqual(status, 200)
+
+    def test_forwarding_headers_are_only_trusted_from_the_named_proxy(self) -> None:
+        headers = {"X-Forwarded-For": "1.1.1.1, 203.0.113.7", "Fly-Client-IP": "9.9.9.9"}
+        with mock.patch.dict(os.environ, {"SG_LOCAL_TRUSTED_PROXY": ""}):
+            self.assertEqual(web.client_key("172.18.0.2", headers), "172.18.0.2")
+        with mock.patch.dict(os.environ, {"SG_LOCAL_TRUSTED_PROXY": "caddy"}):
+            self.assertEqual(web.client_key("172.18.0.2", headers), "203.0.113.7")
+        with mock.patch.dict(os.environ, {"SG_LOCAL_TRUSTED_PROXY": "fly"}):
+            self.assertEqual(web.client_key("172.18.0.2", headers), "9.9.9.9")
+        self.assertEqual(web.client_key("2001:db8::1", {}), "2001:db8::/64")
+
+    def test_throttle_memory_stays_bounded(self) -> None:
+        throttle = web.FailureThrottle(limit=10, window=60.0, max_keys=100)
+        for i in range(1000):
+            throttle.fail(f"10.0.{i // 250}.{i % 250}")
+        self.assertLessEqual(len(throttle._failures), 100)
+        self.assertFalse(throttle.blocked("never-failed"))
+        self.assertNotIn("never-failed", throttle._failures)
 
     def test_rotate_is_refused_from_another_origin(self) -> None:
         status, _, _ = self.request(

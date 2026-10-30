@@ -235,7 +235,7 @@ class CloudModeTest(unittest.TestCase):
         stack = Stack()
         stack.start(
             daemon_serves_page=True,
-            extra_env={"SG_LOCAL_WEB_HOST": "0.0.0.0", "SG_LOCAL_WEB_HOSTS": "stillgreen.example"},
+            extra_env={"SG_LOCAL_DAEMON_WEB_HOST": "0.0.0.0", "SG_LOCAL_WEB_HOSTS": "stillgreen.example"},
         )
         self.addCleanup(stack.stop)
         port = stack.port

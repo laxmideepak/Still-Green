@@ -22,6 +22,7 @@ Security model:
 from __future__ import annotations
 
 import hmac
+import ipaddress
 import json
 import os
 import re
@@ -107,8 +108,7 @@ def rotate_code() -> str:
 
 
 def port_from_env() -> int:
-    # PORT is what hosts such as Fly.io, Render and Railway hand to the app.
-    raw = os.environ.get("SG_LOCAL_WEB_PORT") or os.environ.get("PORT") or str(DEFAULT_PORT)
+    raw = os.environ.get("SG_LOCAL_WEB_PORT") or str(DEFAULT_PORT)
     try:
         port = int(raw)
     except ValueError:
@@ -164,32 +164,68 @@ class FailureThrottle:
     """Refuse a client for a while after too many wrong access codes.
 
     Matters once the server is reachable from the internet (``sg-local
-    cloud``): it turns guessing a code into years of work. Behind a proxy all
-    clients share the proxy's address, so the limit then applies to everyone.
+    cloud``). Clients are told apart by ``client_key``, which sees through a
+    trusted proxy, so one visitor's wrong codes never lock out another.
     """
 
-    def __init__(self, limit: int = 10, window: float = 60.0) -> None:
+    def __init__(self, limit: int = 10, window: float = 60.0, max_keys: int = 10_000) -> None:
         self.limit = limit
         self.window = window
+        self.max_keys = max_keys
         self._failures: dict[str, deque[float]] = {}
         self._lock = threading.Lock()
 
-    def _recent(self, key: str, now: float) -> deque[float]:
-        times = self._failures.setdefault(key, deque())
+    def _recent(self, key: str, now: float) -> int:
+        times = self._failures.get(key)
+        if not times:
+            return 0
         while times and now - times[0] > self.window:
             times.popleft()
-        return times
+        if not times:
+            del self._failures[key]
+        return len(times)
 
     def blocked(self, key: str) -> bool:
         with self._lock:
-            return len(self._recent(key, time.monotonic())) >= self.limit
+            return self._recent(key, time.monotonic()) >= self.limit
 
     def fail(self, key: str) -> None:
         with self._lock:
             now = time.monotonic()
-            self._recent(key, now).append(now)
-            if len(self._failures) > 10_000:  # bound memory under a flood
-                self._failures = {k: v for k, v in self._failures.items() if v}
+            if key not in self._failures and len(self._failures) >= self.max_keys:
+                # Forget clients whose failures have all expired, then, if
+                # still full, the ones that failed longest ago.
+                self._failures = {
+                    k: v for k, v in self._failures.items() if v and now - v[-1] <= self.window
+                }
+                while len(self._failures) >= self.max_keys:
+                    del self._failures[next(iter(self._failures))]
+            self._failures.setdefault(key, deque()).append(now)
+
+
+def client_key(peer: str, headers: Any) -> str:
+    """The address to rate-limit: the real visitor when behind a trusted proxy.
+
+    Forwarding headers are only believed when SG_LOCAL_TRUSTED_PROXY names
+    the proxy in front ("caddy" in docker-compose.yml, "fly" in fly.toml), and
+    only the header that proxy itself sets; otherwise anyone could pick their
+    own key.
+    """
+    address = peer
+    proxy = os.environ.get("SG_LOCAL_TRUSTED_PROXY", "").lower()
+    if proxy == "fly":
+        address = (headers.get("Fly-Client-IP") or "").strip() or peer
+    elif proxy == "caddy":
+        # Caddy adds the address it saw as the last X-Forwarded-For entry.
+        address = (headers.get("X-Forwarded-For") or "").split(",")[-1].strip() or peer
+    try:
+        parsed = ipaddress.ip_address(address)
+    except ValueError:
+        return address
+    if parsed.version == 6:
+        # One IPv6 user usually owns a whole /64.
+        return str(ipaddress.ip_network(f"{parsed}/64", strict=False))
+    return str(parsed)
 
 
 THROTTLE = FailureThrottle()
@@ -580,7 +616,7 @@ class Handler(BaseHTTPRequestHandler):
                 any_origin=True,
             )
             return False
-        client = self.client_address[0]
+        client = client_key(self.client_address[0], self.headers)
         if THROTTLE.blocked(client):
             self._error(HTTPStatus.TOO_MANY_REQUESTS, "too many wrong access codes; wait a minute")
             return False

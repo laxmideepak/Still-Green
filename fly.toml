@@ -13,6 +13,8 @@ primary_region = "iad"
 
 [env]
   SG_LOCAL_WEB_PORT = "8765"
+  # Count wrong access codes per real visitor (from Fly-Client-IP).
+  SG_LOCAL_TRUSTED_PROXY = "fly"
 
 [mounts]
   source = "stillgreen_data"

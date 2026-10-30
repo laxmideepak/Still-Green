@@ -24,6 +24,7 @@ import {
   removeWorkspace,
   resumePresence,
   saveSchedule,
+  scheduleTimezone,
   stayOnline,
   statusLabel,
   workspaceTime,
@@ -266,7 +267,7 @@ export function DashboardLive({ config, initialState, onDisconnect, onReconnect 
           active_days: days.length ? days : ["monday", "tuesday", "wednesday", "thursday", "friday"],
           start_time: start,
           end_time: end,
-          timezone: timezone.trim() || "local",
+          timezone: scheduleTimezone(timezone),
         }),
       "Schedule saved. The daemon applies it within a few seconds.",
     );

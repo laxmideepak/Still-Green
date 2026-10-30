@@ -171,10 +171,12 @@ connection.
 1. Open <https://console.cloud.google.com/compute/instances> and choose
    **Create instance**.
 2. Pick **Region**: `us-central1` (or `us-west1` / `us-east1`), and **Machine
-   type**: `e2-micro`. Keep the default Debian image.
-3. Under **Firewall**, tick **Allow HTTP traffic** and **Allow HTTPS traffic**.
+   type**: `e2-micro`.
+3. Under **Boot disk**, click **Change** and pick **Standard persistent disk**
+   (keep Debian and 10 GB). The default "Balanced" disk is **not** free.
+4. Under **Firewall**, tick **Allow HTTP traffic** and **Allow HTTPS traffic**.
    Create the instance.
-4. Click **SSH** next to the new instance. In the window that opens, run:
+5. Click **SSH** next to the new instance. In the window that opens, run:
 
 ```bash
 sudo apt-get update && sudo apt-get install -y git
@@ -199,12 +201,20 @@ as `https://34-1-2-3.sslip.io` (made from the server's IP address), and prints:
 Have your own domain? Point it at the server and run
 `sudo sh deploy/setup-vm.sh stillgreen.example.com` instead.
 
-5. Use that **Daemon URL** and **Access code** in the dashboard
+6. Use that **Daemon URL** and **Access code** in the dashboard
    (**Connect daemon**) and in the extension (instead of
    `http://127.0.0.1:8765`), then click **Capture from Slack** as usual.
 
 To update later, run `git pull && sudo docker compose up -d --build` in the
 `slack` folder on the server.
+
+> [!TIP]
+> The server's IP address (and so the `sslip.io` address) changes if you
+> stop and start the server. Restarting it from inside (`sudo reboot`) keeps
+> it. If it does change, run `sudo sh deploy/setup-vm.sh` again and update
+> the Daemon URL in the dashboard and extension. You can also keep the
+> address with **VPC network → IP addresses → Promote to static**, but check
+> **Billing** afterwards: a static address may cost a little.
 
 ### Setup on Fly.io (paid)
 
@@ -242,7 +252,9 @@ put your own HTTPS proxy in front of port 8765.
 - Your Slack login is stored on your server, in a Docker volume only the
   Stillgreen user can read. It is never sent to the dashboard website.
 - After 10 wrong access codes in a minute, the server refuses further tries
-  for a minute.
+  from that visitor for a minute. Other visitors are not affected.
+- Schedules saved from the dashboard use your browser's timezone, so "9 to 5"
+  means your 9 to 5 even though the server runs on UTC.
 - Slack may notice that your session is being used from a data-centre address
   and sign it out. If the status keeps showing **Tokens rejected**, capture
   again; if it keeps happening, run Stillgreen at home instead.

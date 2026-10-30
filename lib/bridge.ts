@@ -290,3 +290,18 @@ export function statusLabel(status: string): string {
   };
   return labels[status] || status;
 }
+
+/**
+ * The timezone to save with a schedule. "local" would mean the daemon's own
+ * clock, which on a cloud server is usually UTC, so send this browser's zone
+ * (for example "America/New_York") instead.
+ */
+export function scheduleTimezone(value: string): string {
+  const text = value.trim();
+  if (text && !/^(local|system|machine)$/i.test(text)) return text;
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "local";
+  } catch {
+    return "local";
+  }
+}

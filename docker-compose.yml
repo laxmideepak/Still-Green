@@ -13,6 +13,8 @@ services:
     environment:
       # Only answer requests addressed to this domain (blocks DNS rebinding).
       SG_LOCAL_WEB_HOSTS: ${STILLGREEN_DOMAIN:?set STILLGREEN_DOMAIN in .env}
+      # Count wrong access codes per real visitor (from Caddy's X-Forwarded-For).
+      SG_LOCAL_TRUSTED_PROXY: caddy
       # Optional: extra dashboard addresses allowed to use the API.
       SG_LOCAL_WEB_ORIGIN: ${STILLGREEN_EXTRA_ORIGINS:-}
     volumes:

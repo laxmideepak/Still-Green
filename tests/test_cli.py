@@ -154,13 +154,24 @@ class CliTests(TempConfig):
         self.assertEqual(code, 0)
         program, argv, env = execve.call_args.args
         self.assertEqual(argv[1:], ["-m", "sg_local.daemon"])
-        self.assertEqual((env["SG_LOCAL_WEB_HOST"], env["SG_LOCAL_WEB_PORT"]), ("0.0.0.0", "9123"))
+        self.assertEqual((env["SG_LOCAL_DAEMON_WEB_HOST"], env["SG_LOCAL_WEB_PORT"]), ("0.0.0.0", "9123"))
         self.assertEqual(env["SG_LOCAL_LOG_STDOUT"], "1")
         # A code is created on first run but never printed.
         code_value = cli.web.load_code(create=False)
         self.assertTrue(code_value)
         self.assertNotIn(code_value, out)
         self.assertIn("--show-code", out)
+
+    def test_cloud_port_order(self) -> None:
+        cases = [
+            ({"PORT": "9123", "SG_LOCAL_WEB_PORT": "9000"}, [], "9123"),
+            ({"PORT": "", "SG_LOCAL_WEB_PORT": "9000"}, [], "9000"),
+            ({"PORT": "9123"}, ["--port", "9555"], "9555"),
+        ]
+        for env, extra, expected in cases:
+            with mock.patch.dict(os.environ, env), mock.patch.object(cli.os, "execve") as execve:
+                self.assertEqual(self.run_cli("cloud", *extra)[0], 0)
+            self.assertEqual(execve.call_args.args[2]["SG_LOCAL_WEB_PORT"], expected)
 
     def test_cloud_refuses_a_short_custom_code(self) -> None:
         with mock.patch.dict(os.environ, {"SG_LOCAL_BRIDGE_CODE": "abc123"}), \

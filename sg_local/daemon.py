@@ -543,7 +543,8 @@ class Daemon:
     def ensure_control_server(self) -> None:
         """Serve the control page so the dashboard and extension work.
 
-        Loopback by default; ``sg-local cloud`` sets SG_LOCAL_WEB_HOST=0.0.0.0.
+        Loopback by default; only ``sg-local cloud`` sets
+        SG_LOCAL_DAEMON_WEB_HOST=0.0.0.0.
         Retried from the main loop, so it comes up once a busy port frees.
         Set SG_LOCAL_DAEMON_WEB=0 to turn this off (then run ``sg-local web``).
         """
@@ -555,7 +556,7 @@ class Daemon:
         self.next_control_attempt = now + CONTROL_RETRY_INTERVAL
         try:
             port = web.port_from_env()
-            host = os.environ.get("SG_LOCAL_WEB_HOST") or "127.0.0.1"
+            host = os.environ.get("SG_LOCAL_DAEMON_WEB_HOST") or "127.0.0.1"
             self.control_server = web.start_background(host, port)
         except (OSError, config.ConfigError) as exc:
             if not self.control_warned:

@@ -73,7 +73,7 @@ Use these two values in the dashboard (https://stillgreen.vercel.app/dashboard,
 a minute to appear the first time.
 
 Useful commands (run in $REPO_DIR):
-  docker compose logs -f stillgreen                       follow the log
-  docker compose exec stillgreen sg-local status          show status
-  git pull && docker compose up -d --build                update
+  sudo docker compose logs -f stillgreen                  follow the log
+  sudo docker compose exec stillgreen sg-local status     show status
+  git pull && sudo docker compose up -d --build           update
 EOF

@@ -13,7 +13,7 @@ ENV PYTHONUNBUFFERED=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     SG_LOCAL_CONFIG_DIR=/data/config \
     SG_LOCAL_STATE_DIR=/data/state \
-    SG_LOCAL_WEB_PORT=8765
+    SG_LOCAL_RUN_AS=stillgreen
 
 WORKDIR /app
 COPY pyproject.toml README.md ./
@@ -23,12 +23,14 @@ RUN pip install . \
     && mkdir -p /data \
     && chown stillgreen /data
 
-# Tokens and the access code live on this volume, owned by a non-root user.
-USER stillgreen
+# Tokens and the access code live on this volume. The container starts as
+# root only so `sg-local` can give a freshly mounted, root-owned volume (as on
+# Fly.io) to the stillgreen user; every sg-local command then drops to that
+# user (SG_LOCAL_RUN_AS) before doing anything else.
 VOLUME /data
 EXPOSE 8765
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-    CMD python -c "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:%s/api/health' % os.environ.get('SG_LOCAL_WEB_PORT', '8765'), timeout=4)"
+    CMD python -c "import os, urllib.request; port = os.environ.get('PORT') or os.environ.get('SG_LOCAL_WEB_PORT') or '8765'; urllib.request.urlopen('http://127.0.0.1:%s/api/health' % port, timeout=4)"
 
 CMD ["sg-local", "cloud"]
