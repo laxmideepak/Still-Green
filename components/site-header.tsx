@@ -19,6 +19,11 @@ export function SiteHeader() {
   const [scrolled, setScrolled] = useState(false);
   const last = useRef(0);
 
+  // Lets other sticky bars (like the CLI page contents chips) follow the header.
+  useEffect(() => {
+    document.documentElement.dataset.header = hidden ? "hidden" : "shown";
+  }, [hidden]);
+
   useEffect(() => {
     // Only flips state when the direction changes, not on every scroll event.
     let frame = 0;
