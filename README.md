@@ -70,9 +70,10 @@ of `./sg-local`.
 ./sg-local web --daemon --open
 ```
 
-This starts the daemon and opens its control page at <http://127.0.0.1:8765>.
-Leave this terminal window open. The page shows your **access code**, which
-looks like `SG-ABCD-EFGH-JKLM`. You need it in the next steps.
+This starts the daemon in the background and opens its control page at
+<http://127.0.0.1:8765>. You can close the terminal; the daemon keeps running.
+The page shows your **access code**, which looks like `SG-ABCD-EFGH-JKLM`. You
+need it in the next steps.
 
 Lost the code? Print it again with:
 
@@ -155,22 +156,23 @@ overnight.
 
 | I want to… | Command |
 | --- | --- |
-| Start the daemon and the control page | `./sg-local web --daemon --open` |
-| Start only the daemon in the background | `./sg-local start` |
+| Start the daemon (it also serves the control page) | `./sg-local start` |
+| Start it and open the control page | `./sg-local web --daemon --open` |
 | Stop the daemon | `./sg-local stop` |
 | Start it automatically when I log in (macOS) | `./sg-local install-launchd` |
 | Undo automatic start | `./sg-local uninstall-launchd` |
 
-The daemon keeps running after you close the control page. The dashboard and
-the extension also need the control page server (`./sg-local web`) to be
-running, because that is what they talk to.
+The daemon keeps running after you close the terminal or the control page. It
+stops when you run `./sg-local stop` or restart the computer (unless you turned
+on automatic start).
 
 ## When something goes wrong
 
 | What you see | What to do |
 | --- | --- |
 | `No module named 'websockets'` | Run `python3 -m pip install --user websockets`. |
-| Dashboard says it **could not reach** the daemon | Make sure `./sg-local web --daemon` is running in a terminal, and the URL is `http://127.0.0.1:8765`. |
+| Dashboard says it **could not reach** the daemon | Run `./sg-local start`, and check the URL is `http://127.0.0.1:8765`. |
+| Dashboard says the **origin is not allowed** | You opened the dashboard from a different web address. Use <https://stillgreen.vercel.app/dashboard>, or start the daemon with `SG_LOCAL_WEB_ORIGIN=https://your-address ./sg-local start`. |
 | **The access code was not accepted** | Copy the code again with `./sg-local web --show-code`. |
 | Status is **Tokens rejected** | Your Slack login expired (for example, you signed out). Sign in at app.slack.com and click **Capture from Slack** again. |
 | Status is **Manual away** | You set yourself away in Slack. Stillgreen leaves this alone. Set yourself active in Slack. |
@@ -185,7 +187,10 @@ running, because that is what they talk to.
 - It is sent only to Slack. It is never shown by the dashboard, never written
   to logs, and never sent to the dashboard website.
 - The control page and its API are reachable only from your own computer, and
-  every request needs the access code.
+  every request needs the access code. Other websites cannot read the code,
+  and only the official dashboard address may use the API from a browser.
+- The extension sends your login only to the daemon address you set. It
+  refuses plain `http://` addresses that are not on your own computer.
 - To remove everything: `./sg-local stop`, then delete
   `~/.config/slack-green-local` and `~/.local/state/slack-green-local`, and
   remove the extension from `chrome://extensions`.
