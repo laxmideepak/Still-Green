@@ -2,8 +2,9 @@
 
 It answers the three Web API methods the daemon calls (``auth.test``,
 ``users.getPresence``, ``users.setPresence``) and accepts the presence
-WebSocket. Only the token pair below is accepted, so tests can also check how
-rejected tokens are handled.
+WebSocket. Only the token pairs below are accepted, so tests can also check how
+rejected tokens are handled. The second token stands for another workspace
+signed in with the same browser cookie, as Slack does.
 
 Run it on its own with ``python tests/e2e/fake_slack.py`` to print the ports.
 """
@@ -23,6 +24,16 @@ GOOD_XOXD = "xoxd-e2e-good-cookie"
 TEAM_ID = "T0E2E0001"
 TEAM_NAME = "E2E Workspace"
 USER_ID = "U0E2E0001"
+SECOND_XOXC = "xoxc-e2e-second-token"
+SECOND_TEAM_ID = "T0E2E0002"
+SECOND_TEAM_NAME = "E2E Second Workspace"
+SECOND_USER_ID = "U0E2E0002"
+
+# xoxc token -> (team_id, team name, user_id)
+TEAMS = {
+    GOOD_XOXC: (TEAM_ID, TEAM_NAME, USER_ID),
+    SECOND_XOXC: (SECOND_TEAM_ID, SECOND_TEAM_NAME, SECOND_USER_ID),
+}
 
 
 class FakeSlack:
@@ -46,11 +57,8 @@ class FakeSlack:
     # ------------------------------------------------------------------ auth
 
     def _authorized(self, authorization: str, cookie: str) -> bool:
-        return (
-            not self.revoked
-            and authorization == f"Bearer {GOOD_XOXC}"
-            and f"d={GOOD_XOXD}" in cookie
-        )
+        token = authorization.removeprefix("Bearer ")
+        return not self.revoked and token in TEAMS and f"d={GOOD_XOXD}" in cookie
 
     # ------------------------------------------------------------------- http
 
@@ -78,12 +86,15 @@ class FakeSlack:
                     self._reply({"ok": False, "error": "invalid_auth"})
                     return
                 if method == "auth.test":
+                    team_id, team_name, user_id = TEAMS[
+                        self.headers["Authorization"].removeprefix("Bearer ")
+                    ]
                     self._reply(
                         {
                             "ok": True,
-                            "team": TEAM_NAME,
-                            "team_id": TEAM_ID,
-                            "user_id": USER_ID,
+                            "team": team_name,
+                            "team_id": team_id,
+                            "user_id": user_id,
                             "user": "e2e",
                             "url": "https://e2e.slack.com/",
                         }
@@ -119,7 +130,7 @@ class FakeSlack:
         request = ws.request
         token = parse_qs(urlparse(request.path).query).get("token", [""])[0]
         cookie = request.headers.get("Cookie", "")
-        if token != GOOD_XOXC or f"d={GOOD_XOXD}" not in cookie:
+        if token not in TEAMS or f"d={GOOD_XOXD}" not in cookie:
             await ws.close(code=4001, reason="invalid_auth")
             return
         self.ws_connections += 1
@@ -127,7 +138,8 @@ class FakeSlack:
         if self.close_after_hello:
             await ws.close()
             return
-        await ws.send(json.dumps({"type": "presence_change", "user": USER_ID, "presence": "active"}))
+        user_id = TEAMS[token][2]
+        await ws.send(json.dumps({"type": "presence_change", "user": user_id, "presence": "active"}))
         async for raw in ws:
             try:
                 message = json.loads(raw)
@@ -139,7 +151,7 @@ class FakeSlack:
 
     async def _ws_reject(self, connection, request):
         token = parse_qs(urlparse(request.path).query).get("token", [""])[0]
-        if self.revoked or token != GOOD_XOXC:
+        if self.revoked or token not in TEAMS:
             return connection.respond(401, "invalid_auth\n")
         return None
 

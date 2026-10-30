@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { useState, type CSSProperties, type ReactNode } from "react";
 import { SiteFooter } from "./site-footer";
 import { SiteHeader } from "./site-header";
 import {
@@ -16,6 +16,17 @@ import {
   Signal,
   Sliders,
 } from "./icons";
+import {
+  DAYS,
+  WEEKDAY_KEYS,
+  formatHours,
+  isOvernight,
+  toMinutes,
+  weeklyHours,
+  windowHours,
+  type DayInfo,
+  type Tone,
+} from "@/lib/dashboard";
 import styles from "./dashboard-preview.module.css";
 
 // Matches the daemon: one window for every active day, two schedule modes, and
@@ -23,14 +34,9 @@ import styles from "./dashboard-preview.module.css";
 type Mode = "scheduled" | "always";
 type View = Mode | "paused";
 
-type Day = {
-  key: string;
-  label: string;
-  long: string;
+type Day = DayInfo & {
   enabled: boolean;
 };
-
-type Tone = "green" | "muted" | "amber";
 
 type Entry = {
   id: number;
@@ -39,17 +45,13 @@ type Entry = {
   tone: Tone;
 };
 
-const initialDays: Day[] = [
-  { key: "monday", label: "Mon", long: "Monday", enabled: true },
-  { key: "tuesday", label: "Tue", long: "Tuesday", enabled: true },
-  { key: "wednesday", label: "Wed", long: "Wednesday", enabled: true },
-  { key: "thursday", label: "Thu", long: "Thursday", enabled: true },
-  { key: "friday", label: "Fri", long: "Friday", enabled: true },
-  { key: "saturday", label: "Sat", long: "Saturday", enabled: false },
-  { key: "sunday", label: "Sun", long: "Sunday", enabled: false },
-];
+// Sample data for the preview. Nothing below comes from a daemon or from Slack.
+const sampleDays: Day[] = DAYS.map((day) => ({
+  ...day,
+  enabled: WEEKDAY_KEYS.includes(day.key),
+}));
 
-const initialEntries: Entry[] = [
+const sampleEntries: Entry[] = [
   { id: 4, time: "12:30", text: "Presence check: active", tone: "green" },
   { id: 3, time: "10:30", text: "Activity tickle sent", tone: "muted" },
   { id: 2, time: "09:01", text: "Presence check: active", tone: "green" },
@@ -91,25 +93,6 @@ const modeCopy: Record<View, { title: string; detail: string; change: string; pr
   },
 };
 
-function toMinutes(value: string) {
-  const [hours, minutes] = value.split(":").map(Number);
-  return hours * 60 + minutes;
-}
-
-function windowHours(startTime: string, endTime: string) {
-  if (!startTime || !endTime) return 0;
-  const start = toMinutes(startTime);
-  const end = toMinutes(endTime);
-  if (start === end) return 0;
-  const span = end > start ? end - start : end + 24 * 60 - start;
-  return span / 60;
-}
-
-function formatHours(value: number) {
-  if (Number.isInteger(value)) return `${value}h`;
-  return `${value.toFixed(1)}h`;
-}
-
 type DashboardPreviewProps = {
   topSlot?: ReactNode;
 };
@@ -117,17 +100,17 @@ type DashboardPreviewProps = {
 export function DashboardPreview({ topSlot }: DashboardPreviewProps = {}) {
   const [mode, setMode] = useState<Mode>("scheduled");
   const [paused, setPaused] = useState(false);
-  const [days, setDays] = useState<Day[]>(initialDays);
+  const [days, setDays] = useState<Day[]>(sampleDays);
   const [windowStart, setWindowStart] = useState("09:00");
   const [windowEnd, setWindowEnd] = useState("17:00");
   const [zone, setZone] = useState(zones[0]);
-  const [entries, setEntries] = useState<Entry[]>(initialEntries);
+  const [entries, setEntries] = useState<Entry[]>(sampleEntries);
   const [announcement, setAnnouncement] = useState("Preview ready. Sample data only.");
   const [counter, setCounter] = useState(5);
 
   const activeDays = days.filter((day) => day.enabled);
   const dayHours = windowHours(windowStart, windowEnd);
-  const weeklyHours = useMemo(() => activeDays.length * dayHours, [activeDays.length, dayHours]);
+  const totalHours = weeklyHours(activeDays.length, windowStart, windowEnd);
   const view: View = paused ? "paused" : mode;
   const current = modeCopy[view];
   const today = { ...days[2], start: windowStart, end: windowEnd };
@@ -169,7 +152,7 @@ export function DashboardPreview({ topSlot }: DashboardPreviewProps = {}) {
     setDays((previous) =>
       previous.map((day) => ({
         ...day,
-        enabled: preset === "everyday" ? true : preset === "weekdays" ? day.key !== "saturday" && day.key !== "sunday" : false,
+        enabled: preset === "everyday" ? true : preset === "weekdays" ? WEEKDAY_KEYS.includes(day.key) : false,
       })),
     );
     setAnnouncement(
@@ -315,7 +298,7 @@ export function DashboardPreview({ topSlot }: DashboardPreviewProps = {}) {
               <div className={styles.weekSummary}>
                 <div>
                   <span>Weekly window</span>
-                  <strong>{formatHours(weeklyHours)}</strong>
+                  <strong>{formatHours(totalHours)}</strong>
                 </div>
                 <div>
                   <span>Active days</span>
@@ -473,7 +456,7 @@ export function DashboardPreview({ topSlot }: DashboardPreviewProps = {}) {
                     {day.enabled ? formatHours(dayHours) : "—"}
                   </span>
                   <span className={styles.night}>
-                    {day.enabled && toMinutes(windowEnd) < toMinutes(windowStart) ? "overnight" : ""}
+                    {day.enabled && isOvernight(windowStart, windowEnd) ? "overnight" : ""}
                   </span>
                 </div>
               ))}
@@ -482,7 +465,7 @@ export function DashboardPreview({ topSlot }: DashboardPreviewProps = {}) {
             <div className={styles.scheduleFoot}>
               <span>
                 <Clock width={14} height={14} />
-                Total <strong>{formatHours(weeklyHours)}</strong> per week
+                Total <strong>{formatHours(totalHours)}</strong> per week
               </span>
               <span>
                 <Sliders width={14} height={14} />

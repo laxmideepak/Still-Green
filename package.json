@@ -9,7 +9,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test:e2e": "next build && node --test tests/e2e/dashboard.e2e.mjs"
+    "test:e2e": "next build && node --test tests/e2e/dashboard.e2e.mjs tests/e2e/extension.e2e.mjs"
   },
   "dependencies": {
     "next": "16.4.3",
