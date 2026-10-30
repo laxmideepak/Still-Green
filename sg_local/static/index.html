@@ -3,115 +3,273 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Stillgreen — local control</title>
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#f1f6ed" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0c1611" media="(prefers-color-scheme: dark)">
+<title>Stillgreen control</title>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/app.css">
 </head>
 <body>
-<div class="grain" aria-hidden="true"></div>
-<header class="top">
-  <a class="brand" href="/"><span class="mark" aria-hidden="true"><i></i></span><span>Stillgreen</span></a>
-  <span class="tag">Control surface</span>
-</header>
-<main id="main">
-  <section class="login" id="login" hidden>
-    <p class="eyebrow"><span></span> Locked</p>
-    <h1>Enter the access code.</h1>
-    <p>Print the access code where Stillgreen runs, then paste it here. On your computer: <code>./sg-local web --show-code</code>. On a cloud server: <code>sudo docker compose exec stillgreen sg-local web --show-code</code>.</p>
-    <form id="loginForm">
-      <label for="accessCode">Access code</label>
-      <div class="inline"><input id="accessCode" name="code" autocomplete="current-password" spellcheck="false" placeholder="SG-XXXX-XXXX-XXXX" required><button class="primary" type="submit">Unlock</button></div>
-      <p class="error" id="loginError" role="alert"></p>
+<a class="skip" href="#main">Skip to content</a>
+
+<!-- Locked: shown when the page was opened without an embedded code. -->
+<main class="login" id="login" hidden>
+  <div class="login-card">
+    <div class="brand brand-lg"><span class="logo" aria-hidden="true"><i></i></span><span>Stillgreen</span></div>
+    <h1>Enter the access code</h1>
+    <p class="login-lede">This control page is locked. Paste the access code for <span class="nowrap" id="loginHost">this server</span> to manage your Slack presence.</p>
+    <form id="loginForm" class="login-form" novalidate>
+      <label class="label" for="accessCode">Access code</label>
+      <input class="input mono" id="accessCode" name="code" autocomplete="current-password" autocapitalize="characters" spellcheck="false" placeholder="SG-XXXX-XXXX-XXXX" aria-describedby="loginError" required>
+      <p class="field-error" id="loginError" role="alert"></p>
+      <button class="btn btn-primary btn-block" type="submit" id="loginSubmit"><span class="btn-label">Unlock</span></button>
     </form>
-  </section>
-
-  <div id="app" hidden>
-    <section class="hero">
-      <div>
-        <p class="eyebrow"><span id="statusDot"></span> <span id="statusText">Connecting…</span></p>
-        <h1>Your green dot,<br><em>handled.</em></h1>
-        <p class="lede">This page runs next to the presence daemon. Tokens are entered here and never sent to the hosted dashboard.</p>
-      </div>
-      <div class="codeCard">
-        <span>Dashboard access code</span>
-        <strong id="bridgeCode">••••</strong>
-        <div class="row">
-          <button class="ghost" id="copyCode" type="button">Copy code</button>
-          <button class="ghost" id="rotateCode" type="button">Rotate</button>
-        </div>
-        <p>Paste this into the hosted dashboard's <b>Connect</b> dialog.</p>
-      </div>
-    </section>
-
-    <section class="grid">
-      <article class="card span2">
-        <div class="cardHead"><div><p class="kicker">Workspaces</p><h2>Connected Slack accounts</h2></div><button class="primary" id="addToggle" type="button">Add workspace</button></div>
-        <div id="workspaceList" class="list"></div>
-        <form id="addForm" class="addForm" hidden>
-          <div class="formHead"><h3>Add a workspace</h3><button class="ghost" type="button" id="addClose">Close</button></div>
-          <p class="hint">Easiest: use the Stillgreen extension's <b>Capture from Slack</b> button. Or open the workspace at <code>app.slack.com</code> and copy the two values from DevTools. They go only to this daemon.</p>
-          <div class="field"><label for="xoxc">xoxc token</label><input id="xoxc" name="xoxc" type="password" autocomplete="off" spellcheck="false" placeholder="xoxc-…" required></div>
-          <div class="field"><label for="xoxd">xoxd cookie</label><input id="xoxd" name="xoxd" type="password" autocomplete="off" spellcheck="false" placeholder="xoxd-…" required></div>
-          <div class="field"><label for="name">Display name <span>(optional)</span></label><input id="name" name="name" placeholder="Fieldwork"></div>
-          <details class="help"><summary>Where do I find these?</summary><ol><li>Open DevTools → Network, filter <code>api</code>, open a <code>client.boot</code> request, and copy <code>token</code> from the payload — it starts with <code>xoxc-</code>.</li><li>DevTools → Application → Cookies → <code>https://app.slack.com</code> → copy the <code>d</code> cookie, which starts with <code>xoxd-</code>.</li><li>Both values must come from the same signed-in browser session.</li></ol></details>
-          <p class="error" id="addError" role="alert"></p>
-          <button class="primary" type="submit" id="addSubmit">Verify &amp; save</button>
-        </form>
-      </article>
-
-      <article class="card">
-        <p class="kicker">Now</p>
-        <h2 id="modeTitle">Loading</h2>
-        <p id="modeDetail" class="muted"></p>
-        <dl class="facts">
-          <div><dt>Daemon</dt><dd id="daemonState">—</dd></div>
-          <div><dt>Online</dt><dd id="onlineCount">—</dd></div>
-          <div><dt>Next change</dt><dd id="nextChange">—</dd></div>
-        </dl>
-        <div class="actions">
-          <button class="ghost" data-action="pause">Pause 1h</button>
-          <button class="ghost" data-action="resume">Resume</button>
-        </div>
-        <p class="kicker stayLabel">Keep me online for</p>
-        <div class="actions">
-          <button class="ghost" data-stay="30m">30 min</button>
-          <button class="ghost" data-stay="1h">1 h</button>
-          <button class="ghost" data-stay="2h">2 h</button>
-          <button class="ghost" data-stay="3h">3 h</button>
-          <button class="ghost" data-action="stay-cancel">Cancel</button>
-        </div>
-        <form class="stayUntil" id="stayUntilForm">
-          <label for="stayUntil">Or until today at</label>
-          <input id="stayUntil" type="time" value="17:00" required>
-          <button class="ghost" type="submit">Keep on until</button>
-        </form>
-      </article>
-
-      <article class="card span2">
-        <div class="cardHead"><div><p class="kicker">Schedule</p><h2>Weekly window</h2></div><span class="pill" id="scheduleSummary">—</span></div>
-        <form id="scheduleForm">
-          <div class="segmented" role="group" aria-label="Schedule mode">
-            <button type="button" data-mode="always">Always on</button>
-            <button type="button" data-mode="scheduled">Scheduled</button>
-          </div>
-          <div class="days" id="dayPicker"></div>
-          <div class="timeGrid">
-            <div class="field"><label for="startTime">Start</label><input id="startTime" type="time" value="09:00"></div>
-            <div class="field"><label for="endTime">End</label><input id="endTime" type="time" value="17:00"></div>
-            <div class="field"><label for="timezone">Timezone</label><input id="timezone" value="local" spellcheck="false"></div>
-          </div>
-          <div class="formFoot"><p class="hint">Overnight windows are supported. Times use the daemon's timezone unless you name an IANA zone.</p><button class="primary" type="submit">Save schedule</button></div>
-        </form>
-      </article>
-
-      <article class="card span2">
-        <div class="cardHead"><div><p class="kicker">Activity</p><h2>What the daemon is doing</h2></div><span class="pill" id="activityCount">—</span></div>
-        <ol class="log" id="activity"></ol>
-      </article>
-    </section>
-    <p class="foot">Stillgreen is a personal tool. Automating presence may violate your workspace policy. <a href="https://github.com/laxmideepak/slack" target="_blank" rel="noreferrer">Source</a></p>
+    <div class="login-help">
+      <h2>Where do I find the code?</h2>
+      <dl>
+        <div><dt>On your computer</dt><dd><code>./sg-local web --show-code</code></dd></div>
+        <div><dt>On a cloud server</dt><dd><code>sudo docker compose exec stillgreen sg-local web --show-code</code></dd></div>
+      </dl>
+      <p>The code stays in this browser until you lock the page.</p>
+    </div>
   </div>
 </main>
+
+<div class="shell" id="app" hidden>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="/" aria-label="Stillgreen home"><span class="logo" aria-hidden="true"><i></i></span><span>Stillgreen</span></a>
+      <span class="host" id="hostLabel" title="Where this page is served from"><span class="host-kind" id="hostKind">Local</span><span class="host-name" id="hostName"></span></span>
+      <div class="topbar-right">
+        <span class="pill" id="statusPill" data-tone="muted" role="status"><i aria-hidden="true"></i><span id="statusText">Connecting…</span></span>
+        <div class="menu">
+          <button class="btn btn-icon" type="button" id="menuButton" aria-haspopup="menu" aria-expanded="false" aria-controls="menuList" aria-label="Menu">
+            <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><circle cx="4" cy="10" r="1.6"/><circle cx="10" cy="10" r="1.6"/><circle cx="16" cy="10" r="1.6"/></svg>
+          </button>
+          <div class="menu-list" id="menuList" role="menu" aria-labelledby="menuButton" hidden>
+            <button type="button" role="menuitem" data-menu="refresh">Refresh now</button>
+            <button type="button" role="menuitem" data-menu="add">Add workspace</button>
+            <button type="button" role="menuitem" data-menu="lock" id="menuLock">Lock this page</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main id="main" class="page" tabindex="-1">
+    <h1 class="sr-only">Stillgreen control panel</h1>
+    <div class="banners" id="banners"></div>
+
+    <!-- (a) Presence overview -->
+    <section class="card overview" id="overview" aria-labelledby="overviewTitle">
+      <div class="overview-main">
+        <span class="beacon" id="beacon" data-tone="muted" aria-hidden="true"><i></i></span>
+        <div class="overview-text">
+          <p class="eyebrow">Presence</p>
+          <h2 id="overviewTitle"><span class="skel skel-title"></span></h2>
+          <p class="overview-detail" id="overviewDetail"><span class="skel skel-line"></span></p>
+        </div>
+      </div>
+      <dl class="facts" id="facts">
+        <div><dt>Online</dt><dd id="factOnline"><span class="skel skel-chip"></span></dd></div>
+        <div><dt>Next change</dt><dd id="factNext"><span class="skel skel-chip"></span></dd></div>
+        <div><dt>Daemon</dt><dd id="factDaemon"><span class="skel skel-chip"></span></dd></div>
+      </dl>
+      <div class="overview-actions" id="pauseControls" role="group" aria-label="Pause controls">
+        <button class="btn btn-secondary" type="button" data-pause="1h" hidden><span class="btn-label">Pause 1 h</span></button>
+        <button class="btn btn-secondary" type="button" data-pause="forever" hidden><span class="btn-label">Pause until resumed</span></button>
+        <button class="btn btn-primary" type="button" data-resume hidden><span class="btn-label">Resume</span></button>
+      </div>
+    </section>
+
+    <div class="layout">
+      <div class="col col-main">
+        <!-- (d) Workspaces -->
+        <section class="card" id="workspacesCard" aria-labelledby="workspacesTitle">
+          <header class="card-head">
+            <div>
+              <h2 id="workspacesTitle">Workspaces <span class="count" id="workspaceCount"></span></h2>
+              <p class="card-sub">Slack accounts this daemon keeps green.</p>
+            </div>
+            <button class="btn btn-primary btn-sm" type="button" id="addOpen"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/></svg><span class="btn-label">Add workspace</span></button>
+          </header>
+          <div id="workspaceList" class="ws-list">
+            <div class="ws-skel"><span class="skel skel-avatar"></span><span class="skel skel-line"></span></div>
+            <div class="ws-skel"><span class="skel skel-avatar"></span><span class="skel skel-line"></span></div>
+          </div>
+        </section>
+
+        <!-- (e) Schedule -->
+        <section class="card" id="scheduleCard" aria-labelledby="scheduleTitle">
+          <header class="card-head">
+            <div>
+              <h2 id="scheduleTitle">Schedule</h2>
+              <p class="card-sub" id="scheduleSummary">When Stillgreen keeps you online.</p>
+            </div>
+          </header>
+          <form id="scheduleForm" class="schedule" novalidate>
+            <div class="segmented" role="group" aria-label="Schedule mode">
+              <button type="button" data-mode="always" aria-pressed="true">Always on</button>
+              <button type="button" data-mode="scheduled" aria-pressed="false">Scheduled</button>
+            </div>
+            <p class="hint" id="alwaysHint">Stillgreen keeps every workspace online around the clock.</p>
+            <div class="window" id="scheduleWindow" hidden>
+              <fieldset class="days-field">
+                <legend class="label">Days</legend>
+                <div class="days" id="dayPicker"></div>
+                <div class="day-presets">
+                  <button type="button" class="link" data-preset="weekdays">Weekdays</button>
+                  <button type="button" class="link" data-preset="everyday">Every day</button>
+                </div>
+              </fieldset>
+              <div class="time-grid">
+                <div class="field"><label class="label" for="startTime">Start</label><input class="input" id="startTime" type="time" value="09:00" required></div>
+                <div class="field"><label class="label" for="endTime">End</label><input class="input" id="endTime" type="time" value="17:00" required></div>
+                <div class="field field-wide"><label class="label" for="timezone">Timezone</label><input class="input" id="timezone" list="tzList" autocomplete="off" spellcheck="false" aria-describedby="tzHint"><datalist id="tzList"></datalist></div>
+              </div>
+              <p class="hint" id="tzHint">An end time earlier than the start runs overnight.</p>
+            </div>
+            <p class="field-error" id="scheduleError" role="alert"></p>
+            <div class="form-foot">
+              <span class="dirty" id="scheduleDirty" hidden><i aria-hidden="true"></i>Unsaved changes</span>
+              <div class="form-foot-actions">
+                <button class="btn btn-ghost" type="button" id="scheduleDiscard" hidden>Discard</button>
+                <button class="btn btn-primary" type="submit" id="scheduleSave" disabled><span class="btn-label">Save schedule</span></button>
+              </div>
+            </div>
+          </form>
+        </section>
+
+        <!-- (f) Activity -->
+        <section class="card" id="activityCard" aria-labelledby="activityTitle">
+          <header class="card-head">
+            <div>
+              <h2 id="activityTitle">Activity</h2>
+              <p class="card-sub" id="activitySub">Recent daemon events, newest first.</p>
+            </div>
+            <span class="count-pill" id="activityCount"></span>
+          </header>
+          <ol class="log" id="activity" aria-labelledby="activityTitle" tabindex="0">
+            <li class="log-skel"><span class="skel skel-line"></span></li>
+            <li class="log-skel"><span class="skel skel-line"></span></li>
+            <li class="log-skel"><span class="skel skel-line"></span></li>
+          </ol>
+        </section>
+      </div>
+
+      <aside class="col col-side" aria-label="Quick controls">
+        <!-- (b) Keep me online -->
+        <section class="card" id="stayCard" aria-labelledby="stayTitle">
+          <header class="card-head">
+            <div>
+              <h2 id="stayTitle">Keep me online</h2>
+              <p class="card-sub">Stay green now, even outside your schedule.</p>
+            </div>
+          </header>
+          <div class="stay-active" id="stayActive" hidden>
+            <span class="stay-active-text"><i aria-hidden="true"></i><span id="stayActiveText">Online</span></span>
+            <button class="btn btn-secondary btn-sm" type="button" id="stayCancel"><span class="btn-label">Cancel</span></button>
+          </div>
+          <div class="stay-grid" role="group" aria-label="Keep me online for">
+            <button class="btn btn-secondary" type="button" data-stay="30m"><span class="btn-label">30 min</span></button>
+            <button class="btn btn-secondary" type="button" data-stay="1h"><span class="btn-label">1 h</span></button>
+            <button class="btn btn-secondary" type="button" data-stay="2h"><span class="btn-label">2 h</span></button>
+            <button class="btn btn-secondary" type="button" data-stay="3h"><span class="btn-label">3 h</span></button>
+          </div>
+          <form class="stay-until" id="stayUntilForm" novalidate>
+            <label class="stay-until-label" for="stayUntil">Until</label>
+            <input class="input" id="stayUntil" type="time" value="17:00" required aria-describedby="stayUntilError">
+            <span class="stay-until-today">today</span>
+            <button class="btn btn-secondary" type="submit" id="stayUntilSubmit"><span class="btn-label">Keep on</span></button>
+          </form>
+          <p class="field-error" id="stayUntilError" role="alert"></p>
+        </section>
+
+        <!-- (g) Access code -->
+        <section class="card" id="codeCard" aria-labelledby="codeTitle">
+          <header class="card-head">
+            <div>
+              <h2 id="codeTitle">Access code</h2>
+              <p class="card-sub">Connects the hosted dashboard and the browser extension to this daemon.</p>
+            </div>
+          </header>
+          <div class="code-box">
+            <span class="code-value mono" id="codeValue" aria-live="polite">SG-••••-••••-••••</span>
+          </div>
+          <div class="code-actions">
+            <button class="btn btn-secondary btn-sm" type="button" id="codeShow" aria-pressed="false"><span class="btn-label">Show</span></button>
+            <button class="btn btn-secondary btn-sm" type="button" id="codeCopy"><span class="btn-label">Copy</span></button>
+            <button class="btn btn-ghost btn-sm btn-danger-text" type="button" id="codeRotate"><span class="btn-label">Rotate…</span></button>
+          </div>
+          <div class="callout" id="codeRotated" hidden>
+            <strong>New code is active.</strong> Update it in the hosted dashboard and in the browser extension; the old code no longer works.
+          </div>
+        </section>
+      </aside>
+    </div>
+
+    <footer class="foot">
+      <span>Stillgreen <span id="version"></span></span>
+      <span class="foot-sep" aria-hidden="true">·</span>
+      <span>A personal tool. Automating presence may break your workspace's policy.</span>
+    </footer>
+  </main>
+</div>
+
+<!-- Confirmation dialog, reused for remove / rotate. -->
+<dialog class="dialog" id="confirmDialog" aria-labelledby="confirmTitle" aria-describedby="confirmBody">
+  <form method="dialog" class="dialog-inner" id="confirmForm">
+    <h2 class="dialog-title" id="confirmTitle">Are you sure?</h2>
+    <p class="dialog-body" id="confirmBody"></p>
+    <p class="field-error" id="confirmError" role="alert"></p>
+    <div class="dialog-actions">
+      <button class="btn btn-ghost" type="button" id="confirmCancel">Cancel</button>
+      <button class="btn btn-danger" type="submit" id="confirmOk"><span class="btn-label">Confirm</span></button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Add workspace dialog. -->
+<dialog class="dialog dialog-wide" id="addDialog" aria-labelledby="addTitle">
+  <div class="dialog-inner">
+    <div class="dialog-head">
+      <h2 class="dialog-title" id="addTitle">Add a Slack workspace</h2>
+      <button class="btn btn-icon" type="button" id="addClose" aria-label="Close"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/></svg></button>
+    </div>
+    <div class="recommend">
+      <span class="badge" data-tone="green">Recommended</span>
+      <h3>Use the Stillgreen browser extension</h3>
+      <ol class="steps">
+        <li>Open your workspace at <code>app.slack.com</code> in the same browser.</li>
+        <li>In the extension, set <b>Daemon URL</b> to <code class="break" id="addOrigin">this page's address</code> and paste your access code.</li>
+        <li>Click <b>Capture from Slack</b>. The workspace appears here within a few seconds.</li>
+      </ol>
+    </div>
+    <div class="divider"><span>or add it by hand</span></div>
+    <form id="addForm" class="add-form" novalidate>
+      <div class="field"><label class="label" for="xoxc">xoxc token</label><input class="input mono" id="xoxc" name="xoxc" type="password" autocomplete="off" spellcheck="false" placeholder="xoxc-…" required></div>
+      <div class="field"><label class="label" for="xoxd">xoxd cookie</label><input class="input mono" id="xoxd" name="xoxd" type="password" autocomplete="off" spellcheck="false" placeholder="xoxd-…" required></div>
+      <div class="field"><label class="label" for="wsName">Display name <span class="optional">optional</span></label><input class="input" id="wsName" name="name" autocomplete="off" placeholder="Uses the Slack workspace name"></div>
+      <details class="help">
+        <summary>Where do I find these values?</summary>
+        <ol>
+          <li>In Slack in the browser, open DevTools → <b>Network</b>, filter <code>api</code>, open a <code>client.boot</code> request and copy <code>token</code> from the payload. It starts with <code>xoxc-</code>.</li>
+          <li>DevTools → <b>Application</b> → Cookies → <code>https://app.slack.com</code> → copy the <code>d</code> cookie. It starts with <code>xoxd-</code>.</li>
+          <li>Both values must come from the same signed-in session. They are sent only to this daemon.</li>
+        </ol>
+      </details>
+      <p class="field-error" id="addError" role="alert"></p>
+      <div class="dialog-actions">
+        <button class="btn btn-ghost" type="button" id="addCancel">Cancel</button>
+        <button class="btn btn-primary" type="submit" id="addSubmit"><span class="btn-label">Verify &amp; add</span></button>
+      </div>
+    </form>
+  </div>
+</dialog>
+
+<div class="toasts" id="toasts" aria-live="polite" aria-relevant="additions"></div>
+
 <script id="bootstrap" type="application/json">__BOOTSTRAP__</script>
 <script src="/app.js"></script>
 </body>
