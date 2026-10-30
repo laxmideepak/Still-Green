@@ -22,12 +22,15 @@ Security model:
 from __future__ import annotations
 
 import hmac
+import ipaddress
 import json
 import os
 import re
 import secrets
 import socket
 import threading
+import time
+from collections import deque
 from functools import lru_cache
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -155,6 +158,77 @@ def host_allowed(host_header: str | None, bound_host: str) -> bool:
     # A server bound to the network is reached by its LAN or public name;
     # without an explicit list, accept any name there.
     return bound_host not in LOOPBACK_HOSTS and not extra
+
+
+class FailureThrottle:
+    """Refuse a client for a while after too many wrong access codes.
+
+    Matters once the server is reachable from the internet (``sg-local
+    cloud``). Clients are told apart by ``client_key``, which sees through a
+    trusted proxy, so one visitor's wrong codes never lock out another.
+    """
+
+    def __init__(self, limit: int = 10, window: float = 60.0, max_keys: int = 10_000) -> None:
+        self.limit = limit
+        self.window = window
+        self.max_keys = max_keys
+        self._failures: dict[str, deque[float]] = {}
+        self._lock = threading.Lock()
+
+    def _recent(self, key: str, now: float) -> int:
+        times = self._failures.get(key)
+        if not times:
+            return 0
+        while times and now - times[0] > self.window:
+            times.popleft()
+        if not times:
+            del self._failures[key]
+        return len(times)
+
+    def blocked(self, key: str) -> bool:
+        with self._lock:
+            return self._recent(key, time.monotonic()) >= self.limit
+
+    def fail(self, key: str) -> None:
+        with self._lock:
+            now = time.monotonic()
+            if key not in self._failures and len(self._failures) >= self.max_keys:
+                # Forget clients whose failures have all expired, then, if
+                # still full, the ones that failed longest ago.
+                self._failures = {
+                    k: v for k, v in self._failures.items() if v and now - v[-1] <= self.window
+                }
+                while len(self._failures) >= self.max_keys:
+                    del self._failures[next(iter(self._failures))]
+            self._failures.setdefault(key, deque()).append(now)
+
+
+def client_key(peer: str, headers: Any) -> str:
+    """The address to rate-limit: the real visitor when behind a trusted proxy.
+
+    Forwarding headers are only believed when SG_LOCAL_TRUSTED_PROXY names
+    the proxy in front ("caddy" in docker-compose.yml, "fly" in fly.toml), and
+    only the header that proxy itself sets; otherwise anyone could pick their
+    own key.
+    """
+    address = peer
+    proxy = os.environ.get("SG_LOCAL_TRUSTED_PROXY", "").lower()
+    if proxy == "fly":
+        address = (headers.get("Fly-Client-IP") or "").strip() or peer
+    elif proxy == "caddy":
+        # Caddy adds the address it saw as the last X-Forwarded-For entry.
+        address = (headers.get("X-Forwarded-For") or "").split(",")[-1].strip() or peer
+    try:
+        parsed = ipaddress.ip_address(address)
+    except ValueError:
+        return address
+    if parsed.version == 6:
+        # One IPv6 user usually owns a whole /64.
+        return str(ipaddress.ip_network(f"{parsed}/64", strict=False))
+    return str(parsed)
+
+
+THROTTLE = FailureThrottle()
 
 
 # --------------------------------------------------------------------- helpers
@@ -542,7 +616,12 @@ class Handler(BaseHTTPRequestHandler):
                 any_origin=True,
             )
             return False
+        client = client_key(self.client_address[0], self.headers)
+        if THROTTLE.blocked(client):
+            self._error(HTTPStatus.TOO_MANY_REQUESTS, "too many wrong access codes; wait a minute")
+            return False
         if not self._authorized():
+            THROTTLE.fail(client)
             self._error(HTTPStatus.UNAUTHORIZED, "access code is required")
             return False
         return True

@@ -752,11 +752,8 @@ def cmd_web(args: argparse.Namespace) -> int:
         print(web.load_code())
         return 0
     loopback = host in web.LOOPBACK_HOSTS
-    if not loopback and len(web.env_code()) < 16:
-        return _fail(
-            "serving beyond this machine needs a strong code: set SG_LOCAL_BRIDGE_CODE "
-            "to at least 16 random characters"
-        )
+    if not loopback and _weak_env_code():
+        return _fail(WEAK_CODE_MESSAGE)
     if not loopback and _control_page_up(port):
         return _fail(
             f"the background daemon already serves port {port} on this machine; "
@@ -798,6 +795,83 @@ def cmd_web(args: argparse.Namespace) -> int:
         threading.Timer(0.7, lambda: webbrowser.open(url)).start()
     web.serve(host, port)
     return 0
+
+
+WEAK_CODE_MESSAGE = (
+    "SG_LOCAL_BRIDGE_CODE is too short for a server on the network: use at least "
+    "16 random characters, or unset it to use a generated code"
+)
+
+
+def _weak_env_code() -> bool:
+    # A generated code (SG-XXXX-XXXX-XXXX, about 60 random bits) is fine; a
+    # hand-picked one must be long enough to resist guessing.
+    code = web.env_code()
+    return bool(code) and len(code) < 16
+
+
+def _drop_root_privileges() -> None:
+    """In the container, fix volume ownership as root, then run as the app user.
+
+    Some hosts (Fly.io) mount a fresh root-owned volume at /data that the
+    unprivileged user cannot write. The image sets SG_LOCAL_RUN_AS, so every
+    `sg-local` command started as root (the container itself, `docker exec`,
+    `fly ssh console`) hands its files to that user and drops root.
+    """
+    name = os.environ.get("SG_LOCAL_RUN_AS")
+    if not name or os.getuid() != 0:
+        return
+    import pwd
+
+    user = pwd.getpwnam(name)
+    for folder in {config.CONFIG_DIR.parent, config.CONFIG_DIR, config.STATE_DIR.parent, config.STATE_DIR}:
+        folder.mkdir(parents=True, exist_ok=True)
+        for path in [folder, *folder.iterdir()]:
+            if path.is_symlink():
+                continue
+            os.chown(path, user.pw_uid, user.pw_gid)
+    os.setgroups([])
+    os.setgid(user.pw_gid)
+    os.setuid(user.pw_uid)
+    os.environ["HOME"] = user.pw_dir
+
+
+def cmd_cloud(args: argparse.Namespace) -> int:
+    """Run the daemon and its control page for a server or container.
+
+    The page listens on all interfaces (put HTTPS in front of it), logs go to
+    the console, and the access code is never printed.
+    """
+    if _weak_env_code():
+        return _fail(WEAK_CODE_MESSAGE)
+    if args.port is not None:
+        port = args.port
+    elif os.environ.get("PORT"):
+        # The port hosts such as Fly.io, Render and Railway route traffic to.
+        try:
+            port = int(os.environ["PORT"])
+        except ValueError:
+            return _fail("PORT must be a port number")
+    else:
+        port = web.port_from_env()
+    config.ensure_dirs()
+    created = not web.load_code(create=False)
+    web.load_code()
+    if created:
+        print("A new access code was created. Read it with: sg-local web --show-code", flush=True)
+    env = {
+        **os.environ,
+        # Only this command makes the daemon listen beyond this machine.
+        "SG_LOCAL_DAEMON_WEB_HOST": args.host,
+        "SG_LOCAL_WEB_PORT": str(port),
+        "SG_LOCAL_DAEMON_WEB": "1",
+        "SG_LOCAL_LOG_STDOUT": "1",
+        "PYTHONUNBUFFERED": "1",
+    }
+    # Replace this process with the daemon, so the container's main process is
+    # the daemon itself and is recognised as one (see state.DAEMON_MARKER).
+    os.execve(sys.executable, [sys.executable, "-m", state.DAEMON_MARKER], env)
+    return 0  # not reached
 
 
 # ---------------------------------------------------------------- launchd
@@ -931,6 +1005,14 @@ def build_parser() -> argparse.ArgumentParser:
     web_cmd.add_argument("--show-code", action="store_true", help="print the access code and exit")
     web_cmd.set_defaults(func=cmd_web)
 
+    cloud = sub.add_parser(
+        "cloud",
+        help="run the daemon and control page on a server or in a container (put HTTPS in front)",
+    )
+    cloud.add_argument("--host", default=os.environ.get("SG_LOCAL_WEB_HOST", "0.0.0.0"))
+    cloud.add_argument("--port", type=int, default=None, help="port (default $PORT, then SG_LOCAL_WEB_PORT, then 8765)")
+    cloud.set_defaults(func=cmd_cloud)
+
     logs = sub.add_parser("logs", help="show or follow the daemon log")
     logs.add_argument("-n", "--lines", type=int, default=80, help="lines to show (default 80)")
     logs.add_argument("-f", "--follow", action="store_true", help="follow new log lines")
@@ -949,6 +1031,10 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    try:
+        _drop_root_privileges()
+    except (KeyError, OSError) as exc:
+        return _fail(f"could not switch to the app user: {exc}")
     if not getattr(args, "command", None):
         parser.print_help()
         return 0

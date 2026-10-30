@@ -114,6 +114,14 @@
     $("#xoxc").focus();
   }
 
+  // "local" means the daemon's clock, which is UTC on most cloud servers; send
+  // this browser's zone (for example America/New_York) instead.
+  function scheduleTimezone(value) {
+    const text = String(value || "").trim();
+    if (text && !/^(local|system|machine)$/i.test(text)) return text;
+    try { return Intl.DateTimeFormat().resolvedOptions().timeZone || "local"; } catch { return "local"; }
+  }
+
   function esc(value) {
     return String(value ?? "").replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
   }
@@ -234,7 +242,7 @@
       active_days: state.days,
       start_time: state.draft.start,
       end_time: state.draft.end,
-      timezone: state.draft.timezone
+      timezone: scheduleTimezone(state.draft.timezone)
     });
     if (saved) { state.scheduleDirty = false; render(); }
   });

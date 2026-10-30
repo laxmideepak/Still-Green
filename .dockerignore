@@ -1,0 +1,6 @@
+# Only the Python package goes into the image.
+*
+!pyproject.toml
+!README.md
+!sg_local/
+sg_local/__pycache__/

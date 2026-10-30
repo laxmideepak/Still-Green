@@ -1,0 +1,44 @@
+# Stillgreen on a server with free automatic HTTPS (Caddy + Let's Encrypt).
+#
+# 1. Point a domain at the server, or use the free name <ip-with-dashes>.sslip.io
+# 2. echo "STILLGREEN_DOMAIN=your.domain" > .env
+# 3. docker compose up -d --build
+# 4. docker compose exec stillgreen sg-local web --show-code
+#
+# deploy/setup-vm.sh does all of this on a fresh Debian or Ubuntu server.
+services:
+  stillgreen:
+    build: .
+    restart: unless-stopped
+    environment:
+      # Only answer requests addressed to this domain (blocks DNS rebinding).
+      SG_LOCAL_WEB_HOSTS: ${STILLGREEN_DOMAIN:?set STILLGREEN_DOMAIN in .env}
+      # Count wrong access codes per real visitor (from Caddy's X-Forwarded-For).
+      SG_LOCAL_TRUSTED_PROXY: caddy
+      # Optional: extra dashboard addresses allowed to use the API.
+      SG_LOCAL_WEB_ORIGIN: ${STILLGREEN_EXTRA_ORIGINS:-}
+    volumes:
+      - stillgreen-data:/data
+    # Not published: only Caddy can reach it, over the internal network.
+    expose:
+      - "8765"
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      - stillgreen
+    environment:
+      STILLGREEN_DOMAIN: ${STILLGREEN_DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  stillgreen-data:
+  caddy-data:
+  caddy-config:

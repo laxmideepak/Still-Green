@@ -387,7 +387,7 @@ export function SetupGuide() {
                 <ul>
                   <li>Request your password, OAuth code, or Slack sign-in</li>
                   <li>Send tokens to Vercel or any third-party service</li>
-                  <li>Accept connections from other machines (it listens only on 127.0.0.1)</li>
+                  <li>Accept connections from other machines on your Mac (it listens only on 127.0.0.1; only the cloud setup listens on the network, behind HTTPS)</li>
                   <li>Override a manual away status you set in Slack</li>
                 </ul>
               </div>
@@ -415,9 +415,13 @@ export function SetupGuide() {
               <details>
                 <summary>The dot goes away when my laptop sleeps</summary>
                 <p>
-                  A suspended machine cannot keep a connection alive. Use an always-on
-                  machine, or keep the laptop awake with <code>caffeinate</code> while the
-                  window is active. This follows your employer&apos;s policy, not around it.
+                  A suspended machine cannot keep a connection alive. Run the daemon on a
+                  small always-on server instead (a free Google Cloud e2-micro works; see{" "}
+                  <a href="https://github.com/laxmideepak/slack#run-it-in-the-cloud" target="_blank" rel="noreferrer">
+                    Run it in the cloud
+                  </a>
+                  ), or keep the laptop awake with <code>caffeinate</code> while the window
+                  is active. This follows your employer&apos;s policy, not around it.
                 </p>
               </details>
             </section>

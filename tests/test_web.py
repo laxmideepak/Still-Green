@@ -41,6 +41,9 @@ class WebTestCase(unittest.TestCase):
         for patch in self.patches:
             patch.start()
         config.ensure_dirs()
+        throttle = mock.patch.object(web, "THROTTLE", web.FailureThrottle())
+        throttle.start()
+        self.patches.append(throttle)
         self.code = web.load_code()
         self.server = web.make_server("127.0.0.1", 0)
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
@@ -384,6 +387,56 @@ class SecurityTests(WebTestCase):
         self.assertEqual(headers.get("Access-Control-Allow-Origin"), "https://evil.example")
         self.assertEqual(set(body), {"ok", "error"})
         self.assertIn("SG_LOCAL_WEB_ORIGIN", body["error"])
+
+    def test_wrong_codes_are_rate_limited(self) -> None:
+        for _ in range(10):
+            status, _, _ = self.request("/api/state", code="SG-WRNG-WRNG-WRNG")
+            self.assertEqual(status, 401)
+        status, body, _ = self.request("/api/state", code="SG-WRNG-WRNG-WRNG")
+        self.assertEqual(status, 429)
+        self.assertIn("too many", body["error"])
+        # While locked out, even the right code waits, so guessing gains nothing.
+        status, _, _ = self.request("/api/state", code=self.code)
+        self.assertEqual(status, 429)
+        # The limit lifts once the window passes.
+        web.THROTTLE.window = 0.0
+        status, _, _ = self.request("/api/state", code=self.code)
+        self.assertEqual(status, 200)
+
+    def test_shell_port_does_not_move_the_local_page(self) -> None:
+        # PORT=3000 is common in a developer's shell; only `sg-local cloud` reads it.
+        with mock.patch.dict(os.environ, {"SG_LOCAL_WEB_PORT": "", "PORT": "3000"}):
+            self.assertEqual(web.port_from_env(), web.DEFAULT_PORT)
+
+    def test_one_visitor_cannot_lock_out_another_behind_a_proxy(self) -> None:
+        with mock.patch.dict(os.environ, {"SG_LOCAL_TRUSTED_PROXY": "caddy"}):
+            for _ in range(12):
+                self.request("/api/state", code="SG-WRNG-WRNG-WRNG",
+                             extra_headers={"X-Forwarded-For": "203.0.113.7"})
+            status, _, _ = self.request("/api/state", code="SG-WRNG-WRNG-WRNG",
+                                        extra_headers={"X-Forwarded-For": "203.0.113.7"})
+            self.assertEqual(status, 429)
+            status, _, _ = self.request("/api/state", code=self.code,
+                                        extra_headers={"X-Forwarded-For": "198.51.100.4"})
+            self.assertEqual(status, 200)
+
+    def test_forwarding_headers_are_only_trusted_from_the_named_proxy(self) -> None:
+        headers = {"X-Forwarded-For": "1.1.1.1, 203.0.113.7", "Fly-Client-IP": "9.9.9.9"}
+        with mock.patch.dict(os.environ, {"SG_LOCAL_TRUSTED_PROXY": ""}):
+            self.assertEqual(web.client_key("172.18.0.2", headers), "172.18.0.2")
+        with mock.patch.dict(os.environ, {"SG_LOCAL_TRUSTED_PROXY": "caddy"}):
+            self.assertEqual(web.client_key("172.18.0.2", headers), "203.0.113.7")
+        with mock.patch.dict(os.environ, {"SG_LOCAL_TRUSTED_PROXY": "fly"}):
+            self.assertEqual(web.client_key("172.18.0.2", headers), "9.9.9.9")
+        self.assertEqual(web.client_key("2001:db8::1", {}), "2001:db8::/64")
+
+    def test_throttle_memory_stays_bounded(self) -> None:
+        throttle = web.FailureThrottle(limit=10, window=60.0, max_keys=100)
+        for i in range(1000):
+            throttle.fail(f"10.0.{i // 250}.{i % 250}")
+        self.assertLessEqual(len(throttle._failures), 100)
+        self.assertFalse(throttle.blocked("never-failed"))
+        self.assertNotIn("never-failed", throttle._failures)
 
     def test_rotate_is_refused_from_another_origin(self) -> None:
         status, _, _ = self.request(

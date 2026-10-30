@@ -47,6 +47,13 @@ def pid_alive(pid: int) -> bool:
 
 
 def _command_line(pid: int) -> str:
+    # Linux (including slim containers without `ps`): read /proc directly.
+    try:
+        raw = Path(f"/proc/{pid}/cmdline").read_bytes()
+        if raw:
+            return raw.replace(b"\0", b" ").decode("utf-8", "replace").strip()
+    except OSError:
+        pass
     try:
         result = subprocess.run(
             ["ps", "-p", str(pid), "-o", "command="],

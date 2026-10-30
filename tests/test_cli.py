@@ -37,6 +37,9 @@ class TempConfig(unittest.TestCase):
         )
         patch.start()
         self.addCleanup(patch.stop)
+        bridge = mock.patch.object(cli.web, "BRIDGE_PATH", config_dir / "bridge.json")
+        bridge.start()
+        self.addCleanup(bridge.stop)
         self.addCleanup(self.temp.cleanup)
         config.ensure_dirs()
 
@@ -142,7 +145,47 @@ class CliTests(TempConfig):
         with mock.patch.dict(os.environ, {"SG_LOCAL_BRIDGE_CODE": "short"}):
             code, _, err = self.run_cli("web", "--host", "0.0.0.0")
         self.assertEqual(code, 1)
-        self.assertIn("strong code", err)
+        self.assertIn("too short", err)
+
+    def test_cloud_starts_the_daemon_on_all_interfaces(self) -> None:
+        with mock.patch.dict(os.environ, {"PORT": "9123", "SG_LOCAL_BRIDGE_CODE": ""}), \
+                mock.patch.object(cli.os, "execve") as execve:
+            code, out, _ = self.run_cli("cloud")
+        self.assertEqual(code, 0)
+        program, argv, env = execve.call_args.args
+        self.assertEqual(argv[1:], ["-m", "sg_local.daemon"])
+        self.assertEqual((env["SG_LOCAL_DAEMON_WEB_HOST"], env["SG_LOCAL_WEB_PORT"]), ("0.0.0.0", "9123"))
+        self.assertEqual(env["SG_LOCAL_LOG_STDOUT"], "1")
+        # A code is created on first run but never printed.
+        code_value = cli.web.load_code(create=False)
+        self.assertTrue(code_value)
+        self.assertNotIn(code_value, out)
+        self.assertIn("--show-code", out)
+
+    def test_cloud_port_order(self) -> None:
+        cases = [
+            ({"PORT": "9123", "SG_LOCAL_WEB_PORT": "9000"}, [], "9123"),
+            ({"PORT": "", "SG_LOCAL_WEB_PORT": "9000"}, [], "9000"),
+            ({"PORT": "9123"}, ["--port", "9555"], "9555"),
+        ]
+        for env, extra, expected in cases:
+            with mock.patch.dict(os.environ, env), mock.patch.object(cli.os, "execve") as execve:
+                self.assertEqual(self.run_cli("cloud", *extra)[0], 0)
+            self.assertEqual(execve.call_args.args[2]["SG_LOCAL_WEB_PORT"], expected)
+
+    def test_cloud_refuses_a_short_custom_code(self) -> None:
+        with mock.patch.dict(os.environ, {"SG_LOCAL_BRIDGE_CODE": "abc123"}), \
+                mock.patch.object(cli.os, "execve") as execve:
+            code, _, err = self.run_cli("cloud")
+        self.assertEqual(code, 1)
+        self.assertIn("too short", err)
+        execve.assert_not_called()
+
+    def test_daemon_is_recognised_without_ps(self) -> None:
+        from sg_local import state
+
+        with mock.patch.object(state.subprocess, "run", side_effect=OSError("no ps")):
+            self.assertIn("python", state._command_line(os.getpid()).lower())
 
 
 class FakeSession:

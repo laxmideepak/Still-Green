@@ -138,7 +138,7 @@ export function ConnectDialog({ open, onClose, onConnected, initialUrl = "" }: P
           </p>
           <p>
             <Shield width={13} height={13} />
-            Loopback is allowed from this HTTPS page.
+            Use http://127.0.0.1:8765 on this computer, or your server&apos;s https:// address.
           </p>
         </div>
 
