@@ -15,8 +15,11 @@ import {
   Terminal,
 } from "./icons";
 import {
+  DEFAULT_DAEMON_URL,
   connectBridge,
   loadBridge,
+  normalizeCode,
+  normalizeUrl,
   saveBridge,
   type BridgeConfig,
 } from "@/lib/bridge";
@@ -27,15 +30,15 @@ const commands = {
     label: "Terminal",
     command: `git clone https://github.com/laxmideepak/slack.git
 cd slack
-./sg-local add
-./sg-local web --daemon --open`,
-    note: "`add` prompts for both Slack values with hidden input. `web --daemon` starts the presence daemon and its control page at 127.0.0.1:8765.",
+./sg-local start
+./sg-local web --show-code`,
+    note: "`start` runs the presence daemon in the background, with its control page at http://127.0.0.1:8765. `web --show-code` prints the access code the extension and this dashboard ask for.",
   },
   autostart: {
     label: "Optional · macOS",
     command: `./sg-local install-launchd
 ./sg-local status`,
-    note: "Starts the daemon at login so the dot survives a reboot. Without it, the daemon stops when the terminal closes.",
+    note: "Starts the daemon and its control page at login, so the dot and this dashboard survive a reboot. Without it, run ./sg-local start again after a restart.",
   },
 } as const;
 
@@ -80,7 +83,7 @@ function CommandBlock({ command, label }: { command: string; label: string }) {
 
 function ConnectForm() {
   const router = useRouter();
-  const [url, setUrl] = useState("http://127.0.0.1:8765");
+  const [url, setUrl] = useState(DEFAULT_DAEMON_URL);
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -99,11 +102,11 @@ function ConnectForm() {
     setBusy(true);
     setError("");
     try {
-      const next = await connectBridge(url, code);
-      const config = { url: url.replace(/\/+$/, ""), code: code.trim() };
+      await connectBridge(url, code);
+      const config = { url: normalizeUrl(url) || DEFAULT_DAEMON_URL, code: normalizeCode(code) };
       saveBridge(config);
       setSaved(config);
-      router.push(`/dashboard?workspaces=${next.workspaces.length}`);
+      router.push("/dashboard");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not connect to the daemon.");
     } finally {
@@ -121,13 +124,22 @@ function ConnectForm() {
           <h3>A daemon is already saved here.</h3>
           <p>
             <code>{saved.url}</code> is connected to this browser. Open the dashboard to
-            see its live state, or enter a different URL below.
+            see its live state, or use a different daemon or access code.
           </p>
         </div>
-        <Link href="/dashboard" className="button buttonPrimary buttonSmall">
-          Open dashboard
-          <ArrowRight width={14} height={14} />
-        </Link>
+        <div className={styles.savedActions}>
+          <Link href="/dashboard" className="button buttonPrimary buttonSmall">
+            Open dashboard
+            <ArrowRight width={14} height={14} />
+          </Link>
+          <button
+            type="button"
+            className="button buttonQuiet buttonSmall"
+            onClick={() => setSaved(null)}
+          >
+            Use a different daemon
+          </button>
+        </div>
       </div>
     );
   }
@@ -138,13 +150,13 @@ function ConnectForm() {
         <label htmlFor="daemon-url">Daemon URL</label>
         <input
           id="daemon-url"
-          type="url"
+          type="text"
+          inputMode="url"
           value={url}
           onChange={(event) => setUrl(event.target.value)}
-          placeholder="http://127.0.0.1:8765"
+          placeholder={DEFAULT_DAEMON_URL}
           autoComplete="url"
           spellCheck={false}
-          required
         />
       </div>
       <div className={styles.field}>
@@ -203,7 +215,7 @@ export function StartGuide() {
                 own machine, next to your Slack session.
               </p>
               <div className={styles.heroActions}>
-                <a href="#deploy" className="button buttonPrimary">
+                <a href="#setup" className="button buttonPrimary">
                   Set it up
                   <ArrowRight width={16} height={16} />
                 </a>
@@ -220,7 +232,7 @@ export function StartGuide() {
               </div>
               <div className={styles.stackLine}>
                 <i />
-                <span>HTTPS · access code</span>
+                <span>loopback · access code</span>
               </div>
               <div className={`${styles.stackCard} ${styles.stackDaemon}`}>
                 <span className={styles.stackLabel}>Your machine</span>
@@ -240,7 +252,7 @@ export function StartGuide() {
           </div>
         </section>
 
-        <section className={styles.stepsSection} id="deploy">
+        <section className={styles.stepsSection} id="setup">
           <div className={`container ${styles.stepsInner}`}>
             <div className={styles.sectionHead}>
               <h2>Three steps, then close the tab.</h2>
@@ -264,7 +276,7 @@ export function StartGuide() {
                   <div className={styles.providerTabs} role="tablist" aria-label="Command">
                     {(
                       [
-                        ["install", "First run", "clone, add tokens, start"],
+                        ["install", "First run", "clone, start, get the code"],
                         ["autostart", "Keep it running", "macOS login item"],
                       ] as Array<[CommandKey, string, string]>
                     ).map(([id, label, note]) => (
@@ -314,7 +326,8 @@ export function StartGuide() {
                     </div>
                   </div>
                   <p className={styles.finePrint}>
-                    Prefer doing it by hand? DevTools works too.{" "}
+                    Prefer not to use the extension? Run <code>./sg-local add</code> and paste
+                    the two values from DevTools.{" "}
                     <Link href="/setup#tokens">Manual walkthrough</Link>.
                   </p>
                 </div>

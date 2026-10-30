@@ -235,7 +235,7 @@ export default function HomePage() {
                 Stillgreen account, no relay and no telemetry to opt out of.
               </p>
               <ul>
-                <li>Tokens entered on the daemon, never on Vercel</li>
+                <li>Tokens go from your browser to the daemon, never to Vercel</li>
                 <li>Outbound traffic only to Slack</li>
                 <li>One process you can stop at any time</li>
               </ul>
@@ -253,13 +253,11 @@ export default function HomePage() {
               </div>
               <div className={styles.terminalBody}>
                 <p>
-                  <span className={styles.prompt}>$</span> ./sg-local add
-                </p>
-                <p className={styles.ok}>✓ tokens verified · saved locally</p>
-                <p>
                   <span className={styles.prompt}>$</span> ./sg-local start
                 </p>
                 <p className={styles.output}>daemon running · pid 4128</p>
+                <p className={styles.output}>control page: http://127.0.0.1:8765</p>
+                <p className={styles.ok}>✓ extension: Capture from Slack · 1 workspace added</p>
                 <p className={styles.output}>schedule: weekdays 09:00–17:00</p>
                 <p className={styles.output}>transport: Slack WebSocket</p>
                 <p className={styles.cursor}>
@@ -298,7 +296,7 @@ export default function HomePage() {
               </div>
               <div>
                 <dt>Storage</dt>
-                <dd>Daemon volume, mode 0600, outside this repository</dd>
+                <dd>config.json on your machine, mode 0600, outside this repository</dd>
               </div>
             </dl>
           </div>

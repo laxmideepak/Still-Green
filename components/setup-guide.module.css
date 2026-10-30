@@ -988,7 +988,7 @@
     flex-direction: column;
   }
 
-  .closingActions .button {
+  .closingActions :global(.button) {
     width: 100%;
   }
 }

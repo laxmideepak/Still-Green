@@ -40,7 +40,7 @@ function PreviewBanner({ error, connecting, onConnect }: PreviewBannerProps) {
             <ArrowRight width={14} height={14} />
           </button>
           <Link href="/start" className="button buttonQuiet buttonSmall">
-            Deploy one
+            Set it up
           </Link>
         </div>
       </div>
@@ -56,25 +56,54 @@ export function DashboardRoute() {
   const [error, setError] = useState("");
   const [connecting, setConnecting] = useState(false);
 
+  const [attempt, setAttempt] = useState(0);
+
   useEffect(() => {
     const saved = loadBridge();
     if (!saved) return;
-    setConnecting(true);
+    let cancelled = false;
+    // Only show the "Checking" state on the first try; retries stay quiet.
+    if (attempt === 0) setConnecting(true);
     fetchState(saved)
       .then((next) => {
+        if (cancelled) return;
         setConfig(saved);
         setState(next);
         setLive(true);
+        setError("");
       })
       .catch((caught) => {
+        if (cancelled) return;
         setError(
           caught instanceof Error
             ? `${caught.message} Use Connect daemon to update the URL or code.`
             : "Could not reach the saved daemon.",
         );
       })
-      .finally(() => setConnecting(false));
-  }, []);
+      .finally(() => {
+        if (!cancelled) setConnecting(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [attempt]);
+
+  // While the saved daemon is unreachable, try again when the tab comes back
+  // into view and every 30 seconds, so the page goes live once it is back.
+  useEffect(() => {
+    if (live || !error) return;
+    const retry = () => {
+      if (!document.hidden) setAttempt((value) => value + 1);
+    };
+    const timer = window.setInterval(retry, 30000);
+    document.addEventListener("visibilitychange", retry);
+    window.addEventListener("focus", retry);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", retry);
+      window.removeEventListener("focus", retry);
+    };
+  }, [live, error]);
 
   function connected(nextConfig: BridgeConfig, nextState: DaemonState) {
     setConfig(nextConfig);
@@ -90,7 +119,13 @@ export function DashboardRoute() {
   }
 
   const content: ReactNode = live && config && state ? (
-    <DashboardLive config={config} initialState={state} onDisconnect={disconnected} />
+    <DashboardLive
+      key={`${config.url} ${config.code}`}
+      config={config}
+      initialState={state}
+      onDisconnect={disconnected}
+      onReconnect={() => setDialog(true)}
+    />
   ) : (
     <DashboardPreview
       topSlot={
@@ -110,6 +145,7 @@ export function DashboardRoute() {
         open={dialog}
         onClose={() => setDialog(false)}
         onConnected={connected}
+        initialUrl={config?.url}
       />
     </>
   );
