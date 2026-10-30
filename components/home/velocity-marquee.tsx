@@ -3,6 +3,7 @@
 import {
   motion,
   useAnimationFrame,
+  useInView,
   useMotionValue,
   useReducedMotion,
   useScroll,
@@ -29,6 +30,8 @@ export function VelocityMarquee({
   outline?: boolean;
 }) {
   const calm = useReducedMotion();
+  const strip = useRef<HTMLDivElement>(null);
+  const visible = useInView(strip);
   const base = useMotionValue(0);
   const { scrollY } = useScroll();
   const velocity = useVelocity(scrollY);
@@ -39,7 +42,7 @@ export function VelocityMarquee({
   const direction = useRef(1);
 
   useAnimationFrame((_, delta) => {
-    if (calm) return;
+    if (calm || !visible) return;
     let move = direction.current * baseVelocity * (delta / 1000);
     const f = factor.get();
     if (f < 0) direction.current = -1;
@@ -62,7 +65,7 @@ export function VelocityMarquee({
   );
 
   return (
-    <div className={`${styles.strip} ${outline ? styles.outline : ""}`} aria-hidden="true">
+    <div ref={strip} className={`${styles.strip} ${outline ? styles.outline : ""}`} aria-hidden="true">
       <motion.div className={styles.track} style={{ x, skewX: calm ? 0 : skew }}>
         {row}
         {row}

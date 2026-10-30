@@ -1,29 +1,44 @@
 :root {
-  --ink: #14231a;
-  --ink-soft: #263c2f;
-  --muted: #53695b;
-  --paper: #f1f6ed;
-  --paper-raised: #fbfdf8;
-  --sage: #dfeade;
-  --sage-deep: #cbdccd;
-  --line: rgba(20, 35, 26, 0.14);
-  --line-strong: rgba(20, 35, 26, 0.3);
-  --green: #0e7a4d;
-  --green-bright: #22bd77;
-  --green-soft: #d7efdf;
-  --amber: #9a6711;
-  --amber-soft: #f3e7ca;
-  --rust: #a7432c;
-  --rust-soft: #f3ddd6;
+  /* Night palette: the whole site is dark. */
+  --night: #050806;
+  --night-2: #0b120e;
+  --night-3: #111b15;
+  --acid: #39ff9c;
+  --amber-hot: #ffb547;
+  --rust-hot: #ff5a3c;
+
+  --ink: #eaf5ee;
+  --ink-soft: #c9dbd0;
+  --muted: #8ba095;
+  --paper: var(--night);
+  --paper-raised: var(--night-2);
+  --sage: #101a14;
+  --sage-deep: #16231b;
+  --line: rgba(234, 245, 238, 0.1);
+  --line-strong: rgba(234, 245, 238, 0.22);
+  --green: var(--acid);
+  --green-bright: var(--acid);
+  --green-soft: rgba(57, 255, 156, 0.14);
+  --amber: var(--amber-hot);
+  --amber-soft: rgba(255, 181, 71, 0.14);
+  --rust: var(--rust-hot);
+  --rust-soft: rgba(255, 90, 60, 0.14);
   --radius-sm: 10px;
   --radius-md: 18px;
-  --radius-lg: 28px;
-  --shadow-card: 0 40px 90px -52px rgba(18, 44, 28, 0.55);
+  --radius-lg: 26px;
+  --shadow-card: 0 40px 90px -50px rgba(0, 0, 0, 0.8);
+  --glow: 0 0 0 1px color-mix(in srgb, var(--acid) 35%, transparent), 0 18px 50px -14px color-mix(in srgb, var(--acid) 45%, transparent);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --max: 1240px;
   --gutter: clamp(20px, 5vw, 68px);
   --display: var(--font-display), "Bricolage Grotesque", "Arial Black", sans-serif;
   --body: var(--font-body), "Instrument Sans", "Helvetica Neue", sans-serif;
   --mono: var(--font-mono), "JetBrains Mono", ui-monospace, "SFMono-Regular", monospace;
+  color-scheme: dark;
+}
+
+html {
+  background: var(--night);
 }
 
 *,
@@ -96,12 +111,12 @@ svg {
 }
 
 ::selection {
-  background: var(--green-soft);
-  color: var(--ink);
+  background: var(--acid);
+  color: var(--night);
 }
 
 :focus-visible {
-  outline: 3px solid var(--green);
+  outline: 2px solid var(--acid);
   outline-offset: 3px;
 }
 
@@ -142,41 +157,49 @@ svg {
 }
 
 .button {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0.55rem;
   min-height: 48px;
-  padding: 0 1.15rem;
+  padding: 0 1.3rem;
   border: 1px solid transparent;
-  border-radius: 12px;
+  border-radius: 999px;
   font-size: 0.95rem;
   font-weight: 650;
   letter-spacing: -0.012em;
   line-height: 1;
   white-space: nowrap;
   transition:
-    background-color 160ms ease,
-    border-color 160ms ease,
-    color 160ms ease,
-    transform 160ms ease;
+    background-color 200ms ease,
+    border-color 200ms ease,
+    color 200ms ease,
+    box-shadow 250ms ease,
+    transform 250ms var(--ease-out);
 }
 
-.button:hover {
-  transform: translateY(-1px);
+.button:hover:not(:disabled) {
+  transform: translateY(-2px);
 }
 
-.button:active {
-  transform: translateY(0);
+.button:active:not(:disabled) {
+  transform: translateY(0) scale(0.97);
+}
+
+.button:disabled {
+  opacity: 0.45;
 }
 
 .buttonPrimary {
-  background: var(--ink);
-  color: var(--paper-raised);
+  background: var(--acid);
+  color: var(--night);
+  box-shadow: 0 14px 40px -16px color-mix(in srgb, var(--acid) 70%, transparent);
 }
 
-.buttonPrimary:hover {
-  background: var(--ink-soft);
+.buttonPrimary:hover:not(:disabled) {
+  background: var(--ink);
+  box-shadow: 0 18px 50px -14px color-mix(in srgb, var(--ink) 40%, transparent);
 }
 
 .buttonSecondary {
@@ -185,9 +208,9 @@ svg {
   color: var(--ink);
 }
 
-.buttonSecondary:hover {
+.buttonSecondary:hover:not(:disabled) {
   border-color: var(--ink);
-  background: var(--paper-raised);
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
 }
 
 .buttonQuiet {
@@ -195,14 +218,13 @@ svg {
   color: var(--muted);
 }
 
-.buttonQuiet:hover {
+.buttonQuiet:hover:not(:disabled) {
   color: var(--ink);
 }
 
 .buttonSmall {
   min-height: 40px;
-  padding: 0 0.85rem;
-  border-radius: 10px;
+  padding: 0 1rem;
   font-size: 0.85rem;
 }
 
@@ -214,12 +236,44 @@ svg {
 }
 
 .textLink:hover {
-  color: var(--green);
+  color: var(--acid);
+}
+
+/* Scroll reveal: see components/motion/reveal-observer.tsx */
+.js [data-reveal] {
+  opacity: 0;
+  transform: translate3d(0, 28px, 0);
+  transition:
+    opacity 800ms var(--ease-out) var(--reveal-delay, 0ms),
+    transform 900ms var(--ease-out) var(--reveal-delay, 0ms);
+}
+
+.js [data-reveal][data-shown] {
+  opacity: 1;
+  transform: none;
+}
+
+/* Page entrance used by page headers. */
+@keyframes riseIn {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 24px, 0);
+  }
+}
+
+.riseIn {
+  animation: riseIn 900ms var(--ease-out) both;
+  animation-delay: var(--rise-delay, 0ms);
 }
 
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
+  }
+
+  .js [data-reveal] {
+    opacity: 1;
+    transform: none;
   }
 
   *,

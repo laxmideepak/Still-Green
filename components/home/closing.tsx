@@ -4,7 +4,7 @@ import Link from "next/link";
 import { motion, useScroll, useTransform } from "motion/react";
 import { useRef } from "react";
 import { ArrowUpRight } from "../icons";
-import { Magnetic } from "./magnetic";
+import { Magnetic } from "../motion/magnetic";
 import styles from "./closing.module.css";
 
 export function Closing() {

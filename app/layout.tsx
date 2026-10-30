@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Bricolage_Grotesque, Instrument_Sans, JetBrains_Mono } from "next/font/google";
+import { MotionShell } from "@/components/motion/motion-shell";
+import { RevealObserver } from "@/components/motion/reveal-observer";
 import "./globals.css";
 
 const display = Bricolage_Grotesque({
@@ -52,20 +54,29 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#f1f6ed",
-  colorScheme: "light",
+  themeColor: "#050806",
+  colorScheme: "dark",
 };
 
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={`${display.variable} ${body.variable} ${mono.variable}`}>
+    <html
+      lang="en"
+      className={`${display.variable} ${body.variable} ${mono.variable}`}
+      suppressHydrationWarning
+    >
+      <head>
+        {/* Lets CSS hide not-yet-revealed content only when JavaScript runs. */}
+        <script dangerouslySetInnerHTML={{ __html: "document.documentElement.classList.add('js')" }} />
+      </head>
       <body>
         <a className="skipLink" href="#main">
           Skip to content
         </a>
-        {children}
+        <MotionShell>{children}</MotionShell>
+        <RevealObserver />
       </body>
     </html>
   );

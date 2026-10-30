@@ -41,7 +41,36 @@
 }
 
 .column a:hover {
-  color: var(--ink);
+  color: var(--acid);
+  transform: translateX(3px);
+}
+
+.column a {
+  transition: color 150ms ease, transform 250ms var(--ease-out);
+}
+
+.wordmarkWrap {
+  overflow: hidden;
+}
+
+.wordmark {
+  font-family: var(--display);
+  font-size: clamp(3.6rem, 16vw, 14rem);
+  font-weight: 800;
+  font-variation-settings: "wdth" 85;
+  letter-spacing: -0.035em;
+  line-height: 0.8;
+  text-align: center;
+  color: transparent;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--ink) 14%, transparent), transparent 92%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  user-select: none;
+}
+
+.wordmark span {
+  color: var(--acid);
+  -webkit-text-fill-color: var(--acid);
 }
 
 .heading {
@@ -57,6 +86,7 @@
   gap: 24px;
   padding-top: 20px;
   padding-bottom: 28px;
+  margin-top: 8px;
   border-top: 1px solid var(--line);
   color: var(--muted);
   font-size: 0.78rem;

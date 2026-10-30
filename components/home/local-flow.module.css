@@ -118,32 +118,38 @@
   transform-origin: 0 50%;
 }
 
+/* Each packet spans the whole wire and slides its dot with a transform. */
 .packet {
   position: absolute;
-  top: -4px;
+  inset: -4px 10px -4px 0;
+  opacity: 0;
+  animation: travel 2.4s cubic-bezier(0.6, 0, 0.4, 1) infinite both;
+  will-change: transform, opacity;
+}
+
+.packet::before {
+  content: "";
+  position: absolute;
+  top: 0;
   left: 0;
   width: 10px;
   height: 10px;
   border-radius: 50%;
   background: var(--acid);
-  box-shadow: 0 0 14px var(--acid), -14px 0 20px -4px color-mix(in srgb, var(--acid) 60%, transparent);
-  opacity: 0;
-  animation: travel 2.4s cubic-bezier(0.6, 0, 0.4, 1) infinite both;
+  box-shadow: 0 0 14px var(--acid);
 }
 
 @keyframes travel {
   0% {
-    left: 0;
+    transform: translateX(0);
     opacity: 0;
   }
-  10% {
-    opacity: 1;
-  }
+  10%,
   90% {
     opacity: 1;
   }
   100% {
-    left: calc(100% - 10px);
+    transform: translateX(100%);
     opacity: 0;
   }
 }
@@ -300,7 +306,7 @@
   }
 
   .packet {
-    left: -4px;
+    inset: 0 -4px 10px -4px;
     animation-name: travelDown;
   }
 
@@ -315,7 +321,7 @@
 
 @keyframes travelDown {
   0% {
-    top: 0;
+    transform: translateY(0);
     opacity: 0;
   }
   10%,
@@ -323,7 +329,7 @@
     opacity: 1;
   }
   100% {
-    top: calc(100% - 10px);
+    transform: translateY(100%);
     opacity: 0;
   }
 }
