@@ -57,6 +57,18 @@ class CliTests(TempConfig):
         self.assertIsNotNone(config.read_pause()["until"])
         self.assertIn("paused", out)
 
+    def test_stay_until_today(self) -> None:
+        from datetime import datetime, timedelta
+
+        target = (datetime.now() + timedelta(minutes=30)).strftime("%H:%M")
+        if target < datetime.now().strftime("%H:%M"):
+            self.skipTest("too close to midnight to pick a later time today")
+        code, out, err = self.run_cli("stay", "--until", target)
+        self.assertEqual(code, 0, err)
+        self.assertIsNotNone(config.read_stay())
+        earlier = (datetime.now() - timedelta(minutes=5)).strftime("%H:%M")
+        self.assertEqual(self.run_cli("stay", "--until", earlier)[0], 2)
+
     def test_pause_rejects_bad_and_huge_durations(self) -> None:
         for value in ("banana", "99999999w"):
             code, _, err = self.run_cli("pause", "--for", value)

@@ -500,6 +500,20 @@ class DataSafetyTests(WebTestCase):
             _, body, _ = self.request("/api/resume", method="POST", code=self.code, body={})
             self.assertFalse(body["paused"])
 
+    def test_stay_until_a_time(self) -> None:
+        from datetime import timedelta as _td
+
+        later = (datetime.now(timezone.utc) + _td(hours=2)).astimezone()
+        status, body, _ = self.request("/api/stay", method="POST", code=self.code,
+                                       body={"until": later.isoformat(timespec="seconds")})
+        self.assertEqual(status, 200, body)
+        self.assertTrue(body["stay_active"])
+        saved = datetime.fromisoformat(body["stay_until"])
+        self.assertLess(abs((saved - later).total_seconds()), 2)
+        for bad in ("2020-01-01T09:00:00+00:00", "2026-13-01T09:00", "tomorrow", "2030-01-01T09:00:00"):
+            status, payload, _ = self.request("/api/stay", method="POST", code=self.code, body={"until": bad})
+            self.assertEqual(status, 400, (bad, payload))
+
     def test_bad_inputs_are_400_not_500(self) -> None:
         for path, body in (
             ("/api/schedule", {"mode": "scheduled", "active_days": []}),
