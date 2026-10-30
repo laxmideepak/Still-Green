@@ -139,12 +139,30 @@ class EndToEndTest(unittest.TestCase):
         self.stack.slack.presence = "active"
         self.wait_status("active")
 
-    def test_revoked_tokens_are_reported(self) -> None:
+    def test_revoked_tokens_are_reported_and_recover(self) -> None:
         self.add_workspace()
         self.wait_status("active")
         self.stack.slack.revoked = True
         state = self.wait_status("invalid_token")
         self.assertFalse(workspace(state)["connected"])
+
+        # Signing back in gives the same token pair; capturing it again must
+        # bring the workspace back without restarting the daemon.
+        self.stack.slack.revoked = False
+        connections = self.stack.slack.ws_connections
+        self.add_workspace()
+        self.wait_status("active")
+        self.assertGreater(self.stack.slack.ws_connections, connections)
+
+    def test_server_that_closes_at_once_is_retried_with_backoff(self) -> None:
+        self.stack.slack.close_after_hello = True
+        self.add_workspace()
+        wait_for(lambda: self.stack.slack.ws_connections >= 2, "a retry")
+        import time
+
+        time.sleep(3)
+        # Without backoff this was about two connections a second.
+        self.assertLessEqual(self.stack.slack.ws_connections, 5)
 
     def test_rejected_tokens_are_not_saved(self) -> None:
         status, body = self.stack.call(
@@ -190,6 +208,23 @@ class EndToEndTest(unittest.TestCase):
             "GET", "/api/state", headers={"Origin": "https://evil.example"}
         )
         self.assertEqual(status, 403)
+
+
+class DaemonServesPageTest(unittest.TestCase):
+    """After `sg-local start` alone, the page and API must be reachable."""
+
+    def test_started_daemon_serves_the_control_page(self) -> None:
+        stack = Stack().start(daemon_serves_page=True)
+        self.addCleanup(stack.stop)
+        self.assertTrue(stack.health()["daemon"])
+        status, _ = stack.call(
+            "POST", "/api/workspaces", {"xoxc": GOOD_XOXC, "xoxd": GOOD_XOXD}
+        )
+        self.assertEqual(status, 200)
+        wait_for(
+            lambda: (stack.state()["workspaces"] or [{}])[0].get("status") == "active",
+            "workspace active",
+        )
 
 
 if __name__ == "__main__":

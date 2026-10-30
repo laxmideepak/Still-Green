@@ -20,7 +20,7 @@ import time
 from datetime import datetime, timezone
 from typing import Any
 
-from . import config, schedule, state
+from . import config, schedule, state, web
 from .slack import PresenceSession
 
 LOGGER = logging.getLogger("sg_local.daemon")
@@ -53,10 +53,6 @@ def setup_logging() -> None:
         root.addHandler(stream)
 
 
-def _iso_now() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
-
-
 def _fingerprint(workspace: dict[str, Any]) -> str:
     raw = f"{workspace.get('xoxc', '')}\0{workspace.get('xoxd', '')}".encode()
     return hashlib.sha256(raw).hexdigest()
@@ -76,7 +72,10 @@ class Daemon:
         self.config: dict[str, Any] = config.default_config()
         self.config_mtime: int | None = None
         self.sessions: dict[str, dict[str, Any]] = {}
-        self.invalid_tokens: dict[str, tuple[str, str]] = {}
+        # key -> (token fingerprint, message, verified_at of the rejected tokens)
+        self.invalid_tokens: dict[str, tuple[str, str, str]] = {}
+        self.duplicate_keys: set[str] = set()
+        self.control_server: Any = None
         self.invalid_config: dict[str, str] = {}
         self.next_start: dict[str, float] = {}
         self.schedule_active = True
@@ -93,12 +92,18 @@ class Daemon:
     def acquire_lock(self) -> bool:
         config.ensure_dirs()
         fd = os.open(config.LOCK_PATH, os.O_RDWR | os.O_CREAT, 0o600)
-        try:
-            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            os.close(fd)
-            LOGGER.error("another daemon is already running (lock is held)")
-            return False
+        # `sg-local status` probes the lock for a moment; retry briefly so a
+        # probe is not mistaken for a running daemon.
+        for attempt in range(20):
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if attempt == 19:
+                    os.close(fd)
+                    LOGGER.error("another daemon is already running (lock is held)")
+                    return False
+                time.sleep(0.05)
         os.ftruncate(fd, 0)
         os.write(fd, f"{os.getpid()}\n".encode())
         os.fsync(fd)
@@ -195,6 +200,13 @@ class Daemon:
             if not isinstance(workspace, dict):
                 continue
             key = config.workspace_key(workspace)
+            if key in desired_keys:
+                # Two entries for one team would replace each other's session
+                # on every pass; keep the first and report the rest once.
+                if key not in self.duplicate_keys:
+                    LOGGER.error("workspace %s appears twice in the config; using the first", key)
+                    self.duplicate_keys.add(key)
+                continue
             desired_keys.add(key)
             valid, message = config.validate_workspace(workspace)
             if not valid:
@@ -206,8 +218,10 @@ class Daemon:
             self.invalid_config.pop(key, None)
 
             fingerprint = _fingerprint(workspace)
+            verified_at = str(workspace.get("verified_at") or "")
             rejected = self.invalid_tokens.get(key)
-            if rejected and rejected[0] == fingerprint:
+            # Re-adding the same tokens updates verified_at, so they are retried.
+            if rejected and rejected[0] == fingerprint and rejected[2] == verified_at:
                 await self._stop_session(key, "tokens rejected")
                 continue
             if rejected:
@@ -283,6 +297,7 @@ class Daemon:
             "session": session,
             "task": task,
             "fingerprint": _fingerprint(workspace),
+            "verified_at": str(workspace.get("verified_at") or ""),
             "desired": True,
             "reason": "starting",
         }
@@ -315,6 +330,7 @@ class Daemon:
             self.invalid_tokens[key] = (
                 entry["fingerprint"],
                 session.last_error or "Slack rejected the stored tokens",
+                entry["verified_at"],
             )
             LOGGER.error(
                 "tokens for %s were rejected; update them with 'sg-local add'", session.name
@@ -430,7 +446,7 @@ class Daemon:
             "pid": os.getpid(),
             "running": True,
             "started_at": _iso_from_epoch(self.started_at),
-            "updated_at": _iso_now(),
+            "updated_at": config.now_iso(),
             "schedule": {
                 "mode": self.config.get("schedule", {}).get("mode", "always"),
                 "summary": schedule.schedule_summary(self.config.get("schedule", {})),
@@ -474,38 +490,51 @@ class Daemon:
                     await self.reconcile()
                 except Exception as exc:
                     LOGGER.exception("reconcile failed: %s", exc)
-                self.write_state()
+                try:
+                    self.write_state()
+                except Exception as exc:
+                    LOGGER.exception("could not write state: %s", exc)
                 try:
                     await asyncio.wait_for(self.stop_event.wait(), timeout=RECONCILE_INTERVAL)
                 except TimeoutError:
                     pass
         finally:
             LOGGER.info("daemon shutting down")
-            await self.stop_all()
-            final = {
-                "version": 1,
-                "pid": None,
-                "running": False,
-                "started_at": _iso_from_epoch(self.started_at),
-                "stopped_at": _iso_now(),
-                "updated_at": _iso_now(),
-                "schedule": {
-                    "mode": self.config.get("schedule", {}).get("mode", "always"),
-                    "summary": schedule.schedule_summary(self.config.get("schedule", {})),
-                    "active": self.schedule_active,
-                },
-                "paused": self.paused,
-                "pause_until": self.pause_until,
-                "stay_active": self.stay_active,
-                "stay_until": self.stay_until,
-                "workspaces": self._workspace_state(),
-            }
             try:
-                state.write_state(final)
-            except OSError:
-                pass
-            state.clear_pid(os.getpid())
+                await self.stop_all()
+                self.write_final_state()
+            finally:
+                state.clear_pid(os.getpid())
         return 0
+
+    def write_final_state(self) -> None:
+        current = self.config.get("schedule", {})
+        try:
+            summary = schedule.schedule_summary(current)
+        except Exception:
+            summary = "invalid schedule"
+        final = {
+            "version": 1,
+            "pid": None,
+            "running": False,
+            "started_at": _iso_from_epoch(self.started_at),
+            "stopped_at": config.now_iso(),
+            "updated_at": config.now_iso(),
+            "schedule": {
+                "mode": current.get("mode", "always"),
+                "summary": summary,
+                "active": self.schedule_active,
+            },
+            "paused": self.paused,
+            "pause_until": self.pause_until,
+            "stay_active": self.stay_active,
+            "stay_until": self.stay_until,
+            "workspaces": self._workspace_state(),
+        }
+        try:
+            state.write_state(final)
+        except OSError:
+            pass
 
     async def stop_all(self) -> None:
         keys = list(self.sessions)
@@ -515,16 +544,38 @@ class Daemon:
             await self._stop_session(key, "daemon stopping")
 
 
+def start_control_server() -> Any:
+    """Serve the control page on loopback so the dashboard and extension work.
+
+    Set SG_LOCAL_DAEMON_WEB=0 to turn this off (then run ``sg-local web``).
+    """
+    if os.environ.get("SG_LOCAL_DAEMON_WEB", "1") == "0":
+        return None
+    try:
+        port = web.port_from_env()
+        server = web.start_background("127.0.0.1", port)
+    except (OSError, config.ConfigError) as exc:
+        LOGGER.warning("control page not started: %s", exc)
+        return None
+    web.load_code()
+    LOGGER.info("control page at http://127.0.0.1:%s", server.server_address[1])
+    return server
+
+
 def main() -> int:
     setup_logging()
     daemon = Daemon()
     if not daemon.acquire_lock():
         return 1
+    server = start_control_server()
     try:
         return asyncio.run(daemon.run())
     except KeyboardInterrupt:
         return 0
     finally:
+        if server is not None:
+            server.shutdown()
+            server.server_close()
         daemon.release_lock()
 
 

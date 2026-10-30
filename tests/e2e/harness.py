@@ -50,8 +50,10 @@ class Stack:
             "SG_LOCAL_CONFIG_DIR": str(self.config_dir),
             "SG_LOCAL_STATE_DIR": str(self.state_dir),
             "SG_LOCAL_BRIDGE_CODE": CODE,
+            "SG_LOCAL_WEB_PORT": str(self.port),
             "PYTHONUNBUFFERED": "1",
         }
+        self.daemon_serves_page = False
 
     @property
     def base(self) -> str:
@@ -75,11 +77,20 @@ class Stack:
             stderr=subprocess.DEVNULL,
         )
 
-    def start(self, with_daemon: bool = True) -> "Stack":
+    def start(self, with_daemon: bool = True, daemon_serves_page: bool = False) -> "Stack":
+        """Start fake Slack and the daemon.
+
+        By default the control page runs as its own process (``sg-local web``)
+        so tests can stop the daemon and still query the page. With
+        ``daemon_serves_page`` the daemon serves it, as after ``sg-local start``.
+        """
         self.slack.start()
-        self.web = self._launch("web", "--port", str(self.port))
-        wait_for(lambda: self.health() is not None, "control server")
-        if with_daemon:
+        self.daemon_serves_page = daemon_serves_page
+        if not daemon_serves_page:
+            self.env["SG_LOCAL_DAEMON_WEB"] = "0"
+            self.web = self._launch("web", "--port", str(self.port))
+            wait_for(lambda: self.health() is not None, "control server")
+        if with_daemon or daemon_serves_page:
             self.start_daemon()
         return self
 

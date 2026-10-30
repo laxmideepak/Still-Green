@@ -170,11 +170,31 @@ class PresenceSessionTests(unittest.IsolatedAsyncioTestCase):
         with mock.patch(
             "sg_local.slack.websockets.connect",
             mock.AsyncMock(side_effect=InvalidStatus(response)),
+        ), mock.patch.object(
+            session.client,
+            "auth_test",
+            side_effect=SlackAPIError("invalid_auth", token_invalid=True),
         ):
             task = asyncio.create_task(session.run())
             await asyncio.wait_for(task, timeout=3)
         self.assertTrue(session.invalid_token)
         self.assertEqual(session.status, "invalid_token")
+
+    async def test_4xx_handshake_with_valid_tokens_keeps_retrying(self) -> None:
+        # A proxy or captive portal can answer 403; auth.test says the tokens
+        # are fine, so the session must not give up on them.
+        session = PresenceSession(workspace())
+        session._reconnect_delay = 0.01
+        response = SimpleNamespace(status_code=403, reason_phrase="Forbidden", headers={})
+        with mock.patch(
+            "sg_local.slack.websockets.connect",
+            mock.AsyncMock(side_effect=InvalidStatus(response)),
+        ), mock.patch.object(session.client, "auth_test", return_value={"ok": True}):
+            task = asyncio.create_task(session.run())
+            await asyncio.sleep(0.1)
+            await session.stop()
+            await asyncio.wait_for(task, timeout=3)
+        self.assertFalse(session.invalid_token)
 
     async def test_failed_connection_retries(self) -> None:
         session = PresenceSession(workspace())

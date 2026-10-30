@@ -32,6 +32,7 @@ class FakeSlack:
         self.presence = "active"
         self.manual_away = False
         self.revoked = False  # set True to make Slack reject the tokens
+        self.close_after_hello = False  # accept the socket, then hang up
         self.calls: list[str] = []
         self.ws_connections = 0
         self.ws_messages: list[dict] = []
@@ -123,6 +124,9 @@ class FakeSlack:
             return
         self.ws_connections += 1
         await ws.send(json.dumps({"type": "hello"}))
+        if self.close_after_hello:
+            await ws.close()
+            return
         await ws.send(json.dumps({"type": "presence_change", "user": USER_ID, "presence": "active"}))
         async for raw in ws:
             try:

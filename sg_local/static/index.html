@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stillgreen — local control</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<div class="grain" aria-hidden="true"></div>
+<header class="top">
+  <a class="brand" href="/"><span class="mark" aria-hidden="true"><i></i></span><span>Stillgreen</span></a>
+  <span class="tag">Control surface</span>
+</header>
+<main id="main">
+  <section class="login" id="login" hidden>
+    <p class="eyebrow"><span></span> Locked</p>
+    <h1>Enter the access code.</h1>
+    <p>Print the access code on the computer running Stillgreen with <code>./sg-local web --show-code</code>, then paste it here.</p>
+    <form id="loginForm">
+      <label for="accessCode">Access code</label>
+      <div class="inline"><input id="accessCode" name="code" autocomplete="current-password" spellcheck="false" placeholder="SG-XXXX-XXXX-XXXX" required><button class="primary" type="submit">Unlock</button></div>
+      <p class="error" id="loginError" role="alert"></p>
+    </form>
+  </section>
+
+  <div id="app" hidden>
+    <section class="hero">
+      <div>
+        <p class="eyebrow"><span id="statusDot"></span> <span id="statusText">Connecting…</span></p>
+        <h1>Your green dot,<br><em>handled.</em></h1>
+        <p class="lede">This page runs next to the presence daemon. Tokens are entered here and never sent to the hosted dashboard.</p>
+      </div>
+      <div class="codeCard">
+        <span>Dashboard access code</span>
+        <strong id="bridgeCode">••••</strong>
+        <div class="row">
+          <button class="ghost" id="copyCode" type="button">Copy code</button>
+          <button class="ghost" id="rotateCode" type="button">Rotate</button>
+        </div>
+        <p>Paste this into the hosted dashboard's <b>Connect</b> dialog.</p>
+      </div>
+    </section>
+
+    <section class="grid">
+      <article class="card span2">
+        <div class="cardHead"><div><p class="kicker">Workspaces</p><h2>Connected Slack accounts</h2></div><button class="primary" id="addToggle" type="button">Add workspace</button></div>
+        <div id="workspaceList" class="list"></div>
+        <form id="addForm" class="addForm" hidden>
+          <div class="formHead"><h3>Add a workspace</h3><button class="ghost" type="button" id="addClose">Close</button></div>
+          <p class="hint">Easiest: use the Stillgreen extension's <b>Capture from Slack</b> button. Or open the workspace at <code>app.slack.com</code> and copy the two values from DevTools. They go only to this daemon.</p>
+          <div class="field"><label for="xoxc">xoxc token</label><input id="xoxc" name="xoxc" type="password" autocomplete="off" spellcheck="false" placeholder="xoxc-…" required></div>
+          <div class="field"><label for="xoxd">xoxd cookie</label><input id="xoxd" name="xoxd" type="password" autocomplete="off" spellcheck="false" placeholder="xoxd-…" required></div>
+          <div class="field"><label for="name">Display name <span>(optional)</span></label><input id="name" name="name" placeholder="Fieldwork"></div>
+          <details class="help"><summary>Where do I find these?</summary><ol><li>Open DevTools → Network, filter <code>api</code>, open a <code>client.boot</code> request, and copy <code>token</code> from the payload — it starts with <code>xoxc-</code>.</li><li>DevTools → Application → Cookies → <code>https://app.slack.com</code> → copy the <code>d</code> cookie, which starts with <code>xoxd-</code>.</li><li>Both values must come from the same signed-in browser session.</li></ol></details>
+          <p class="error" id="addError" role="alert"></p>
+          <button class="primary" type="submit" id="addSubmit">Verify &amp; save</button>
+        </form>
+      </article>
+
+      <article class="card">
+        <p class="kicker">Now</p>
+        <h2 id="modeTitle">Loading</h2>
+        <p id="modeDetail" class="muted"></p>
+        <dl class="facts">
+          <div><dt>Daemon</dt><dd id="daemonState">—</dd></div>
+          <div><dt>Online</dt><dd id="onlineCount">—</dd></div>
+          <div><dt>Next change</dt><dd id="nextChange">—</dd></div>
+        </dl>
+        <div class="actions">
+          <button class="ghost" data-action="pause">Pause 1h</button>
+          <button class="ghost" data-action="resume">Resume</button>
+          <button class="ghost" data-action="stay">Stay 1h</button>
+        </div>
+      </article>
+
+      <article class="card span2">
+        <div class="cardHead"><div><p class="kicker">Schedule</p><h2>Weekly window</h2></div><span class="pill" id="scheduleSummary">—</span></div>
+        <form id="scheduleForm">
+          <div class="segmented" role="group" aria-label="Schedule mode">
+            <button type="button" data-mode="always">Always on</button>
+            <button type="button" data-mode="scheduled">Scheduled</button>
+          </div>
+          <div class="days" id="dayPicker"></div>
+          <div class="timeGrid">
+            <div class="field"><label for="startTime">Start</label><input id="startTime" type="time" value="09:00"></div>
+            <div class="field"><label for="endTime">End</label><input id="endTime" type="time" value="17:00"></div>
+            <div class="field"><label for="timezone">Timezone</label><input id="timezone" value="local" spellcheck="false"></div>
+          </div>
+          <div class="formFoot"><p class="hint">Overnight windows are supported. Times use the daemon's timezone unless you name an IANA zone.</p><button class="primary" type="submit">Save schedule</button></div>
+        </form>
+      </article>
+
+      <article class="card span2">
+        <div class="cardHead"><div><p class="kicker">Activity</p><h2>What the daemon is doing</h2></div><span class="pill" id="activityCount">—</span></div>
+        <ol class="log" id="activity"></ol>
+      </article>
+    </section>
+    <p class="foot">Stillgreen is a personal tool. Automating presence may violate your workspace policy. <a href="https://github.com/laxmideepak/slack" target="_blank" rel="noreferrer">Source</a></p>
+  </div>
+</main>
+<script id="bootstrap" type="application/json">__BOOTSTRAP__</script>
+<script src="/app.js"></script>
+</body>
+</html>

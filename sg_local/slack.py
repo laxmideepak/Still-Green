@@ -75,6 +75,13 @@ def get_http_headers(xoxc: str, xoxd: str) -> dict[str, str]:
     }
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Slack API calls never redirect; following one would forward the token."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[no-untyped-def]
+        raise SlackAPIError(f"unexpected redirect from Slack (HTTP {code})")
+
+
 class SlackClient:
     """Small synchronous Slack Web API client.
 
@@ -86,7 +93,9 @@ class SlackClient:
         self._xoxc = xoxc
         self._xoxd = xoxd
         self.user_id = user_id
-        self._ssl = ssl.create_default_context()
+        self._opener = urllib.request.build_opener(
+            urllib.request.HTTPSHandler(context=ssl.create_default_context()), _NoRedirect()
+        )
 
     def _read_json(self, response: Any) -> dict[str, Any]:
         raw = response.read(2_000_000)
@@ -114,7 +123,7 @@ class SlackClient:
 
         request = urllib.request.Request(url, data=body, headers=headers, method="POST" if body else "GET")
         try:
-            with urllib.request.urlopen(request, timeout=20, context=self._ssl) as response:
+            with self._opener.open(request, timeout=20) as response:
                 payload = self._read_json(response)
         except urllib.error.HTTPError as exc:
             try:
@@ -174,6 +183,10 @@ class PresenceSession:
     LOOP_INTERVAL = 0.5
     RECONNECT_MIN = 5.0
     RECONNECT_MAX = 60.0
+    # A connection that drops sooner than this counts as a failed attempt, so
+    # a server that accepts and then closes is retried with backoff.
+    STABLE_AFTER = 60.0
+    KEEPALIVE = 20.0
     INITIAL_AWAY_RECONNECTS = 5
     AWAY_RECONNECT_EVERY = 5
 
@@ -240,6 +253,17 @@ class PresenceSession:
         self._log(logging.INFO, "starting presence session")
         try:
             while not self._stop_event.is_set():
+                if self._ws is None and self.connected_at is not None:
+                    lived = time.time() - self.connected_at
+                    self.connected_at = None
+                    if lived < self.STABLE_AFTER:
+                        delay = self._reconnect_delay
+                        self._reconnect_delay = min(delay * 2, self.RECONNECT_MAX)
+                        self._log(logging.WARNING, "connection lasted %ss; retrying in %ss", int(lived), int(delay))
+                        if await self._sleep(delay):
+                            break
+                    else:
+                        self._reconnect_delay = self.RECONNECT_MIN
                 if self._ws is None:
                     if not await self._connect():
                         if self.invalid_token or self._stop_event.is_set():
@@ -289,6 +313,20 @@ class PresenceSession:
         self._log(logging.ERROR, "%s", message)
         self._stop_event.set()
 
+    async def _tokens_rejected(self) -> bool:
+        """Confirm a refused handshake with auth.test before giving up.
+
+        A proxy, captive portal or Slack edge error can also answer 4xx; only
+        a token error from the API means the tokens are really bad.
+        """
+        try:
+            await asyncio.to_thread(self.client.auth_test)
+        except SlackAPIError as exc:
+            return exc.token_invalid
+        except Exception:
+            return False
+        return False
+
     # ------------------------------------------------------------- websocket
 
     async def _connect(self) -> bool:
@@ -299,7 +337,10 @@ class PresenceSession:
                 origin=ORIGIN,
                 additional_headers={"Cookie": f"d={self.client._xoxd}"},
                 user_agent_header=USER_AGENT,
-                ping_interval=None,
+                # Protocol pings detect a dead socket after sleep or a
+                # network change; the JSON pings below are what Slack expects.
+                ping_interval=self.KEEPALIVE,
+                ping_timeout=self.KEEPALIVE,
                 open_timeout=12,
                 close_timeout=5,
                 max_size=4 * 1024 * 1024,
@@ -307,7 +348,7 @@ class PresenceSession:
             )
         except InvalidStatus as exc:
             code = getattr(exc.response, "status_code", 0)
-            if 400 <= code < 500 and code != 429:
+            if 400 <= code < 500 and code != 429 and await self._tokens_rejected():
                 self._mark_invalid(
                     f"Slack rejected the WebSocket handshake (HTTP {code}); "
                     "the xoxc/xoxd tokens are invalid or expired"
@@ -330,8 +371,6 @@ class PresenceSession:
         if self.connections > 1:
             self.reconnects += 1
         self.connected_at = time.time()
-        self.away_count = 0
-        self._reconnect_delay = self.RECONNECT_MIN
         self.status = "connected"
         self._last_ping = time.time()
         self._last_tickle = time.time()
@@ -418,6 +457,7 @@ class PresenceSession:
     async def _drop_ws(self, reason: str) -> None:
         self._log(logging.INFO, "reconnecting to reset presence (%s)", reason)
         self.status = "reconnecting"
+        self.connected_at = None  # a deliberate reconnect is not a failure
         await self._close()
         await self._sleep(2)
 

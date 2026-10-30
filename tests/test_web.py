@@ -63,9 +63,10 @@ class WebTestCase(unittest.TestCase):
         body: dict | None = None,
         code: str | None = None,
         origin: str | None = None,
+        extra_headers: dict[str, str] | None = None,
     ) -> tuple[int, dict | str, dict[str, str]]:
         data = json.dumps(body).encode() if body is not None else None
-        headers = {"Content-Type": "application/json"}
+        headers = {"Content-Type": "application/json", **(extra_headers or {})}
         if code is not None:
             headers["Authorization"] = f"Bearer {code}"
         if origin:
@@ -117,16 +118,18 @@ class AuthTests(WebTestCase):
         status, _, _ = self.request("/api/state", code="SG-WRONG-WRONG-WRONG")
         self.assertEqual(status, 401)
 
-    def test_cors_allows_vercel_and_localhost(self) -> None:
-        status, _, headers = self.request(
-            "/api/health", origin="https://stillgreen-demo.vercel.app"
-        )
+    def test_cors_allows_dashboard_and_localhost(self) -> None:
+        status, _, headers = self.request("/api/health", origin="https://stillgreen.vercel.app")
         self.assertEqual(status, 200)
         self.assertEqual(
-            headers.get("Access-Control-Allow-Origin"),
-            "https://stillgreen-demo.vercel.app",
+            headers.get("Access-Control-Allow-Origin"), "https://stillgreen.vercel.app"
         )
         self.assertEqual(headers.get("Access-Control-Allow-Private-Network"), "true")
+        self.assertNotIn("Access-Control-Allow-Credentials", headers)
+
+        # Anyone can deploy to vercel.app, so other subdomains are not trusted.
+        status, _, headers = self.request("/api/health", origin="https://evil.vercel.app")
+        self.assertNotIn("Access-Control-Allow-Origin", headers)
 
         status, _, headers = self.request("/api/health", origin="http://localhost:3000")
         self.assertEqual(status, 200)
@@ -301,7 +304,8 @@ class PageTests(unittest.TestCase):
         with mock.patch.dict(os.environ, {"SG_LOCAL_WEB_ORIGIN": "https://stillgreen.app"}):
             self.assertTrue(web.origin_allowed("https://stillgreen.app"))
             self.assertTrue(web.origin_allowed("http://localhost:3010"))
-            self.assertTrue(web.origin_allowed("https://demo.vercel.app"))
+            self.assertTrue(web.origin_allowed("https://stillgreen.vercel.app"))
+            self.assertFalse(web.origin_allowed("https://demo.vercel.app"))
             self.assertFalse(web.origin_allowed("https://evil.example"))
 
     def test_extension_origins(self) -> None:
@@ -316,6 +320,146 @@ class PageTests(unittest.TestCase):
             self.assertFalse(
                 web.origin_allowed("chrome-extension://abcdefghijklmnopabcdefghijklmnop")
             )
+
+
+class SecurityTests(WebTestCase):
+    """Regression tests for the control server's security checks."""
+
+    def test_page_code_is_not_readable_cross_origin(self) -> None:
+        for origin in ("https://evil.vercel.app", "http://localhost:3000", "chrome-extension://x"):
+            status, page, headers = self.request("/", origin=origin)
+            self.assertEqual(status, 200)
+            self.assertNotIn("Access-Control-Allow-Origin", headers)
+            self.assertIn(self.code, page)  # visible only to a same-origin visit
+
+    def test_foreign_host_is_refused(self) -> None:
+        # A DNS-rebinding page reaches 127.0.0.1 under its own host name.
+        port = self.server.server_address[1]
+        host = {"Host": f"rebind.attacker.example:{port}"}
+        status, page, _ = self.request("/", extra_headers=host)
+        self.assertEqual(status, 421)
+        self.assertNotIn(self.code, str(page))
+        status, _, _ = self.request("/api/state", code=self.code, extra_headers=host)
+        self.assertEqual(status, 421)
+        status, _, _ = self.request("/api/state", code=self.code, extra_headers={"Host": f"localhost:{port}"})
+        self.assertEqual(status, 200)
+
+    def test_code_is_not_embedded_behind_a_proxy(self) -> None:
+        status, page, _ = self.request("/", extra_headers={"X-Forwarded-For": "203.0.113.9"})
+        self.assertEqual(status, 200)
+        self.assertNotIn(self.code, page)
+
+    def test_extra_hosts_can_be_allowed(self) -> None:
+        with mock.patch.dict(os.environ, {"SG_LOCAL_WEB_HOSTS": "box.lan"}):
+            self.assertTrue(web.host_allowed("box.lan:8765", "127.0.0.1"))
+            self.assertFalse(web.host_allowed("other.lan", "127.0.0.1"))
+        self.assertTrue(web.host_allowed("[::1]:8765", "127.0.0.1"))
+        self.assertFalse(web.host_allowed("", "127.0.0.1"))
+
+    def test_non_ascii_code_is_a_clean_401(self) -> None:
+        status, _, _ = self.request("/api/state", code="SG-\u00e9\u00e9")
+        self.assertEqual(status, 401)
+
+    def test_unicode_dashes_in_code_are_accepted(self) -> None:
+        pasted = self.code.replace("-", "\u2013")
+        request = urllib.request.Request(
+            self.base + "/api/state",
+            headers={"Authorization": ("Bearer " + pasted).encode("utf-8").decode("latin-1")},
+        )
+        with urllib.request.urlopen(request, timeout=10) as response:
+            self.assertEqual(response.status, 200)
+
+    def test_rotate_is_refused_from_another_origin(self) -> None:
+        status, _, _ = self.request(
+            "/api/code/rotate", method="POST", code=self.code, body={},
+            origin="https://stillgreen.vercel.app",
+        )
+        self.assertEqual(status, 403)
+        self.assertEqual(web.load_code(create=False), self.code)
+
+
+class DataSafetyTests(WebTestCase):
+    def test_corrupt_config_is_never_overwritten(self) -> None:
+        config.CONFIG_PATH.write_text('{"workspaces": [{"team_id": "T1"', encoding="utf-8")
+        before = config.CONFIG_PATH.read_text(encoding="utf-8")
+        for path, body in (
+            ("/api/schedule", {"mode": "always"}),
+            ("/api/resume", {}),
+            ("/api/pause", {"workspace": "T1"}),
+        ):
+            status, payload, _ = self.request(path, method="POST", code=self.code, body=body)
+            self.assertEqual(status, 400, payload)
+            self.assertIn("Cannot read", payload["error"])
+        self.assertEqual(config.CONFIG_PATH.read_text(encoding="utf-8"), before)
+        status, state_body, _ = self.request("/api/state", code=self.code)
+        self.assertEqual(status, 200)
+        self.assertIn("Cannot read", state_body["config_error"])
+
+    def test_concurrent_adds_keep_every_workspace(self) -> None:
+        import time as _time
+
+        def slow_auth(xoxc: str, xoxd: str) -> dict:
+            _time.sleep(0.2)
+            team = xoxc.split("-")[-1]
+            return {"ok": True, "team_id": team, "user_id": "U" + team, "team": team}
+
+        with mock.patch.object(web, "verify_tokens", side_effect=slow_auth):
+            threads = [
+                threading.Thread(
+                    target=self.request,
+                    args=("/api/workspaces",),
+                    kwargs={"method": "POST", "code": self.code,
+                            "body": {"xoxc": f"xoxc-T{i}", "xoxd": "xoxd-x"}},
+                )
+                for i in range(5)
+            ]
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join()
+        teams = sorted(w["team_id"] for w in config.load_config()["workspaces"])
+        self.assertEqual(teams, [f"T{i}" for i in range(5)])
+
+    def test_mutation_response_shows_the_new_pause_and_stay(self) -> None:
+        # Even when the daemon's state file still says otherwise.
+        state.write_state({"pid": 1, "paused": False, "stay_active": False, "workspaces": []})
+        with mock.patch.object(state, "daemon_pid", return_value=1):
+            _, body, _ = self.request("/api/pause", method="POST", code=self.code, body={"duration": "1h"})
+            self.assertTrue(body["paused"])
+            _, body, _ = self.request("/api/stay", method="POST", code=self.code, body={"duration": "30m"})
+            self.assertTrue(body["stay_active"])
+            _, body, _ = self.request("/api/resume", method="POST", code=self.code, body={})
+            self.assertFalse(body["paused"])
+
+    def test_bad_inputs_are_400_not_500(self) -> None:
+        for path, body in (
+            ("/api/schedule", {"mode": "scheduled", "active_days": []}),
+            ("/api/schedule", {"mode": "scheduled", "active_days": 123}),
+            ("/api/schedule", {"mode": "scheduled", "start_time": 900}),
+            ("/api/schedule", {"mode": "scheduled", "start_time": "09:00", "end_time": "09:00"}),
+            ("/api/pause", {"duration": "99999999999w"}),
+            ("/api/stay", {"duration": "400d"}),
+        ):
+            status, payload, _ = self.request(path, method="POST", code=self.code, body=body)
+            self.assertEqual(status, 400, (path, body, payload))
+
+    def test_delete_only_removes_by_exact_route(self) -> None:
+        self.write_config([{"name": "A", "team_id": "T1", "user_id": "U1",
+                            "xoxc": "xoxc-a", "xoxd": "xoxd-a"}])
+        status, _, _ = self.request("/api/workspaces/T1/:pause", method="DELETE", code=self.code)
+        self.assertEqual(status, 404)
+        self.assertEqual(len(config.load_config()["workspaces"]), 1)
+
+    def test_daemon_level_log_lines_reach_the_activity_feed(self) -> None:
+        config.LOG_PATH.write_text(
+            "2026-10-30 10:00:00 ERROR tokens for Acme were rejected; update them\n"
+            "2026-10-30 10:00:01 INFO mode: paused until resumed\n"
+            "2026-10-30 10:00:02 INFO [Acme] connected to Slack WebSocket (initial)\n",
+            encoding="utf-8",
+        )
+        events = web._activity()
+        self.assertEqual([e["tone"] for e in events], ["green", "muted", "amber"])
+        self.assertEqual(events[2]["workspace"], "")
 
 
 if __name__ == "__main__":
