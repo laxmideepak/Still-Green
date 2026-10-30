@@ -244,8 +244,18 @@ class CloudModeTest(unittest.TestCase):
         self.assertEqual(status, 200)
         status, _ = stack.call("GET", "/api/state", headers={"Host": f"rebind.attacker.example:{port}"})
         self.assertEqual(status, 421)
-        status, _ = stack.call("POST", "/api/workspaces", {"xoxc": GOOD_XOXC, "xoxd": GOOD_XOXD}, headers=own)
+        # The page served by the server calls its own API; the browser sends
+        # that page's Origin on POST and DELETE.
+        same_site = {**own, "Origin": f"http://stillgreen.example:{port}"}
+        status, _ = stack.call("POST", "/api/workspaces", {"xoxc": GOOD_XOXC, "xoxd": GOOD_XOXD}, headers=same_site)
         self.assertEqual(status, 200)
+        status, _ = stack.call("POST", "/api/pause", {"duration": "1h"}, headers=same_site)
+        self.assertEqual(status, 200)
+        status, _ = stack.call("POST", "/api/resume", {}, headers=same_site)
+        self.assertEqual(status, 200)
+        # A different site is still refused.
+        status, _ = stack.call("POST", "/api/pause", {}, headers={**own, "Origin": "https://evil.example"})
+        self.assertEqual(status, 403)
         wait_for(
             lambda: (stack.state()["workspaces"] or [{}])[0].get("status") == "active",
             "workspace active",

@@ -71,8 +71,20 @@
         <div class="actions">
           <button class="ghost" data-action="pause">Pause 1h</button>
           <button class="ghost" data-action="resume">Resume</button>
-          <button class="ghost" data-action="stay">Stay 1h</button>
         </div>
+        <p class="kicker stayLabel">Keep me online for</p>
+        <div class="actions">
+          <button class="ghost" data-stay="30m">30 min</button>
+          <button class="ghost" data-stay="1h">1 h</button>
+          <button class="ghost" data-stay="2h">2 h</button>
+          <button class="ghost" data-stay="3h">3 h</button>
+          <button class="ghost" data-action="stay-cancel">Cancel</button>
+        </div>
+        <form class="stayUntil" id="stayUntilForm">
+          <label for="stayUntil">Or until today at</label>
+          <input id="stayUntil" type="time" value="17:00" required>
+          <button class="ghost" type="submit">Keep on until</button>
+        </form>
       </article>
 
       <article class="card span2">
