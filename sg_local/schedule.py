@@ -48,7 +48,9 @@ _TIME_RE = re.compile(r"^([01]?\d|2[0-3]):([0-5]\d)$")
 
 def parse_time(value: str) -> time:
     """Parse HH:MM (24-hour) into a time."""
-    match = _TIME_RE.fullmatch((value or "").strip())
+    if not isinstance(value, str):
+        raise ConfigError(f"Invalid time {value!r}; use 24-hour HH:MM, e.g. 09:00")
+    match = _TIME_RE.fullmatch(value.strip())
     if not match:
         raise ConfigError(f"Invalid time {value!r}; use 24-hour HH:MM, e.g. 09:00")
     return time(hour=int(match.group(1)), minute=int(match.group(2)))
@@ -74,6 +76,8 @@ def parse_days(value: str | Iterable[str]) -> list[str]:
         if text in {"weekends", "weekend"}:
             return list(DAY_NAMES[5:])
         parts = [part.strip() for part in text.split(",") if part.strip()]
+    elif not isinstance(value, (list, tuple)):
+        raise ConfigError("Active days must be a list of day names")
     else:
         parts = [str(part).strip().lower() for part in value if str(part).strip()]
 
@@ -108,13 +112,16 @@ def parse_days(value: str | Iterable[str]) -> list[str]:
 def resolve_timezone(value: str | None) -> Any:
     """Resolve a schedule timezone name.
 
-    ``local``/``system``/empty use the machine's current timezone. ``UTC`` and
-    IANA names use zoneinfo.
+    ``local``/``system``/empty return None, meaning the machine's timezone
+    with its daylight-saving rules (see ``to_zone``). ``UTC`` and IANA names
+    use zoneinfo.
     """
+    if value is not None and not isinstance(value, str):
+        raise ConfigError("Timezone must be a name such as 'America/New_York' or 'local'")
     text = (value or "local").strip()
     lowered = text.lower()
     if lowered in {"local", "system", "machine", ""}:
-        return datetime.now().astimezone().tzinfo or timezone.utc
+        return None
     if lowered in {"utc", "z"}:
         return timezone.utc
     try:
@@ -124,6 +131,20 @@ def resolve_timezone(value: str | None) -> Any:
             f"Unknown timezone {text!r}; use an IANA name such as "
             "'America/New_York' or 'local'"
         ) from None
+
+
+def to_zone(moment: datetime | None, tz: Any) -> datetime:
+    """``moment`` (default: now) as an aware time in ``tz``.
+
+    ``tz`` None is the machine's zone. ``astimezone()`` with no argument
+    applies the offset in force at that instant, so DST changes are handled;
+    a fixed offset taken "now" would be wrong after the next change.
+    """
+    if moment is None:
+        return datetime.now(tz) if tz is not None else datetime.now().astimezone()
+    if moment.tzinfo is None:
+        return moment.replace(tzinfo=tz) if tz is not None else moment.astimezone()
+    return moment.astimezone(tz) if tz is not None else moment.astimezone()
 
 
 def validate_schedule(schedule: dict[str, Any]) -> tuple[bool, str]:
@@ -166,12 +187,7 @@ def is_within_schedule(
         tz = resolve_timezone(schedule.get("timezone", "local"))
     except ConfigError:
         return True
-    if now is None:
-        current = datetime.now(tz)
-    elif now.tzinfo is None:
-        current = now.replace(tzinfo=tz)
-    else:
-        current = now.astimezone(tz)
+    current = to_zone(now, tz)
 
     try:
         active_days = parse_days(schedule.get("active_days", []))
@@ -208,16 +224,18 @@ def next_boundary(schedule: dict[str, Any] | None, now: datetime | None = None) 
         tz = resolve_timezone(schedule.get("timezone", "local"))
     except ConfigError:
         return None
-    current = now.astimezone(tz) if now else datetime.now(tz)
+    current = to_zone(now, tz)
 
     # Minute resolution is enough; scan two weeks so all weekly windows are
     # covered. This is only used for human-readable status output.
-    cursor = current.replace(second=0, microsecond=0)
+    # Step in UTC so each step is a real minute even across a DST change,
+    # then report the boundary in the schedule's zone.
+    cursor = current.replace(second=0, microsecond=0).astimezone(timezone.utc)
     was_active = is_within_schedule(schedule, cursor)
     for _ in range(14 * 24 * 60):
         cursor += timedelta(minutes=1)
         if is_within_schedule(schedule, cursor) != was_active:
-            return cursor
+            return to_zone(cursor, tz)
     return None
 
 

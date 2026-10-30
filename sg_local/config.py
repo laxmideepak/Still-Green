@@ -9,11 +9,14 @@ No values are sent anywhere except Slack itself.
 
 from __future__ import annotations
 
+import contextlib
+import fcntl
 import json
 import os
 import re
 import stat
 import tempfile
+from collections.abc import Callable, Iterator
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -76,10 +79,14 @@ def default_config() -> dict[str, Any]:
 def ensure_dirs() -> None:
     for path in (CONFIG_DIR, STATE_DIR):
         path.mkdir(parents=True, exist_ok=True)
-        try:
+        info = os.lstat(path)
+        # Secrets are written here, so refuse a folder another user controls.
+        if stat.S_ISLNK(info.st_mode):
+            raise ConfigError(f"{path} is a symbolic link; point it at a real folder")
+        if info.st_uid != os.getuid():
+            raise ConfigError(f"{path} is owned by another user; choose a folder you own")
+        if stat.S_IMODE(info.st_mode) != 0o700:
             path.chmod(0o700)
-        except OSError:
-            pass
 
 
 def atomic_write(path: Path, data: str, mode: int = 0o600) -> None:
@@ -138,6 +145,31 @@ def save_config(config: dict[str, Any], path: Path | None = None) -> None:
     atomic_write(path, json.dumps(config, indent=2, sort_keys=False) + "\n")
 
 
+@contextlib.contextmanager
+def config_lock() -> Iterator[None]:
+    """Serialise config read-modify-write across threads and processes."""
+    ensure_dirs()
+    fd = os.open(CONFIG_DIR / ".config.lock", os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        os.close(fd)
+
+
+def update_config(change: Callable[[dict[str, Any]], Any]) -> Any:
+    """Load the config, apply ``change`` and save it, all under the lock.
+
+    Raises ConfigError when the file cannot be read, so a damaged config is
+    never replaced with defaults.
+    """
+    with config_lock():
+        cfg = load_config()
+        result = change(cfg)
+        save_config(cfg)
+        return result
+
+
 def config_security(path: Path | None = None) -> tuple[bool, str]:
     path = path or CONFIG_PATH
     if not path.exists():
@@ -188,8 +220,57 @@ def workspace_key(workspace: dict[str, Any]) -> str:
     return str(workspace.get("team_id") or workspace.get("name") or "unknown")
 
 
-def token_summary(token: str) -> str:
-    return f"set (len {len(token)})"
+def find_workspace(cfg: dict[str, Any], query: str) -> tuple[int, dict[str, Any]]:
+    """Find a workspace by team ID, then by name (case-insensitive)."""
+    text = (query or "").strip().lower()
+    workspaces = cfg.get("workspaces", [])
+    for index, workspace in enumerate(workspaces):
+        if isinstance(workspace, dict) and str(workspace.get("team_id", "")).lower() == text:
+            return index, workspace
+    matches = [
+        (index, workspace)
+        for index, workspace in enumerate(workspaces)
+        if isinstance(workspace, dict) and str(workspace.get("name", "")).lower() == text
+    ]
+    if len(matches) > 1:
+        raise ConfigError(f"workspace name {query!r} is ambiguous; use the team ID")
+    if not matches:
+        raise ConfigError(f"no workspace matches {query!r}")
+    return matches[0]
+
+
+def upsert_workspace(
+    cfg: dict[str, Any], identity: dict[str, Any], xoxc: str, xoxd: str, name: str = ""
+) -> dict[str, Any]:
+    """Add or replace the workspace for a verified ``auth.test`` identity."""
+    team_id = str(identity.get("team_id") or "")
+    user_id = str(identity.get("user_id") or "")
+    if not team_id or not user_id:
+        raise ConfigError("Slack did not return a team and user identity")
+    workspace = {
+        "name": name or str(identity.get("team") or identity.get("url") or team_id),
+        "team_id": team_id,
+        "user_id": user_id,
+        "xoxc": xoxc,
+        "xoxd": xoxd,
+        "added_at": now_iso(),
+        # Changes on every successful verification, so the daemon retries
+        # tokens it had marked as rejected even when they are unchanged.
+        "verified_at": now_iso(),
+    }
+    workspaces = cfg.setdefault("workspaces", [])
+    for index, existing in enumerate(workspaces):
+        if isinstance(existing, dict) and str(existing.get("team_id")) == team_id:
+            workspace["added_at"] = existing.get("added_at") or workspace["added_at"]
+            workspace["paused"] = bool(existing.get("paused"))
+            workspaces[index] = workspace
+            break
+    else:
+        workspaces.append(workspace)
+    return workspace
+
+
+MAX_DURATION = timedelta(days=366)
 
 
 def parse_duration(value: str) -> timedelta:
@@ -202,7 +283,14 @@ def parse_duration(value: str) -> timedelta:
     seconds = amount * {"s": 1, "m": 60, "h": 3600, "d": 86400, "w": 604800}[unit]
     if seconds <= 0:
         raise ConfigError("Duration must be greater than zero")
+    if seconds > MAX_DURATION.total_seconds():
+        raise ConfigError("Duration must be at most one year")
     return timedelta(seconds=seconds)
+
+
+def now_plus(duration: str) -> datetime:
+    """The UTC time ``duration`` (like 30m or 2h) from now."""
+    return datetime.now(timezone.utc) + parse_duration(duration)
 
 
 def _read_timestamped(path: Path) -> dict[str, Any] | None:
@@ -218,8 +306,9 @@ def _read_timestamped(path: Path) -> dict[str, Any] | None:
             deadline = datetime.fromisoformat(str(until))
             if deadline.tzinfo is None:
                 deadline = deadline.replace(tzinfo=timezone.utc)
+            # Expired files read as absent. They are not deleted here: a
+            # writer may have just replaced the file with a new pause/stay.
             if deadline <= datetime.now(timezone.utc):
-                path.unlink(missing_ok=True)
                 return None
         except ValueError:
             return None

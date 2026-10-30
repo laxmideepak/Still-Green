@@ -10,13 +10,17 @@ reading the Slack session already open in your browser:
 
 It posts both values to a daemon URL you enter — normally
 `http://127.0.0.1:8765`. There is no other network destination in the code.
+The worker refuses to send anything unless that URL is plain `http://` on this
+machine (`127.0.0.1`, `localhost` or `[::1]`) or `https://` on another host,
+and it never sends to a URL that contains a username or password.
 
 ## Install
 
-1. Start the daemon and its control surface:
+1. Start the daemon (it also serves the control page on
+   `http://127.0.0.1:8765`):
 
    ```sh
-   ./sg-local web --daemon
+   ./sg-local start
    ```
 
 2. Open `chrome://extensions`, enable **Developer mode**, choose **Load
@@ -29,17 +33,23 @@ It posts both values to a daemon URL you enter — normally
 
 Every workspace signed in to that Slack tab is added in one pass.
 
+If the popup says no Slack token was found, newer Slack builds may not expose it
+to the extension. Add the workspace by hand instead: open
+`http://127.0.0.1:8765/#add`, or run `./sg-local add` and paste the two values
+(see <https://stillgreen.vercel.app/setup#tokens>).
+
 ## Permissions, honestly
 
 | Permission | Used for |
 | --- | --- |
 | `cookies` | Read the `d` cookie for `slack.com`. Nothing else. |
 | `scripting` | Run one function inside the Slack tab to read its localStorage. |
-| `tabs` | Find an open Slack tab. |
 | `storage` | Remember the daemon URL and access code. |
-| host `https://*.slack.com/*` | The capture itself. |
+| host `https://*.slack.com/*` | Find the open Slack tab and do the capture. |
 | host `http://127.0.0.1/*`, `http://localhost/*` | Talking to your daemon. |
-| optional `https://*/*` | Only if you point the extension at a non-local daemon. |
+
+There is no `tabs` permission: the extension only looks up Slack tabs, which
+the Slack host permission already covers.
 
 ## What it does not do
 

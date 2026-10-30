@@ -699,6 +699,16 @@
   opacity: 0.45;
 }
 
+.windowRow {
+  flex-wrap: wrap;
+  padding-block: 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.windowRow label {
+  font-weight: 600;
+}
+
 .timeRange input::-webkit-calendar-picker-indicator {
   opacity: 0.5;
 }

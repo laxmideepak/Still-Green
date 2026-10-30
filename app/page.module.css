@@ -888,7 +888,7 @@
     padding-top: 46px;
   }
 
-  .heroActions .button {
+  .heroActions :global(.button) {
     width: 100%;
   }
 

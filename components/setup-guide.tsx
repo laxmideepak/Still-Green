@@ -90,14 +90,47 @@ const steps = [
     ),
   },
   {
-    id: "tokens",
-    title: "Capture your Slack web tokens",
+    id: "run",
+    title: "Start the daemon",
     body: (
       <>
         <p>
-          Stillgreen uses the same session the Slack web client uses. Open your workspace
-          at <a href="https://app.slack.com" target="_blank" rel="noreferrer">app.slack.com</a>{" "}
-          in a desktop browser, then open DevTools.
+          That is the whole running system: one background process that talks to Slack
+          and serves its control page on <code>127.0.0.1:8765</code>. Stop it whenever
+          you want; nothing is left running anywhere else.
+        </p>
+        <Command command={"sg-local start\nsg-local status"} label="Start and check" />
+        <div className={styles.exampleRow}>
+          <code>sg-local web --show-code</code>
+          <span>Print the access code for the extension and dashboard</span>
+        </div>
+        <div className={styles.exampleRow}>
+          <code>sg-local logs -f</code>
+          <span>Follow the activity log</span>
+        </div>
+        <div className={styles.exampleRow}>
+          <code>sg-local install-launchd</code>
+          <span>macOS only — restart automatically at login</span>
+        </div>
+      </>
+    ),
+  },
+  {
+    id: "tokens",
+    title: "Add your Slack workspace",
+    body: (
+      <>
+        <p>
+          Stillgreen uses the same session the Slack web client uses. The quickest way to
+          hand it over is the bundled extension: load <code>extension/</code> as an
+          unpacked extension, sign in at{" "}
+          <a href="https://app.slack.com" target="_blank" rel="noreferrer">app.slack.com</a>,
+          paste the access code and press <strong>Capture from Slack</strong>.{" "}
+          <Link href="/start#extension">Extension steps</Link>.
+        </p>
+        <p>
+          Prefer not to use the extension? Copy the two values from DevTools in a desktop
+          browser, then add them with <code>sg-local add</code> below.
         </p>
         <div className={styles.tokenGrid}>
           <div className={styles.tokenCard}>
@@ -141,19 +174,6 @@ const steps = [
             </p>
           </div>
         </div>
-        <p className={styles.warning}>
-          <Lock width={15} height={15} />
-          These two values grant full access to your Slack account. Treat them like a
-          password. Do not paste them into a website, chat, issue, or shell history.
-        </p>
-      </>
-    ),
-  },
-  {
-    id: "add",
-    title: "Add the workspace locally",
-    body: (
-      <>
         <p>
           Run the command and paste the two values when prompted. Input is hidden, the
           tokens are verified with Slack, and the file is written with owner-only
@@ -165,6 +185,11 @@ const steps = [
           <code>~/.config/slack-green-local/config.json</code>
           <span className={styles.pathMode}>0600</span>
         </div>
+        <p className={styles.warning}>
+          <Lock width={15} height={15} />
+          These two values grant full access to your Slack account. Treat them like a
+          password. Do not paste them into a website, chat, issue, or shell history.
+        </p>
       </>
     ),
   },
@@ -192,27 +217,6 @@ const steps = [
       </>
     ),
   },
-  {
-    id: "run",
-    title: "Start the daemon",
-    body: (
-      <>
-        <p>
-          That is the whole running system: one background process, talking only to
-          Slack. Stop it whenever you want; nothing is left running anywhere else.
-        </p>
-        <Command command="sg-local start\nsg-local status" label="Start and check" />
-        <div className={styles.exampleRow}>
-          <code>sg-local logs -f</code>
-          <span>Follow the activity log</span>
-        </div>
-        <div className={styles.exampleRow}>
-          <code>sg-local install-launchd</code>
-          <span>macOS only — restart automatically at login</span>
-        </div>
-      </>
-    ),
-  },
 ];
 
 const securityNotes = [
@@ -228,13 +232,13 @@ const securityNotes = [
   },
   {
     icon: Terminal,
-    title: "One outbound connection",
-    body: "The daemon opens a WebSocket and makes presence checks. No inbound ports, no relay, no analytics, no crash reporting.",
+    title: "Loopback only",
+    body: "The daemon opens a WebSocket to Slack and listens only on 127.0.0.1 for its control page. No relay, no analytics, no crash reporting.",
   },
   {
     icon: Clock,
     title: "Revoking is ordinary",
-    body: "Sign out of Slack or change your password to invalidate the session. If tokens expire, run sg-local add again.",
+    body: "Sign out of Slack or change your password to invalidate the session. If tokens expire, capture again with the extension or run sg-local add.",
   },
 ];
 
@@ -257,7 +261,7 @@ export function SetupGuide() {
               </h1>
               <p className={styles.lede}>
                 Everything that touches Slack runs on your machine. This site is only the
-                manual and a preview of the controls.
+                manual and a dashboard that talks to your daemon over loopback.
               </p>
             </div>
             <dl className={styles.facts}>
@@ -288,8 +292,8 @@ export function SetupGuide() {
                 <h2 id="where-heading">Where each piece runs.</h2>
                 <p>
                   A hosted dashboard cannot hold a Slack connection open, and it should
-                  never hold your tokens. So the daemon stays local and this preview stays
-                  honest.
+                  never hold your tokens. So the daemon stays local and this site only sends
+                  it commands from your browser.
                 </p>
               </div>
               <div className={styles.diagram}>
@@ -317,17 +321,17 @@ export function SetupGuide() {
                 <div className={styles.hosted}>
                   <div className={styles.diagramHead}>
                     <span className={styles.diagramHollow} aria-hidden="true" />
-                    This Vercel preview
+                    This Vercel site
                   </div>
                   <ul>
                     <li>
                       <Check width={13} height={13} /> Interface and documentation
                     </li>
                     <li>
-                      <Check width={13} height={13} /> Sample, interactive data
+                      <Check width={13} height={13} /> Live controls, once paired with your daemon
                     </li>
                     <li>
-                      <Lock width={13} height={13} /> No tokens, no daemon, no Slack
+                      <Lock width={13} height={13} /> No tokens, never talks to Slack
                     </li>
                   </ul>
                 </div>
@@ -337,7 +341,7 @@ export function SetupGuide() {
             <section className={styles.stepsSection} aria-labelledby="steps-heading">
               <div className={styles.stepsHead}>
                 <h2 id="steps-heading">A short setup.</h2>
-                <p>Five steps, all local after the clone. Stop at any point — nothing starts until you do.</p>
+                <p>Four steps, all local after the clone. Stop at any point — nothing starts until you do.</p>
               </div>
               <ol className={styles.steps}>
                 {steps.map((step, index) => (
@@ -383,7 +387,7 @@ export function SetupGuide() {
                 <ul>
                   <li>Request your password, OAuth code, or Slack sign-in</li>
                   <li>Send tokens to Vercel or any third-party service</li>
-                  <li>Listen on a network port or accept inbound connections</li>
+                  <li>Accept connections from other machines (it listens only on 127.0.0.1)</li>
                   <li>Override a manual away status you set in Slack</li>
                 </ul>
               </div>
@@ -394,9 +398,10 @@ export function SetupGuide() {
               <details>
                 <summary>Slack rejected the tokens</summary>
                 <p>
-                  Run <code>sg-local add</code> again with a fresh <code>xoxc</code> and{" "}
-                  <code>xoxd</code>. Web sessions expire; signing out of Slack invalidates
-                  them immediately.
+                  Sign in at app.slack.com and press <strong>Capture from Slack</strong> in
+                  the extension again, or run <code>sg-local add</code> with a fresh{" "}
+                  <code>xoxc</code> and <code>xoxd</code>. Web sessions expire; signing out
+                  of Slack invalidates them immediately.
                 </p>
               </details>
               <details>

@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import argparse
 import getpass
+import json
 import os
 import stat
 import sys
 import threading
 import time
+import urllib.request
+import webbrowser
 from datetime import datetime, timezone
 from typing import Any
 
@@ -51,27 +54,6 @@ def _fail(message: str) -> int:
 
 def _workspaces(cfg: dict[str, Any]) -> list[dict[str, Any]]:
     return [w for w in cfg.get("workspaces", []) if isinstance(w, dict)]
-
-
-def _find_workspace(cfg: dict[str, Any], query: str) -> tuple[int, dict[str, Any]]:
-    text = query.strip()
-    workspaces = _workspaces(cfg)
-    for index, workspace in enumerate(workspaces):
-        if str(workspace.get("team_id", "")).lower() == text.lower():
-            return index, workspace
-    matches = [
-        (index, workspace)
-        for index, workspace in enumerate(workspaces)
-        if str(workspace.get("name", "")).lower() == text.lower()
-    ]
-    if len(matches) == 1:
-        return matches[0]
-    if len(matches) > 1:
-        ids = ", ".join(str(workspace.get("team_id")) for _, workspace in matches)
-        raise config.ConfigError(
-            f"workspace name {query!r} is ambiguous ({ids}); use the team ID"
-        )
-    raise config.ConfigError(f"no workspace matches {query!r}")
 
 
 def _table(headers: list[str], rows: list[list[str]]) -> None:
@@ -161,47 +143,13 @@ def cmd_add(args: argparse.Namespace) -> int:
 
     if not xoxc and not xoxd:
         return _fail("no tokens entered")
-    if not xoxc.startswith("xoxc-"):
-        return _fail("the first value does not look like an xoxc- token")
-    if not xoxd.startswith("xoxd-"):
-        return _fail("the second value does not look like an xoxd- cookie")
 
     print("Verifying with Slack...")
-    client = SlackClient(xoxc, xoxd)
-    try:
-        identity = client.auth_test()
-    except SlackAPIError as exc:
-        if exc.token_invalid:
-            return _fail(f"Slack rejected these tokens ({exc.error})")
-        return _fail(f"could not verify tokens: {exc.error}")
-    except Exception as exc:
-        return _fail(f"could not verify tokens: {redact(str(exc), xoxc, xoxd)}")
-
-    team_id = str(identity.get("team_id") or "")
-    user_id = str(identity.get("user_id") or "")
-    team_name = str(identity.get("team") or identity.get("url") or team_id)
-    if not team_id or not user_id:
-        return _fail("Slack did not return a team/user identity")
-
-    cfg = config.load_config()
-    workspace = {
-        "name": args.name or team_name,
-        "team_id": team_id,
-        "user_id": user_id,
-        "xoxc": xoxc,
-        "xoxd": xoxd,
-        "added_at": config.now_iso(),
-    }
-    for index, existing in enumerate(_workspaces(cfg)):
-        if str(existing.get("team_id")) == team_id:
-            workspace["added_at"] = existing.get("added_at") or workspace["added_at"]
-            workspace["paused"] = bool(existing.get("paused"))
-            cfg["workspaces"][index] = workspace
-            break
-    else:
-        cfg.setdefault("workspaces", []).append(workspace)
-
-    config.save_config(cfg)
+    identity = web.verify_tokens(xoxc, xoxd)
+    workspace = config.update_config(
+        lambda cfg: config.upsert_workspace(cfg, identity, xoxc, xoxd, args.name or "")
+    )
+    team_id, user_id = workspace["team_id"], workspace["user_id"]
     print()
     print(f"Added {workspace['name']} (team {team_id}, user {user_id}).")
     print("Tokens verified and stored locally; values were not printed.")
@@ -259,11 +207,13 @@ def cmd_list(_: argparse.Namespace) -> int:
 
 
 def cmd_remove(args: argparse.Namespace) -> int:
-    cfg = config.load_config()
-    index, workspace = _find_workspace(cfg, args.workspace)
+    def change(cfg: dict[str, Any]) -> dict[str, Any]:
+        index, workspace = config.find_workspace(cfg, args.workspace)
+        del cfg["workspaces"][index]
+        return workspace
+
+    workspace = config.update_config(change)
     name = workspace.get("name") or workspace.get("team_id")
-    del cfg["workspaces"][index]
-    config.save_config(cfg)
     print(f"Removed {name}.")
     if _daemon_running():
         print("The daemon will stop that workspace's session within a few seconds.")
@@ -287,15 +237,13 @@ def _print_schedule_detail(cfg: dict[str, Any]) -> None:
 
 def cmd_schedule(args: argparse.Namespace) -> int:
     action = getattr(args, "schedule_action", None) or "show"
-    cfg = config.load_config()
 
     if action == "show":
-        _print_schedule_detail(cfg)
+        _print_schedule_detail(config.load_config())
         return 0
 
     if action == "always":
-        cfg["schedule"]["mode"] = "always"
-        config.save_config(cfg)
+        config.update_config(lambda cfg: cfg["schedule"].update(mode="always"))
         print("Schedule set to always on.")
         if _daemon_running():
             print("The daemon will apply it within a few seconds.")
@@ -312,18 +260,21 @@ def cmd_schedule(args: argparse.Namespace) -> int:
         ):
             return _fail("pass --days, --start, --end, or --timezone (or use 'schedule show')")
 
-        current = cfg["schedule"]
-        currently_scheduled = current.get("mode") == "scheduled"
-        days = args.days
-        if days is None:
-            days = current.get("active_days") if currently_scheduled else "weekdays"
-        start = args.start or (current.get("start_time") if currently_scheduled else None) or "09:00"
-        end = args.end or (current.get("end_time") if currently_scheduled else None) or "17:00"
-        tz = args.timezone_value or current.get("timezone") or "local"
-        cfg["schedule"] = schedule.make_schedule(days, start, end, tz)
-        config.save_config(cfg)
-        print(f"Schedule set: {schedule.schedule_summary(cfg['schedule'])}")
-        print(f"Now: {'active' if schedule.is_within_schedule(cfg['schedule']) else 'inactive'}")
+        def change(cfg: dict[str, Any]) -> dict[str, Any]:
+            current = cfg["schedule"]
+            currently_scheduled = current.get("mode") == "scheduled"
+            days = args.days
+            if days is None:
+                days = current.get("active_days") if currently_scheduled else "weekdays"
+            start = args.start or (current.get("start_time") if currently_scheduled else None) or "09:00"
+            end = args.end or (current.get("end_time") if currently_scheduled else None) or "17:00"
+            tz = args.timezone_value or current.get("timezone") or "local"
+            cfg["schedule"] = schedule.make_schedule(days, start, end, tz)
+            return cfg["schedule"]
+
+        updated = config.update_config(change)
+        print(f"Schedule set: {schedule.schedule_summary(updated)}")
+        print(f"Now: {'active' if schedule.is_within_schedule(updated) else 'inactive'}")
         if _daemon_running():
             print("The daemon will apply it within a few seconds.")
         return 0
@@ -500,23 +451,23 @@ def cmd_status(_: argparse.Namespace) -> int:
 
 
 def cmd_pause(args: argparse.Namespace) -> int:
-    cfg = config.load_config()
     if args.workspace:
         if args.duration:
             return _fail("--for is for a global pause; a per-workspace pause lasts until resume")
-        _, workspace = _find_workspace(cfg, args.workspace)
-        workspace["paused"] = True
-        workspace["paused_at"] = config.now_iso()
-        config.save_config(cfg)
+
+        def change(cfg: dict[str, Any]) -> dict[str, Any]:
+            _, workspace = config.find_workspace(cfg, args.workspace)
+            workspace["paused"] = True
+            workspace["paused_at"] = config.now_iso()
+            return workspace
+
+        workspace = config.update_config(change)
         print(f"Paused {workspace.get('name') or workspace.get('team_id')}.")
         if _daemon_running():
             print("The daemon will stop that session within a few seconds.")
         return 0
 
-    until = None
-    if args.duration:
-        delta = config.parse_duration(args.duration)
-        until = datetime.now(timezone.utc) + delta
+    until = config.now_plus(args.duration) if args.duration else None
     config.write_pause(until)
     print(f"Presence paused {_until_text(until.isoformat() if until else None)}.")
     if _daemon_running():
@@ -528,27 +479,31 @@ def cmd_pause(args: argparse.Namespace) -> int:
 
 
 def cmd_resume(args: argparse.Namespace) -> int:
-    cfg = config.load_config()
     if args.workspace:
-        _, workspace = _find_workspace(cfg, args.workspace)
-        if not workspace.get("paused"):
-            print(f"{workspace.get('name') or workspace.get('team_id')} is not paused.")
-            return 0
-        workspace["paused"] = False
-        workspace.pop("paused_at", None)
-        config.save_config(cfg)
-        print(f"Resumed {workspace.get('name') or workspace.get('team_id')}.")
+        def resume_one(cfg: dict[str, Any]) -> tuple[dict[str, Any], bool]:
+            _, workspace = config.find_workspace(cfg, args.workspace)
+            was_paused = bool(workspace.get("paused"))
+            workspace["paused"] = False
+            workspace.pop("paused_at", None)
+            return workspace, was_paused
+
+        workspace, was_paused = config.update_config(resume_one)
+        label = workspace.get("name") or workspace.get("team_id")
+        print(f"Resumed {label}." if was_paused else f"{label} is not paused.")
         return 0
 
     config.clear_pause()
-    changed = []
-    for workspace in _workspaces(cfg):
-        if workspace.get("paused"):
-            workspace["paused"] = False
-            workspace.pop("paused_at", None)
-            changed.append(str(workspace.get("name") or workspace.get("team_id")))
-    if changed:
-        config.save_config(cfg)
+
+    def resume_all(cfg: dict[str, Any]) -> list[str]:
+        names = []
+        for workspace in _workspaces(cfg):
+            if workspace.get("paused"):
+                workspace["paused"] = False
+                workspace.pop("paused_at", None)
+                names.append(str(workspace.get("name") or workspace.get("team_id")))
+        return names
+
+    changed = config.update_config(resume_all)
     print("Resumed." if changed else "Global pause cleared.")
     if changed:
         print(f"Also resumed: {', '.join(changed)}")
@@ -566,8 +521,7 @@ def cmd_stay(args: argparse.Namespace) -> int:
         return 0
     if not args.duration:
         return _fail("pass a duration, e.g. 'sg-local stay 2h' (or --cancel)")
-    delta = config.parse_duration(args.duration)
-    until = datetime.now(timezone.utc) + delta
+    until = config.now_plus(args.duration)
     config.write_stay(until)
     print(f"Staying online {_until_text(until.isoformat())} (overrides pause and schedule).")
     if not _daemon_running():
@@ -608,10 +562,10 @@ def cmd_doctor(args: argparse.Namespace) -> int:
 
         version = getattr(websockets, "__version__", "unknown")
         major = int(str(version).split(".")[0])
-        if major >= 12:
+        if major >= 14:
             ok("websockets", version)
         else:
-            fail("websockets", f"{version}; version 12 or newer is required")
+            fail("websockets", f"{version}; version 14 or newer is required")
     except Exception as exc:
         fail("websockets", redact(str(exc)))
 
@@ -770,27 +724,78 @@ def cmd_logs(args: argparse.Namespace) -> int:
 # ------------------------------------------------------------------- web
 
 
+def _control_page_up(port: int) -> bool:
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/health", timeout=2) as response:
+            return json.loads(response.read()).get("app") == "stillgreen"
+    except (OSError, ValueError):
+        return False
+
+
+def _code_accepted(port: int, code: str) -> bool:
+    request = urllib.request.Request(
+        f"http://127.0.0.1:{port}/api/state", headers={"Authorization": f"Bearer {code}"}
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=3) as response:
+            return response.status == 200
+    except (OSError, ValueError):
+        return False
+
+
 def cmd_web(args: argparse.Namespace) -> int:
-    """Serve the control surface. Local mode is loopback-only by default."""
+    """Show or serve the control page. Local mode is loopback-only by default."""
     config.ensure_dirs()
     host = args.host or os.environ.get("SG_LOCAL_WEB_HOST", "127.0.0.1")
-    port = int(args.port or os.environ.get("SG_LOCAL_WEB_PORT", web.DEFAULT_PORT))
+    port = args.port if args.port is not None else web.port_from_env()
     if args.show_code:
         print(web.load_code())
         return 0
+    loopback = host in web.LOOPBACK_HOSTS
+    if not loopback and len(web.env_code()) < 16:
+        return _fail(
+            "serving beyond this machine needs a strong code: set SG_LOCAL_BRIDGE_CODE "
+            "to at least 16 random characters"
+        )
+    if not loopback and _control_page_up(port):
+        return _fail(
+            f"the background daemon already serves port {port} on this machine; "
+            "pick another --port, or start the daemon with SG_LOCAL_DAEMON_WEB=0"
+        )
     if args.daemon and not state.daemon_pid():
+        if not loopback:
+            # This command serves the page itself; keep the daemon off the port.
+            os.environ["SG_LOCAL_DAEMON_WEB"] = "0"
         ok, message = state.start_daemon()
         print(message)
         if not ok:
             return 1
-    code = web.load_code()
-    if host not in {"127.0.0.1", "::1", "localhost"}:
+        deadline = time.monotonic() + 8
+        while loopback and time.monotonic() < deadline and not _control_page_up(port):
+            time.sleep(0.2)
+
+    url = f"http://127.0.0.1:{port}"
+    if loopback and _control_page_up(port):
+        # The background daemon already serves the page on this port.
+        code = web.load_code()
+        print(f"Stillgreen control page: {url}")
+        print(f"Access code: {code}")
+        print("It is served by the background daemon; stop it with: ./sg-local stop")
+        if not _code_accepted(port, code):
+            _eprint(
+                "warning: the running daemon does not accept this code. It was started "
+                "with different settings (for example SG_LOCAL_BRIDGE_CODE); restart it "
+                "from this shell with: ./sg-local restart"
+            )
+        if args.open:
+            webbrowser.open(url)
+        return 0
+
+    web.load_code()
+    if not loopback:
         print(f"Listening on {host}:{port}. Anyone who can reach that address can try the code.")
-        print("Access code: set SG_LOCAL_BRIDGE_CODE, or read it with --show-code.")
-        if not os.environ.get("SG_LOCAL_BRIDGE_CODE"):
-            print(f"Generated code (stored in {web.BRIDGE_PATH}): {code}")
     if args.open:
-        threading.Timer(0.7, lambda: __import__("webbrowser").open(f"http://127.0.0.1:{port}")).start()
+        threading.Timer(0.7, lambda: webbrowser.open(url)).start()
     web.serve(host, port)
     return 0
 
@@ -917,11 +922,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     web_cmd = sub.add_parser(
         "web",
-        help="serve the local control surface (status, schedule, add workspace)",
+        help="open or serve the local control page (status, schedule, add workspace)",
     )
     web_cmd.add_argument("--host", default=os.environ.get("SG_LOCAL_WEB_HOST", "127.0.0.1"))
-    web_cmd.add_argument("--port", type=int, default=int(os.environ.get("SG_LOCAL_WEB_PORT", web.DEFAULT_PORT)))
-    web_cmd.add_argument("--daemon", action="store_true", help="start the presence daemon first")
+    web_cmd.add_argument("--port", type=int, default=None, help="port (default 8765 or SG_LOCAL_WEB_PORT)")
+    web_cmd.add_argument("--daemon", action="store_true", help="start the background daemon, which serves the page")
     web_cmd.add_argument("--open", action="store_true", help="open the control surface in a browser")
     web_cmd.add_argument("--show-code", action="store_true", help="print the access code and exit")
     web_cmd.set_defaults(func=cmd_web)

@@ -3,7 +3,16 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { ArrowRight, Lock, Shield } from "./icons";
-import { connectBridge, normalizeUrl, saveBridge, type BridgeConfig, type DaemonState } from "@/lib/bridge";
+import {
+  DEFAULT_DAEMON_URL,
+  connectBridge,
+  loadBridge,
+  normalizeCode,
+  normalizeUrl,
+  saveBridge,
+  type BridgeConfig,
+  type DaemonState,
+} from "@/lib/bridge";
 import styles from "./connect-dialog.module.css";
 
 type Props = {
@@ -15,7 +24,7 @@ type Props = {
 
 export function ConnectDialog({ open, onClose, onConnected, initialUrl = "" }: Props) {
   const dialogRef = useRef<HTMLDialogElement>(null);
-  const [url, setUrl] = useState(initialUrl);
+  const [url, setUrl] = useState(initialUrl || DEFAULT_DAEMON_URL);
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -24,20 +33,23 @@ export function ConnectDialog({ open, onClose, onConnected, initialUrl = "" }: P
     const dialog = dialogRef.current;
     if (!dialog) return;
     if (open && !dialog.open) {
+      // Re-read the saved URL each time the dialog opens, so a failed reconnect
+      // can be fixed without retyping it.
+      setUrl(initialUrl || loadBridge()?.url || DEFAULT_DAEMON_URL);
       setError("");
       dialog.showModal();
     }
     if (!open && dialog.open) dialog.close();
-  }, [open]);
+  }, [open, initialUrl]);
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true);
     setError("");
-    const trimmedUrl = normalizeUrl(url) || "http://127.0.0.1:8765";
+    const trimmedUrl = normalizeUrl(url) || DEFAULT_DAEMON_URL;
     try {
       const state = await connectBridge(trimmedUrl, code);
-      const config = { url: trimmedUrl, code: code.trim() };
+      const config = { url: trimmedUrl, code: normalizeCode(code) };
       saveBridge(config);
       onConnected(config, state);
       onClose();
@@ -85,13 +97,13 @@ export function ConnectDialog({ open, onClose, onConnected, initialUrl = "" }: P
           <input
             id="daemon-url"
             name="url"
-            type="url"
+            type="text"
+            inputMode="url"
             value={url}
             onChange={(event) => setUrl(event.target.value)}
-            placeholder="https://your-daemon.fly.dev"
+            placeholder={DEFAULT_DAEMON_URL}
             autoComplete="url"
             spellCheck={false}
-            required
           />
 
           <label htmlFor="daemon-code">Access code</label>
@@ -132,8 +144,9 @@ export function ConnectDialog({ open, onClose, onConnected, initialUrl = "" }: P
 
         <div className={styles.help}>
           <p>
-            No daemon yet? <Link href="/start">Deploy one in about five minutes</Link>.
-            Running locally? Start it with <code>./sg-local web --daemon --open</code>.
+            No daemon yet? <Link href="/start">Set it up locally</Link>. Already
+            installed? Start it with <code>./sg-local start</code>, then read the code
+            with <code>./sg-local web --show-code</code>.
           </p>
         </div>
       </div>

@@ -61,18 +61,39 @@ export type DaemonState = {
   workspaces: WorkspaceState[];
   connected_count: number;
   activity: ActivityEntry[];
+  /** Set when the daemon cannot read config.json; workspaces is then empty. */
+  config_error?: string | null;
 };
 
 const STORAGE_KEY = "stillgreen.bridge.v1";
 const TIMEOUT_MS = 9000;
 
+export const DEFAULT_DAEMON_URL = "http://127.0.0.1:8765";
+
+// The local daemon speaks plain HTTP, so a scheme-less loopback address
+// ("127.0.0.1:8765", "localhost:8765") gets http://. Anything else gets https://.
+// [::1] is left out on purpose: the site's CSP cannot list IPv6 literals in
+// connect-src, so use 127.0.0.1 instead.
+const LOOPBACK_HOST = /^(localhost|127(?:\.\d{1,3}){3})(?::\d*)?(?:[/?#]|$)/i;
+
+// Origins the daemon's CORS allowlist accepts without SG_LOCAL_WEB_ORIGIN.
+const DEFAULT_ALLOWED_ORIGIN = /^(https:\/\/stillgreen\.vercel\.app|https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?)$/i;
+
 export function normalizeUrl(value: string): string {
   let url = value.trim();
   if (!url) return "";
   if (!/^https?:\/\//i.test(url)) {
-    url = `https://${url}`;
+    url = `${LOOPBACK_HOST.test(url) ? "http" : "https"}://${url}`;
   }
   return url.replace(/\/+$/, "");
+}
+
+/** Codes pasted from chat or docs often carry smart dashes, spaces or lowercase. */
+export function normalizeCode(value: string): string {
+  return value
+    .replace(/[\u2010-\u2015\u2212]/g, "-")
+    .replace(/\s+/g, "")
+    .toUpperCase();
 }
 
 export function loadBridge(): BridgeConfig | null {
@@ -82,7 +103,7 @@ export function loadBridge(): BridgeConfig | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<BridgeConfig>;
     if (!parsed.url || !parsed.code) return null;
-    return { url: normalizeUrl(parsed.url), code: parsed.code };
+    return { url: normalizeUrl(parsed.url), code: normalizeCode(parsed.code) };
   } catch {
     return null;
   }
@@ -92,7 +113,7 @@ export function saveBridge(config: BridgeConfig): void {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(
     STORAGE_KEY,
-    JSON.stringify({ url: normalizeUrl(config.url), code: config.code }),
+    JSON.stringify({ url: normalizeUrl(config.url), code: normalizeCode(config.code) }),
   );
 }
 
@@ -106,9 +127,28 @@ function friendlyError(error: unknown, url: string): string {
     return `The daemon at ${url} did not answer in time. Check that it is running and that the URL is reachable.`;
   }
   if (error instanceof TypeError) {
-    return `Could not reach ${url}. Check that the daemon is running (./sg-local start), that the URL and port are right, and that the browser allowed the local-network request.`;
+    const origin = typeof window === "undefined" ? "" : window.location.origin;
+    const originHint =
+      origin && !DEFAULT_ALLOWED_ORIGIN.test(origin)
+        ? ` The daemon only accepts this page's origin (${origin}) if you start it with SG_LOCAL_WEB_ORIGIN=${origin}.`
+        : "";
+    return `Could not reach ${url}. Check that the daemon is running (./sg-local start), that the URL and port are right, and that the browser allowed the local-network request.${originHint}`;
   }
   return error instanceof Error ? error.message : "Something went wrong.";
+}
+
+function errorText(payload: unknown): string {
+  return payload && typeof payload === "object" && "error" in payload
+    ? String((payload as { error: unknown }).error)
+    : "";
+}
+
+function asState(payload: unknown): DaemonState {
+  const state = payload as Partial<DaemonState> | null;
+  if (!state || state.app !== "stillgreen" || !Array.isArray(state.workspaces)) {
+    throw new Error("That URL did not answer like a Stillgreen daemon.");
+  }
+  return state as DaemonState;
 }
 
 async function request<T>(
@@ -123,7 +163,7 @@ async function request<T>(
       ...init,
       cache: "no-store",
       headers: {
-        Authorization: `Bearer ${config.code}`,
+        Authorization: `Bearer ${normalizeCode(config.code)}`,
         ...(init.body ? { "Content-Type": "application/json" } : {}),
         ...(init.headers || {}),
       },
@@ -138,12 +178,14 @@ async function request<T>(
     if (response.status === 401) {
       throw new Error("The access code was not accepted. Copy it from the daemon's control page.");
     }
+    if (response.status === 403 && /origin is not allowed/i.test(errorText(payload))) {
+      const origin = typeof window === "undefined" ? "this page" : window.location.origin;
+      throw new Error(
+        `The daemon refused requests from ${origin}. Restart it with SG_LOCAL_WEB_ORIGIN=${origin} to allow this dashboard.`,
+      );
+    }
     if (!response.ok) {
-      const message =
-        payload && typeof payload === "object" && "error" in payload
-          ? String((payload as { error: unknown }).error)
-          : `Daemon returned HTTP ${response.status}.`;
-      throw new Error(message);
+      throw new Error(errorText(payload) || `Daemon returned HTTP ${response.status}.`);
     }
     return payload as T;
   } catch (error) {
@@ -154,15 +196,15 @@ async function request<T>(
 }
 
 export async function connectBridge(url: string, code: string): Promise<DaemonState> {
-  const config = { url: normalizeUrl(url), code: code.trim() };
+  const config = { url: normalizeUrl(url), code: normalizeCode(code) };
   if (!config.url || !config.code) {
     throw new Error("Enter the daemon URL and access code.");
   }
-  return request<DaemonState>(config, "/api/state");
+  return fetchState(config);
 }
 
 export function fetchState(config: BridgeConfig): Promise<DaemonState> {
-  return request<DaemonState>(config, "/api/state");
+  return request<unknown>(config, "/api/state").then(asState);
 }
 
 export function saveSchedule(
@@ -175,43 +217,45 @@ export function saveSchedule(
     timezone: string;
   },
 ): Promise<DaemonState> {
-  return request<DaemonState>(config, "/api/schedule", {
+  return request<unknown>(config, "/api/schedule", {
     method: "POST",
     body: JSON.stringify(payload),
-  });
+  }).then(asState);
 }
 
 export function pausePresence(
   config: BridgeConfig,
   payload: { duration?: string; workspace?: string } = {},
 ): Promise<DaemonState> {
-  return request<DaemonState>(config, "/api/pause", {
+  return request<unknown>(config, "/api/pause", {
     method: "POST",
     body: JSON.stringify(payload),
-  });
+  }).then(asState);
 }
 
 export function resumePresence(
   config: BridgeConfig,
   payload: { workspace?: string } = {},
 ): Promise<DaemonState> {
-  return request<DaemonState>(config, "/api/resume", {
+  return request<unknown>(config, "/api/resume", {
     method: "POST",
     body: JSON.stringify(payload),
-  });
+  }).then(asState);
 }
 
 export function stayOnline(config: BridgeConfig, duration: string | null): Promise<DaemonState> {
-  return request<DaemonState>(config, "/api/stay", {
+  return request<unknown>(config, "/api/stay", {
     method: "POST",
     body: JSON.stringify(duration ? { duration } : { cancel: true }),
-  });
+  }).then(asState);
 }
 
+type RemoveResult = { ok: true; removed: string; state: DaemonState };
+
 export function removeWorkspace(config: BridgeConfig, teamId: string): Promise<DaemonState> {
-  return request<DaemonState>(config, `/api/workspaces/${encodeURIComponent(teamId)}`, {
+  return request<RemoveResult>(config, `/api/workspaces/${encodeURIComponent(teamId)}`, {
     method: "DELETE",
-  }).then((result) => (result as unknown as { state: DaemonState }).state);
+  }).then((result) => asState(result?.state));
 }
 
 export function workspaceTime(iso: string | null): string {

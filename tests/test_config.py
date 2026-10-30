@@ -123,7 +123,11 @@ class ExpiringStateTests(unittest.TestCase):
         past = datetime.now(timezone.utc) - timedelta(minutes=1)
         config.write_pause(past)
         self.assertIsNone(config.read_pause())
-        self.assertFalse(config.PAUSE_PATH.exists())
+        # Readers leave the file alone, so they never race a new pause.
+        self.assertTrue(config.PAUSE_PATH.exists())
+        future = datetime.now(timezone.utc) + timedelta(hours=1)
+        config.write_pause(future)
+        self.assertIsNotNone(config.read_pause())
 
     def test_pause_future(self) -> None:
         future = datetime.now(timezone.utc) + timedelta(hours=1)

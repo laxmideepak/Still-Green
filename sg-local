@@ -15,8 +15,6 @@ SCRIPT_DIR=$(CDPATH= cd -P -- "$(dirname -- "$SOURCE")" && pwd)
 
 if [ -n "${SG_LOCAL_PYTHON:-}" ]; then
     PYTHON=$SG_LOCAL_PYTHON
-elif [ -x /opt/homebrew/Caskroom/miniforge/base/bin/python3 ]; then
-    PYTHON=/opt/homebrew/Caskroom/miniforge/base/bin/python3
 elif command -v python3 >/dev/null 2>&1; then
     PYTHON=$(command -v python3)
 else

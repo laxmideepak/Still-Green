@@ -8,15 +8,48 @@
 
 const DEFAULT_DAEMON = "http://127.0.0.1:8765";
 const SLACK_URLS = ["https://app.slack.com/*", "https://*.slack.com/*"];
+const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]"]);
+
+// This worker is the trust boundary: it is the only code that sends the Slack
+// session anywhere. Plain http is allowed only to this machine; any other host
+// must use https, and credentials in the URL are refused.
+// Keep in sync with daemonUrlProblem() in popup.js.
+function daemonUrlProblem(value) {
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    return "The daemon URL is not a valid URL.";
+  }
+  if (url.username || url.password) {
+    return "The daemon URL must not contain a username or password.";
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    return "The daemon URL must start with http:// or https://.";
+  }
+  if (url.protocol === "https:") return null;
+  if (url.protocol === "http:" && LOOPBACK_HOSTS.has(url.hostname)) return null;
+  return "Refusing to send your Slack session over plain http to another machine. Use http://127.0.0.1:8765 or an https:// URL.";
+}
+
+// Codes pasted from chat or docs often carry smart dashes, spaces or lowercase.
+function normalizeCode(value) {
+  return String(value || "")
+    .replace(/[\u2010-\u2015\u2212]/g, "-")
+    .replace(/\s+/g, "")
+    .toUpperCase();
+}
 
 async function settings() {
   const stored = await chrome.storage.local.get({
     daemonUrl: DEFAULT_DAEMON,
     bridgeCode: "",
   });
+  const daemonUrl = String(stored.daemonUrl || DEFAULT_DAEMON).trim().replace(/\/+$/, "");
   return {
-    daemonUrl: String(stored.daemonUrl || DEFAULT_DAEMON).trim().replace(/\/+$/, ""),
-    bridgeCode: String(stored.bridgeCode || "").trim(),
+    daemonUrl,
+    urlProblem: daemonUrlProblem(daemonUrl),
+    bridgeCode: normalizeCode(stored.bridgeCode),
   };
 }
 
@@ -109,7 +142,7 @@ async function postWorkspace(daemonUrl, bridgeCode, team) {
     return {
       ok: false,
       team: team.name,
-      error: `Could not reach ${daemonUrl}. Is the daemon running?`,
+      error: `Could not reach ${daemonUrl}. Start the daemon with ./sg-local start.`,
     };
   }
 
@@ -143,7 +176,10 @@ async function postWorkspace(daemonUrl, bridgeCode, team) {
 }
 
 async function capture() {
-  const { daemonUrl, bridgeCode } = await settings();
+  const { daemonUrl, urlProblem, bridgeCode } = await settings();
+  if (urlProblem) {
+    return { ok: false, error: urlProblem };
+  }
   if (!bridgeCode) {
     return { ok: false, error: "Add your daemon access code first." };
   }
@@ -172,7 +208,9 @@ async function capture() {
     return {
       ok: false,
       error:
-        "No Slack token found in this tab. Reload app.slack.com while signed in, then retry.",
+        "No Slack token found in this tab. Newer Slack builds may not expose it to the " +
+        `extension. Add the workspace by hand on ${daemonUrl}/#add or with ./sg-local add ` +
+        "(see stillgreen.vercel.app/setup#tokens).",
     };
   }
 
@@ -184,9 +222,11 @@ async function capture() {
     };
   }
 
-  const workspaces = await Promise.all(
-    session.teams.map((team) => postWorkspace(daemonUrl, bridgeCode, { ...team, cookie })),
-  );
+  // One at a time: the daemon rewrites its config file on each add.
+  const workspaces = [];
+  for (const team of session.teams) {
+    workspaces.push(await postWorkspace(daemonUrl, bridgeCode, { ...team, cookie }));
+  }
 
   return {
     ok: workspaces.some((item) => item.ok),
@@ -196,7 +236,10 @@ async function capture() {
 }
 
 async function ping() {
-  const { daemonUrl } = await settings();
+  const { daemonUrl, urlProblem } = await settings();
+  if (urlProblem) {
+    return { ok: false, daemonUrl, error: urlProblem };
+  }
   try {
     const response = await fetch(`${daemonUrl}/api/health`, { cache: "no-store" });
     const body = await response.json();

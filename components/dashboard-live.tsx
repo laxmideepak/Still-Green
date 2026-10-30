@@ -49,7 +49,29 @@ type Props = {
   config: BridgeConfig;
   initialState: DaemonState;
   onDisconnect: () => void;
+  onReconnect: () => void;
 };
+
+const POLL_MS = 12000;
+const ACTIVITY_LIMIT = 14;
+
+type ScheduleDraft = {
+  mode: "always" | "scheduled";
+  days: string[];
+  start: string;
+  end: string;
+  timezone: string;
+};
+
+function draftFromSchedule(schedule: DaemonState["schedule"]): ScheduleDraft {
+  return {
+    mode: schedule.mode,
+    days: schedule.active_days || [],
+    start: schedule.start_time || "09:00",
+    end: schedule.end_time || "17:00",
+    timezone: schedule.timezone || "local",
+  };
+}
 
 function initials(name: string) {
   return (
@@ -68,36 +90,56 @@ function toMinutes(value: string) {
 }
 
 function weeklyHours(days: string[], start: string, end: string) {
-  if (!days.length) return 0;
+  if (!days.length || !start || !end) return 0;
   const span = toMinutes(end) - toMinutes(start);
+  if (span === 0) return 0;
   const hours = (span > 0 ? span : span + 1440) / 60;
   return days.length * hours;
 }
 
+// Green only for a confirmed active session; unknown statuses never look online.
 function statusTone(status: string) {
-  if (status === "active" || status === "connected") return "green";
-  if (["manual_away", "paused", "daemon_stopped", "scheduled_off"].includes(status)) {
-    return "muted";
-  }
-  if (["invalid_token", "invalid_config", "error", "away", "auto_away"].includes(status)) {
+  if (status === "active") return "green";
+  if (
+    [
+      "connected",
+      "starting",
+      "reconnecting",
+      "restarting",
+      "invalid_token",
+      "invalid_config",
+      "error",
+      "away",
+      "auto_away",
+    ].includes(status)
+  ) {
     return "amber";
   }
-  return "green";
+  return "muted";
 }
 
-export function DashboardLive({ config, initialState, onDisconnect }: Props) {
+function clockTime(ms: number) {
+  return new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" }).format(ms);
+}
+
+export function DashboardLive({ config, initialState, onDisconnect, onReconnect }: Props) {
   const [state, setState] = useState<DaemonState>(initialState);
   const [selectedId, setSelectedId] = useState(initialState.workspaces[0]?.team_id || "");
   const [busy, setBusy] = useState("");
-  const [error, setError] = useState("");
+  const [actionError, setActionError] = useState("");
+  const [pollError, setPollError] = useState("");
+  const [unreachableSince, setUnreachableSince] = useState<number | null>(null);
+  const [lastOkAt, setLastOkAt] = useState(() => Date.now());
   const [announcement, setAnnouncement] = useState("Connected to your daemon.");
-  const [mode, setMode] = useState<"always" | "scheduled">(initialState.schedule.mode);
-  const [days, setDays] = useState<string[]>(initialState.schedule.active_days || []);
-  const [start, setStart] = useState(initialState.schedule.start_time || "09:00");
-  const [end, setEnd] = useState(initialState.schedule.end_time || "17:00");
-  const [timezone, setTimezone] = useState(initialState.schedule.timezone || "local");
+  const [draft, setDraft] = useState<ScheduleDraft>(() => draftFromSchedule(initialState.schedule));
   const [dirty, setDirty] = useState(false);
   const dirtyRef = useRef(false);
+  // Bumped when a mutation starts and ends, so a poll that raced it is dropped.
+  const mutationSeq = useRef(0);
+  const { mode, days, start, end, timezone } = draft;
+  const error = actionError || pollError;
+  const codeRejected = /access code was not accepted/i.test(error);
+  const unreachable = unreachableSince !== null;
 
   const selected = useMemo(
     () => state.workspaces.find((item) => item.team_id === selectedId) || state.workspaces[0],
@@ -114,35 +156,47 @@ export function DashboardLive({ config, initialState, onDisconnect }: Props) {
 
   useEffect(() => {
     let cancelled = false;
-    const timer = window.setInterval(async () => {
-      if (document.hidden) return;
+    let polling = false;
+    async function poll() {
+      if (document.hidden || polling) return;
+      polling = true;
+      const seq = mutationSeq.current;
       try {
         const next = await fetchState(config);
-        if (cancelled) return;
+        if (cancelled || seq !== mutationSeq.current) return;
         setState(next);
-        setError("");
-        if (!dirtyRef.current) {
-          setMode(next.schedule.mode);
-          setDays(next.schedule.active_days || []);
-          setStart(next.schedule.start_time || "09:00");
-          setEnd(next.schedule.end_time || "17:00");
-          setTimezone(next.schedule.timezone || "local");
-        }
+        setPollError("");
+        setActionError("");
+        setUnreachableSince(null);
+        setLastOkAt(Date.now());
+        if (!dirtyRef.current) setDraft(draftFromSchedule(next.schedule));
       } catch (caught) {
-        if (!cancelled) {
-          setError(caught instanceof Error ? caught.message : "Could not refresh the daemon.");
+        if (cancelled) return;
+        const message = caught instanceof Error ? caught.message : "Could not refresh the daemon.";
+        setPollError(message);
+        if (!/access code was not accepted/i.test(message)) {
+          setUnreachableSince((since) => since ?? Date.now());
         }
+      } finally {
+        polling = false;
       }
-    }, 12000);
+    }
+    const timer = window.setInterval(poll, POLL_MS);
+    const onVisible = () => {
+      if (!document.hidden) void poll();
+    };
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, [config]);
 
-  function markDirty() {
+  function updateDraft(patch: Partial<ScheduleDraft>) {
     dirtyRef.current = true;
     setDirty(true);
+    setDraft((previous) => ({ ...previous, ...patch }));
   }
 
   async function run(
@@ -151,17 +205,25 @@ export function DashboardLive({ config, initialState, onDisconnect }: Props) {
     message: string,
   ) {
     setBusy(label);
-    setError("");
+    setActionError("");
+    mutationSeq.current += 1;
     try {
       const next = await action();
       setState(next);
+      setUnreachableSince(null);
+      setLastOkAt(Date.now());
       setAnnouncement(message);
       if (!next.workspaces.some((item) => item.team_id === selectedId)) {
         setSelectedId(next.workspaces[0]?.team_id || "");
       }
+      return next;
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "The daemon rejected that action.");
+      const failure = caught instanceof Error ? caught.message : "The daemon rejected that action.";
+      setActionError(failure);
+      setAnnouncement(failure);
+      return null;
     } finally {
+      mutationSeq.current += 1;
       setBusy("");
     }
   }
@@ -186,57 +248,65 @@ export function DashboardLive({ config, initialState, onDisconnect }: Props) {
     if (!window.confirm(`Remove ${workspace.name}? Its tokens will be deleted from the daemon.`)) {
       return;
     }
-    setBusy(`remove-${workspace.team_id}`);
-    removeWorkspace(config, workspace.team_id)
-      .then((next) => {
-        setState(next);
-        setSelectedId(next.workspaces[0]?.team_id || "");
-        setAnnouncement(`${workspace.name} removed.`);
-      })
-      .catch((caught) => setError(caught instanceof Error ? caught.message : "Could not remove it."))
-      .finally(() => setBusy(""));
+    void run(
+      `remove-${workspace.team_id}`,
+      () => removeWorkspace(config, workspace.team_id),
+      `${workspace.name} removed.`,
+    );
   }
 
   async function submitSchedule(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setBusy("schedule");
-    setError("");
-    try {
-      const next = await saveSchedule(config, {
-        mode,
-        active_days: days.length ? days : ["monday", "tuesday", "wednesday", "thursday", "friday"],
-        start_time: start,
-        end_time: end,
-        timezone: timezone.trim() || "local",
-      });
-      setState(next);
+    if (invalidWindow) return;
+    const next = await run(
+      "schedule",
+      () =>
+        saveSchedule(config, {
+          mode,
+          active_days: days.length ? days : ["monday", "tuesday", "wednesday", "thursday", "friday"],
+          start_time: start,
+          end_time: end,
+          timezone: timezone.trim() || "local",
+        }),
+      "Schedule saved. The daemon applies it within a few seconds.",
+    );
+    if (next) {
       dirtyRef.current = false;
       setDirty(false);
-      setAnnouncement("Schedule saved. The daemon applies it within a few seconds.");
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not save the schedule.");
-    } finally {
-      setBusy("");
+      setDraft(draftFromSchedule(next.schedule));
     }
   }
 
   function toggleDay(key: string) {
-    markDirty();
-    setDays((previous) =>
-      previous.includes(key) ? previous.filter((item) => item !== key) : [...previous, key],
-    );
+    updateDraft({
+      days: days.includes(key) ? days.filter((item) => item !== key) : [...days, key],
+    });
   }
 
   function preset(kind: "weekdays" | "everyday" | "clear") {
-    markDirty();
-    setDays(
-      kind === "weekdays"
-        ? DAYS.slice(0, 5).map((day) => day.key)
-        : kind === "everyday"
-          ? DAYS.map((day) => day.key)
-          : [],
+    updateDraft({
+      days:
+        kind === "weekdays"
+          ? DAYS.slice(0, 5).map((day) => day.key)
+          : kind === "everyday"
+            ? DAYS.map((day) => day.key)
+            : [],
+      ...(kind !== "clear" ? { mode: "scheduled" as const } : {}),
+    });
+  }
+
+  function pauseAll() {
+    void run(
+      "pause-all",
+      () => pausePresence(config, { duration: "1h" }),
+      state.stay_active && state.stay_until
+        ? `Paused for 1 hour, but the stay-online override keeps you green until ${workspaceTime(state.stay_until)}.`
+        : "All presence paused for 1 hour.",
     );
-    if (kind !== "clear") setMode("scheduled");
+  }
+
+  function resumeAll() {
+    void run("resume-all", () => resumePresence(config, {}), "All presence resumed.");
   }
 
   function disconnect() {
@@ -247,8 +317,15 @@ export function DashboardLive({ config, initialState, onDisconnect }: Props) {
     onDisconnect();
   }
 
-  const online = state.connected_count;
-  const scheduleDirty = dirty;
+  const online = unreachable ? 0 : state.connected_count;
+  const invalidWindow = mode === "scheduled" && (!start || !end || start === end);
+  const pauseNote = state.paused
+    ? state.stay_active && state.stay_until
+      ? `Pause starts after the stay-online override ends at ${workspaceTime(state.stay_until)}.`
+      : state.pause_until
+        ? `Paused until ${workspaceTime(state.pause_until)}.`
+        : "Paused until resumed."
+    : "Manual away in Slack is never overridden.";
 
   return (
     <>
@@ -258,8 +335,8 @@ export function DashboardLive({ config, initialState, onDisconnect }: Props) {
           <div className={`container ${styles.mastheadInner}`}>
             <div>
               <p className={styles.eyebrow}>
-                <span className={styles.liveDot} aria-hidden="true" />
-                Live daemon · {host}
+                {!unreachable && <span className={styles.liveDot} aria-hidden="true" />}
+                {unreachable ? "Daemon unreachable" : "Live daemon"} · {host}
               </p>
               <h1>
                 Your dot,
@@ -267,15 +344,21 @@ export function DashboardLive({ config, initialState, onDisconnect }: Props) {
                 live<span className={styles.stop}>.</span>
               </h1>
               <p className={styles.lede}>
-                {online > 0
-                  ? `${online} ${online === 1 ? "workspace is" : "workspaces are"} holding a Slack session. This page only sends schedule and presence commands.`
-                  : "The daemon is connected. Add a workspace or resume a session to turn the dot green."}
+                {unreachable
+                  ? "This page cannot reach the daemon right now, so everything below is the last known state."
+                  : online > 0
+                    ? `${online} ${online === 1 ? "workspace is" : "workspaces are"} holding a Slack session. This page only sends schedule and presence commands.`
+                    : "The daemon is connected. Add a workspace or resume a session to turn the dot green."}
               </p>
             </div>
             <div className={styles.mastheadMeta}>
               <span className={styles.metaRow}>
                 <Signal width={15} height={15} />
-                {state.daemon.running ? `Daemon running · pid ${state.daemon.pid}` : "Daemon stopped"}
+                {unreachable
+                  ? `Daemon unreachable · last seen ${clockTime(lastOkAt)}`
+                  : state.daemon.running
+                    ? `Daemon running · pid ${state.daemon.pid}`
+                    : "Daemon stopped"}
               </span>
               <span className={styles.metaRow}>
                 <Lock width={15} height={15} />
@@ -304,7 +387,7 @@ export function DashboardLive({ config, initialState, onDisconnect }: Props) {
         </section>
 
         <div className={`container ${styles.body}`}>
-          {!state.daemon.running && (
+          {!state.daemon.running && !unreachable && (
             <div className={styles.alert} role="alert">
               <strong>The daemon process is not running.</strong>
               <span>
@@ -313,10 +396,24 @@ export function DashboardLive({ config, initialState, onDisconnect }: Props) {
               </span>
             </div>
           )}
+          {state.config_error && (
+            <div className={styles.alert} role="alert">
+              <strong>The daemon cannot read its config file.</strong>
+              <span>
+                Your workspaces are still in that file. Fix or restore it, then check with{" "}
+                <code>./sg-local doctor</code>. Details: {state.config_error}
+              </span>
+            </div>
+          )}
           {error && (
             <div className={styles.alert} role="alert">
-              <strong>Daemon error.</strong>
+              <strong>{unreachable ? "Daemon unreachable." : "Daemon error."}</strong>
               <span>{error}</span>
+              {codeRejected && (
+                <button type="button" className="button buttonSecondary buttonSmall" onClick={onReconnect}>
+                  Re-enter access code
+                </button>
+              )}
             </div>
           )}
 
@@ -337,19 +434,19 @@ export function DashboardLive({ config, initialState, onDisconnect }: Props) {
               </a>
             </div>
             <div className={styles.rail}>
-              {state.workspaces.length === 0 ? (
+              {state.workspaces.length === 0 && !state.config_error ? (
                 <a className={styles.emptyWorkspace} href={`${config.url}/#add`} target="_blank" rel="noreferrer">
                   <span className={styles.emptyPlus} aria-hidden="true">
                     +
                   </span>
                   <span>
                     <strong>Add your first workspace</strong>
-                    <em>Tokens are entered on the daemon, never here.</em>
+                    <em>Use Capture from Slack in the extension, or add it on the daemon.</em>
                   </span>
                 </a>
               ) : (
                 state.workspaces.map((workspace) => {
-                  const tone = statusTone(workspace.status);
+                  const tone = unreachable ? "muted" : statusTone(workspace.status);
                   return (
                     <button
                       key={workspace.team_id}
@@ -383,7 +480,7 @@ export function DashboardLive({ config, initialState, onDisconnect }: Props) {
                   <div className={styles.presenceTop}>
                     <div
                       className={styles.avatarRing}
-                      data-online={selected.connected && selected.status === "active"}
+                      data-online={!unreachable && selected.connected && selected.status === "active"}
                       aria-hidden="true"
                     >
                       <span>{initials(selected.name)}</span>
@@ -394,21 +491,36 @@ export function DashboardLive({ config, initialState, onDisconnect }: Props) {
                         {selected.name} · {selected.team_id}
                       </p>
                       <h2 id="presence-heading">
+                        {unreachable && "Last known: "}
                         {selected.status === "active"
                           ? "Green."
-                          : selected.paused
+                          : selected.paused || (state.paused && !state.stay_active)
                             ? "Paused."
                             : statusLabel(selected.status)}
                       </h2>
-                      <p>
-                        {selected.last_error
-                          ? selected.last_error
-                          : selected.connected
-                            ? "The daemon holds a WebSocket session to Slack and checks presence every minute."
-                            : selected.reason || "Waiting for the next scheduled window."}
-                      </p>
+                      {selected.status === "invalid_token" ? (
+                        <>
+                          <p>
+                            Slack rejected this session. Sign in at app.slack.com and press
+                            Capture from Slack in the extension, or add it again on the daemon
+                            page with <code>./sg-local add</code>.
+                          </p>
+                          {selected.last_error && <p>{selected.last_error}</p>}
+                        </>
+                      ) : (
+                        <p>
+                          {selected.last_error
+                            ? selected.last_error
+                            : selected.connected
+                              ? "The daemon holds a WebSocket session to Slack and checks presence every minute."
+                              : selected.reason || "Waiting for the next scheduled window."}
+                        </p>
+                      )}
                       <div className={styles.presenceStatus}>
-                        <span data-tone={statusTone(selected.status)} aria-hidden="true" />
+                        <span
+                          data-tone={unreachable ? "muted" : statusTone(selected.status)}
+                          aria-hidden="true"
+                        />
                         {selected.connected ? "WebSocket connected" : "No active session"}
                         <span className={styles.presenceSince}>
                           {selected.last_presence
@@ -430,6 +542,16 @@ export function DashboardLive({ config, initialState, onDisconnect }: Props) {
                         <Play width={15} height={15} />
                         Resume
                       </button>
+                    ) : state.paused ? (
+                      <button
+                        type="button"
+                        className="button buttonPrimary buttonSmall"
+                        onClick={resumeAll}
+                        disabled={busy === "resume-all"}
+                      >
+                        <Play width={15} height={15} />
+                        Resume
+                      </button>
                     ) : (
                       <button
                         type="button"
@@ -447,7 +569,7 @@ export function DashboardLive({ config, initialState, onDisconnect }: Props) {
                       target="_blank"
                       rel="noreferrer"
                     >
-                      Manage tokens
+                      Replace tokens
                       <ArrowUpRight width={14} height={14} />
                     </a>
                     <button
@@ -481,8 +603,9 @@ export function DashboardLive({ config, initialState, onDisconnect }: Props) {
                     <p className={styles.cardKicker}>No workspace</p>
                     <h2 id="presence-heading">Add a Slack account.</h2>
                     <p>
-                      Open the daemon, paste your <code>xoxc</code> token and <code>xoxd</code>{" "}
-                      cookie, and the session will start here.
+                      Sign in at app.slack.com and press <strong>Capture from Slack</strong> in
+                      the extension. Or open the daemon and paste your <code>xoxc</code> token
+                      and <code>xoxd</code> cookie. The session will start here.
                     </p>
                     <a
                       className="button buttonPrimary buttonSmall"
@@ -504,9 +627,12 @@ export function DashboardLive({ config, initialState, onDisconnect }: Props) {
                   <p className={styles.kicker}>Session</p>
                   <h2 id="session-heading">Daemon health</h2>
                 </div>
-                <span className={styles.pill} data-tone={state.daemon.running ? "green" : "amber"}>
+                <span
+                  className={styles.pill}
+                  data-tone={unreachable ? "muted" : state.daemon.running ? "green" : "amber"}
+                >
                   <span aria-hidden="true" />
-                  {state.daemon.running ? "Running" : "Stopped"}
+                  {unreachable ? "Unreachable" : state.daemon.running ? "Running" : "Stopped"}
                 </span>
               </div>
               <dl className={styles.facts}>
@@ -515,12 +641,10 @@ export function DashboardLive({ config, initialState, onDisconnect }: Props) {
                   <dd>Slack WebSocket</dd>
                 </div>
                 <div>
-                  <dt>Keepalive</dt>
-                  <dd>Ping · 30s</dd>
-                </div>
-                <div>
-                  <dt>Presence check</dt>
-                  <dd>60s interval</dd>
+                  <dt>Sessions</dt>
+                  <dd>
+                    {state.connected_count} of {state.workspaces.length} connected
+                  </dd>
                 </div>
                 <div>
                   <dt>Schedule</dt>
@@ -557,20 +681,14 @@ export function DashboardLive({ config, initialState, onDisconnect }: Props) {
                   <button
                     type="button"
                     aria-pressed={mode === "always"}
-                    onClick={() => {
-                      setMode("always");
-                      markDirty();
-                    }}
+                    onClick={() => updateDraft({ mode: "always" })}
                   >
                     Always on
                   </button>
                   <button
                     type="button"
                     aria-pressed={mode === "scheduled"}
-                    onClick={() => {
-                      setMode("scheduled");
-                      markDirty();
-                    }}
+                    onClick={() => updateDraft({ mode: "scheduled" })}
                   >
                     Scheduled
                   </button>
@@ -610,10 +728,7 @@ export function DashboardLive({ config, initialState, onDisconnect }: Props) {
                         <input
                           type="time"
                           value={start}
-                          onChange={(event) => {
-                            setStart(event.target.value);
-                            markDirty();
-                          }}
+                          onChange={(event) => updateDraft({ start: event.target.value })}
                         />
                       </label>
                       <label>
@@ -621,20 +736,14 @@ export function DashboardLive({ config, initialState, onDisconnect }: Props) {
                         <input
                           type="time"
                           value={end}
-                          onChange={(event) => {
-                            setEnd(event.target.value);
-                            markDirty();
-                          }}
+                          onChange={(event) => updateDraft({ end: event.target.value })}
                         />
                       </label>
                       <label>
                         <span>Timezone</span>
                         <input
                           value={timezone}
-                          onChange={(event) => {
-                            setTimezone(event.target.value);
-                            markDirty();
-                          }}
+                          onChange={(event) => updateDraft({ timezone: event.target.value })}
                           placeholder="Europe/Amsterdam"
                           spellCheck={false}
                         />
@@ -651,9 +760,11 @@ export function DashboardLive({ config, initialState, onDisconnect }: Props) {
                 <div className={styles.scheduleFoot}>
                   <span>
                     <Calendar width={14} height={14} />
-                    {mode === "scheduled"
-                      ? `${weeklyHours(days, start, end).toFixed(1)}h / week · ${days.length} days`
-                      : "24 / 7"}
+                    {invalidWindow
+                      ? "Start and end must be set and differ"
+                      : mode === "scheduled"
+                        ? `${weeklyHours(days, start, end).toFixed(1)}h / week · ${days.length} days`
+                        : "24 / 7"}
                   </span>
                   <span>
                     <Sliders width={14} height={14} />
@@ -662,10 +773,10 @@ export function DashboardLive({ config, initialState, onDisconnect }: Props) {
                   <button
                     type="submit"
                     className="button buttonPrimary buttonSmall"
-                    disabled={busy === "schedule" || (!scheduleDirty && mode === state.schedule.mode)}
+                    disabled={busy === "schedule" || !dirty || invalidWindow}
                   >
-                    {busy === "schedule" ? "Saving…" : scheduleDirty ? "Save schedule" : "Saved"}
-                    {!busy && scheduleDirty && <Check width={14} height={14} />}
+                    {busy === "schedule" ? "Saving…" : dirty ? "Save schedule" : "Saved"}
+                    {!busy && dirty && <Check width={14} height={14} />}
                   </button>
                 </div>
               </form>
@@ -682,7 +793,8 @@ export function DashboardLive({ config, initialState, onDisconnect }: Props) {
                 </span>
               </div>
               <p className={styles.keepCopy}>
-                A temporary override ignores pause and schedule. It expires on its own.
+                A temporary override ignores the global pause and the schedule (a paused
+                workspace stays paused). It expires on its own.
               </p>
               {state.stay_active && state.stay_until ? (
                 <div className={styles.stayActive}>
@@ -728,13 +840,7 @@ export function DashboardLive({ config, initialState, onDisconnect }: Props) {
                 <button
                   type="button"
                   className="button buttonSecondary buttonSmall"
-                  onClick={() =>
-                    void run(
-                      "pause-all",
-                      () => pausePresence(config, { duration: "1h" }),
-                      "All presence paused for 1 hour.",
-                    )
-                  }
+                  onClick={pauseAll}
                   disabled={Boolean(busy)}
                 >
                   <Pause width={14} height={14} />
@@ -743,9 +849,7 @@ export function DashboardLive({ config, initialState, onDisconnect }: Props) {
                 <button
                   type="button"
                   className="button buttonQuiet buttonSmall"
-                  onClick={() =>
-                    void run("resume-all", () => resumePresence(config, {}), "All presence resumed.")
-                  }
+                  onClick={resumeAll}
                   disabled={Boolean(busy)}
                 >
                   <Play width={14} height={14} />
@@ -753,9 +857,7 @@ export function DashboardLive({ config, initialState, onDisconnect }: Props) {
                 </button>
               </div>
               <p className={styles.keepNote}>
-                {state.paused && state.pause_until
-                  ? `Paused until ${workspaceTime(state.pause_until)}.`
-                  : "Manual away in Slack is never overridden."}
+                {pauseNote}
               </p>
             </section>
 
@@ -776,7 +878,7 @@ export function DashboardLive({ config, initialState, onDisconnect }: Props) {
                 </p>
               ) : (
                 <ol className={styles.log}>
-                  {state.activity.slice(0, 14).map((entry, index) => (
+                  {state.activity.slice(0, ACTIVITY_LIMIT).map((entry, index) => (
                     <li key={`${entry.date}-${entry.time}-${index}`}>
                       <time>{entry.time}</time>
                       <i data-tone={entry.tone} aria-hidden="true" />
@@ -798,12 +900,13 @@ export function DashboardLive({ config, initialState, onDisconnect }: Props) {
                 <h2>Tokens never touch this page.</h2>
                 <p>
                   The dashboard has your daemon URL and access code, not your Slack
-                  credentials. Tokens live on the daemon&apos;s volume. The browser sends
-                  only schedule and presence commands over TLS.
+                  credentials. Tokens live in config.json on this machine; the browser
+                  talks to the daemon over loopback (127.0.0.1) and sends only schedule
+                  and presence commands.
                 </p>
               </div>
               <Link href="/start" className={styles.securityLink}>
-                Deployment notes
+                Setup notes
                 <ArrowRight width={14} height={14} />
               </Link>
             </section>

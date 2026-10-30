@@ -2,15 +2,14 @@
   "manifest_version": 3,
   "name": "Stillgreen — Slack token capture",
   "version": "1.0.0",
-  "description": "Reads your own signed-in Slack session and hands it to your own Stillgreen daemon on this machine. Nothing leaves your computer except to the daemon you choose.",
+  "description": "Reads your own signed-in Slack session and sends it only to the Stillgreen daemon URL you set, normally http://127.0.0.1:8765 on this machine.",
   "minimum_chrome_version": "116",
-  "permissions": ["cookies", "storage", "scripting", "tabs"],
+  "permissions": ["cookies", "storage", "scripting"],
   "host_permissions": [
     "https://*.slack.com/*",
     "http://127.0.0.1/*",
     "http://localhost/*"
   ],
-  "optional_host_permissions": ["https://*/*"],
   "background": {
     "service_worker": "background.js"
   },

@@ -17,13 +17,13 @@
 
     <main>
       <p class="lede">
-        Reads the Slack session already open in this browser and hands it to your own
-        daemon. Nothing is sent anywhere else.
+        Reads the Slack session already open in this browser and sends it only to the
+        daemon URL you set below, normally your own machine.
       </p>
 
       <label class="field">
         <span>Daemon URL</span>
-        <input id="daemonUrl" type="url" spellcheck="false" autocomplete="off" placeholder="http://127.0.0.1:8765" />
+        <input id="daemonUrl" type="text" inputmode="url" spellcheck="false" autocomplete="off" placeholder="http://127.0.0.1:8765" />
       </label>
 
       <label class="field">
@@ -35,6 +35,8 @@
         Capture from Slack
         <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M2 8h11M9 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </button>
+
+      <p id="target" class="target"></p>
 
       <div id="results" class="results" hidden></div>
 

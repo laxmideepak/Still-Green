@@ -1,4 +1,6 @@
 const DEFAULT_DAEMON = "http://127.0.0.1:8765";
+const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]"]);
+let daemonRunning = false;
 
 const daemonInput = document.getElementById("daemonUrl");
 const codeInput = document.getElementById("bridgeCode");
@@ -6,25 +8,73 @@ const captureButton = document.getElementById("capture");
 const results = document.getElementById("results");
 const status = document.getElementById("status");
 const hint = document.getElementById("hint");
+const target = document.getElementById("target");
 
 function setStatus(kind, text) {
   status.className = `status ${
-    kind === "live" ? "statusLive" : kind === "down" ? "statusDown" : "statusIdle"
+    kind === "live"
+      ? "statusLive"
+      : kind === "down"
+        ? "statusDown"
+        : kind === "warn"
+          ? "statusWarn"
+          : "statusIdle"
   }`;
   status.textContent = text;
 }
 
+// Scheme-less loopback addresses get http://, anything else https://.
 function normalizeUrl(value) {
-  const trimmed = String(value || "").trim();
+  let trimmed = String(value || "").trim();
   if (!trimmed) return DEFAULT_DAEMON;
+  if (!/^https?:\/\//i.test(trimmed)) {
+    const loopback = /^(localhost|127(?:\.\d{1,3}){3}|\[::1\])(?::\d*)?(?:[/?#]|$)/i.test(trimmed);
+    trimmed = `${loopback ? "http" : "https"}://${trimmed}`;
+  }
   return trimmed.replace(/\/+$/, "");
+}
+
+// Mirrors the check in background.js, which is the one that is enforced.
+function daemonUrlProblem(value) {
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    return "The daemon URL is not a valid URL.";
+  }
+  if (url.username || url.password) {
+    return "The daemon URL must not contain a username or password.";
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    return "The daemon URL must start with http:// or https://.";
+  }
+  if (url.protocol === "https:") return null;
+  if (url.protocol === "http:" && LOOPBACK_HOSTS.has(url.hostname)) return null;
+  return "Plain http is only allowed to this machine. Use http://127.0.0.1:8765 or an https:// URL.";
+}
+
+function normalizeCode(value) {
+  return String(value || "")
+    .replace(/[\u2010-\u2015\u2212]/g, "-")
+    .replace(/\s+/g, "")
+    .toUpperCase();
 }
 
 async function persist() {
   await chrome.storage.local.set({
     daemonUrl: normalizeUrl(daemonInput.value),
-    bridgeCode: codeInput.value.trim(),
+    bridgeCode: normalizeCode(codeInput.value),
   });
+}
+
+function showDestination() {
+  const url = normalizeUrl(daemonInput.value);
+  const problem = daemonUrlProblem(url);
+  if (problem) {
+    renderMessage("bad", problem);
+    return false;
+  }
+  return true;
 }
 
 function renderItems(items) {
@@ -63,8 +113,10 @@ function renderMessage(kind, text) {
 async function checkDaemon() {
   setStatus("idle", "Checking…");
   const response = await chrome.runtime.sendMessage({ type: "ping" });
+  daemonRunning = Boolean(response && response.ok && response.daemon);
   if (response && response.ok) {
-    setStatus("live", response.daemon ? "Daemon running" : "Reachable");
+    if (response.daemon) setStatus("live", "Daemon running");
+    else setStatus("warn", "Daemon stopped: run ./sg-local start");
   } else {
     setStatus("down", "Not reachable");
   }
@@ -77,11 +129,25 @@ async function load() {
   });
   daemonInput.value = stored.daemonUrl || DEFAULT_DAEMON;
   codeInput.value = stored.bridgeCode || "";
+  updateTarget();
   await checkDaemon();
+}
+
+function updateTarget() {
+  let host = "";
+  try {
+    host = new URL(normalizeUrl(daemonInput.value)).host;
+  } catch {
+    host = "";
+  }
+  target.textContent = host ? `Sends only to ${host}` : "";
 }
 
 daemonInput.addEventListener("change", () => {
   daemonInput.value = normalizeUrl(daemonInput.value);
+  updateTarget();
+  if (!showDestination()) return;
+  results.hidden = true;
   persist().then(checkDaemon);
 });
 
@@ -90,6 +156,9 @@ codeInput.addEventListener("input", () => {
 });
 
 captureButton.addEventListener("click", async () => {
+  daemonInput.value = normalizeUrl(daemonInput.value);
+  updateTarget();
+  if (!showDestination()) return;
   await persist();
   captureButton.disabled = true;
   const original = captureButton.firstChild.textContent;
@@ -106,8 +175,9 @@ captureButton.addEventListener("click", async () => {
     } else {
       renderItems(result.workspaces);
       if (result.ok) {
-        hint.textContent =
-          "Done. Open the dashboard — the daemon will pick up the workspace on its next tick.";
+        hint.textContent = daemonRunning
+          ? "Done. Open the dashboard — the daemon will pick up the workspace on its next tick."
+          : "Saved. Start the daemon with ./sg-local start to bring it online.";
       }
     }
   } catch {

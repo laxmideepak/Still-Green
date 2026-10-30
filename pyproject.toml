@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Personal, local Slack presence daemon (slack.green-style, self-hosted)"
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = ["websockets>=12"]
+dependencies = ["websockets>=14"]
 
 [project.urls]
 Homepage = "https://github.com/laxmideepak/slack"
@@ -18,3 +18,6 @@ sg-local = "sg_local.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["sg_local*"]
+
+[tool.setuptools.package-data]
+sg_local = ["static/*"]

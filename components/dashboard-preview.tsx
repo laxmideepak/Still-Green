@@ -18,15 +18,16 @@ import {
 } from "./icons";
 import styles from "./dashboard-preview.module.css";
 
-type Mode = "scheduled" | "always" | "paused";
+// Matches the daemon: one window for every active day, two schedule modes, and
+// pause as a separate override.
+type Mode = "scheduled" | "always";
+type View = Mode | "paused";
 
 type Day = {
   key: string;
   label: string;
   long: string;
   enabled: boolean;
-  start: string;
-  end: string;
 };
 
 type Tone = "green" | "muted" | "amber";
@@ -39,13 +40,13 @@ type Entry = {
 };
 
 const initialDays: Day[] = [
-  { key: "mon", label: "Mon", long: "Monday", enabled: true, start: "09:00", end: "17:00" },
-  { key: "tue", label: "Tue", long: "Tuesday", enabled: true, start: "09:00", end: "17:00" },
-  { key: "wed", label: "Wed", long: "Wednesday", enabled: true, start: "09:00", end: "17:00" },
-  { key: "thu", label: "Thu", long: "Thursday", enabled: true, start: "09:00", end: "17:00" },
-  { key: "fri", label: "Fri", long: "Friday", enabled: true, start: "09:00", end: "17:00" },
-  { key: "sat", label: "Sat", long: "Saturday", enabled: false, start: "10:00", end: "14:00" },
-  { key: "sun", label: "Sun", long: "Sunday", enabled: false, start: "10:00", end: "14:00" },
+  { key: "monday", label: "Mon", long: "Monday", enabled: true },
+  { key: "tuesday", label: "Tue", long: "Tuesday", enabled: true },
+  { key: "wednesday", label: "Wed", long: "Wednesday", enabled: true },
+  { key: "thursday", label: "Thu", long: "Thursday", enabled: true },
+  { key: "friday", label: "Fri", long: "Friday", enabled: true },
+  { key: "saturday", label: "Sat", long: "Saturday", enabled: false },
+  { key: "sunday", label: "Sun", long: "Sunday", enabled: false },
 ];
 
 const initialEntries: Entry[] = [
@@ -58,7 +59,6 @@ const initialEntries: Entry[] = [
 const modes: Array<{ id: Mode; label: string }> = [
   { id: "scheduled", label: "Scheduled" },
   { id: "always", label: "Always on" },
-  { id: "paused", label: "Paused" },
 ];
 
 const zones = [
@@ -70,7 +70,7 @@ const zones = [
   "UTC",
 ];
 
-const modeCopy: Record<Mode, { title: string; detail: string; change: string; progress: string }> = {
+const modeCopy: Record<View, { title: string; detail: string; change: string; progress: string }> = {
   scheduled: {
     title: "Online",
     detail: "Inside today's window",
@@ -96,10 +96,11 @@ function toMinutes(value: string) {
   return hours * 60 + minutes;
 }
 
-function dailyHours(day: Day) {
-  if (!day.enabled) return 0;
-  const start = toMinutes(day.start);
-  const end = toMinutes(day.end);
+function windowHours(startTime: string, endTime: string) {
+  if (!startTime || !endTime) return 0;
+  const start = toMinutes(startTime);
+  const end = toMinutes(endTime);
+  if (start === end) return 0;
   const span = end > start ? end - start : end + 24 * 60 - start;
   return span / 60;
 }
@@ -115,19 +116,21 @@ type DashboardPreviewProps = {
 
 export function DashboardPreview({ topSlot }: DashboardPreviewProps = {}) {
   const [mode, setMode] = useState<Mode>("scheduled");
+  const [paused, setPaused] = useState(false);
   const [days, setDays] = useState<Day[]>(initialDays);
+  const [windowStart, setWindowStart] = useState("09:00");
+  const [windowEnd, setWindowEnd] = useState("17:00");
   const [zone, setZone] = useState(zones[0]);
   const [entries, setEntries] = useState<Entry[]>(initialEntries);
   const [announcement, setAnnouncement] = useState("Preview ready. Sample data only.");
   const [counter, setCounter] = useState(5);
 
   const activeDays = days.filter((day) => day.enabled);
-  const weeklyHours = useMemo(
-    () => days.reduce((total, day) => total + dailyHours(day), 0),
-    [days],
-  );
-  const current = modeCopy[mode];
-  const today = days[2];
+  const dayHours = windowHours(windowStart, windowEnd);
+  const weeklyHours = useMemo(() => activeDays.length * dayHours, [activeDays.length, dayHours]);
+  const view: View = paused ? "paused" : mode;
+  const current = modeCopy[view];
+  const today = { ...days[2], start: windowStart, end: windowEnd };
   const todayStart = (toMinutes(today.start) / 1440) * 100;
   const todayEnd = Math.max(
     todayStart + 4,
@@ -145,7 +148,13 @@ export function DashboardPreview({ topSlot }: DashboardPreviewProps = {}) {
   function applyMode(next: Mode, message: string) {
     setMode(next);
     setAnnouncement(message);
-    log(message, next === "paused" ? "amber" : "green");
+    log(message, "green");
+  }
+
+  function applyPause(next: boolean, message: string) {
+    setPaused(next);
+    setAnnouncement(message);
+    log(message, next ? "amber" : "green");
   }
 
   function toggleDay(key: string) {
@@ -156,18 +165,11 @@ export function DashboardPreview({ topSlot }: DashboardPreviewProps = {}) {
     );
   }
 
-  function setDayTime(key: string, field: "start" | "end", value: string) {
-    if (!value) return;
-    setDays((previous) =>
-      previous.map((day) => (day.key === key ? { ...day, [field]: value } : day)),
-    );
-  }
-
   function applyPreset(preset: "weekdays" | "everyday" | "clear") {
     setDays((previous) =>
       previous.map((day) => ({
         ...day,
-        enabled: preset === "everyday" ? true : preset === "weekdays" ? day.key !== "sat" && day.key !== "sun" : false,
+        enabled: preset === "everyday" ? true : preset === "weekdays" ? day.key !== "saturday" && day.key !== "sunday" : false,
       })),
     );
     setAnnouncement(
@@ -219,23 +221,23 @@ export function DashboardPreview({ topSlot }: DashboardPreviewProps = {}) {
             <div className={styles.presenceBody}>
               <div
                 className={styles.seal}
-                data-mode={mode}
+                data-mode={view}
                 style={{ "--progress": current.progress } as CSSProperties}
                 aria-hidden="true"
               >
                 <div className={styles.sealFace}>
                   <span>Presence</span>
-                  <strong>{mode === "paused" ? "Away" : "Active"}</strong>
+                  <strong>{paused ? "Away" : "Active"}</strong>
                   <small>{current.detail}</small>
                 </div>
               </div>
               <div className={styles.presenceCopy}>
                 <div className={styles.cardLabel}>
-                  <span className={styles.liveDot} data-mode={mode} aria-hidden="true" />
-                  {mode === "paused" ? "Paused" : mode === "always" ? "Always on" : "Scheduled"}
+                  <span className={styles.liveDot} data-mode={view} aria-hidden="true" />
+                  {paused ? "Paused" : mode === "always" ? "Always on" : "Scheduled"}
                 </div>
                 <h2 id="presence-heading">{current.title}</h2>
-                <p>{mode === "paused" ? "The daemon is disconnected. Slack shows your manual status." : "The daemon holds the session open and checks presence every minute."}</p>
+                <p>{paused ? "The daemon is disconnected. Slack shows your manual status." : "The daemon holds the session open and checks presence every minute."}</p>
                 <div className={styles.changeRow}>
                   <Clock width={14} height={14} />
                   <span>
@@ -255,11 +257,9 @@ export function DashboardPreview({ topSlot }: DashboardPreviewProps = {}) {
                   onClick={() =>
                     applyMode(
                       item.id,
-                      item.id === "paused"
-                        ? "Session paused for preview."
-                        : item.id === "always"
-                          ? "Always on selected for preview."
-                          : "Schedule selected for preview.",
+                      item.id === "always"
+                        ? "Always on selected for preview."
+                        : "Schedule selected for preview.",
                     )
                   }
                 >
@@ -275,7 +275,7 @@ export function DashboardPreview({ topSlot }: DashboardPreviewProps = {}) {
                 <h2 id="session-heading">Session</h2>
                 <span className={styles.statusPill}>
                   <span aria-hidden="true" />
-                  {mode === "paused" ? "Idle" : "Sample daemon"}
+                  {paused ? "Idle" : "Sample daemon"}
                 </span>
               </div>
               <dl className={styles.sessionList}>
@@ -332,7 +332,7 @@ export function DashboardPreview({ topSlot }: DashboardPreviewProps = {}) {
                 <button
                   type="button"
                   className={styles.quickButton}
-                  onClick={() => applyMode("paused", "Paused for 1 hour in preview.")}
+                  onClick={() => applyPause(true, "Paused for 1 hour in preview.")}
                 >
                   <Pause width={16} height={16} />
                   Pause 1h
@@ -340,7 +340,7 @@ export function DashboardPreview({ topSlot }: DashboardPreviewProps = {}) {
                 <button
                   type="button"
                   className={styles.quickButton}
-                  onClick={() => applyMode("scheduled", "Session resumed in preview.")}
+                  onClick={() => applyPause(false, "Session resumed in preview.")}
                 >
                   <Play width={16} height={16} />
                   Resume
@@ -359,7 +359,7 @@ export function DashboardPreview({ topSlot }: DashboardPreviewProps = {}) {
                 <button
                   type="button"
                   className={styles.quickButton}
-                  onClick={() => applyMode("paused", "Session stopped in preview.")}
+                  onClick={() => applyPause(true, "Session stopped in preview.")}
                 >
                   <Lock width={16} height={16} />
                   Stop session
@@ -414,7 +414,10 @@ export function DashboardPreview({ topSlot }: DashboardPreviewProps = {}) {
             <div className={styles.scheduleHead}>
               <div>
                 <h2 id="schedule-heading">Schedule</h2>
-                <p>Click a day to include or exclude it. Times use your chosen timezone.</p>
+                <p>
+                  Click a day to include or exclude it. One window applies to every active
+                  day, in your chosen timezone.
+                </p>
               </div>
               <div className={styles.presets} role="group" aria-label="Schedule presets">
                 <button type="button" onClick={() => applyPreset("weekdays")}>
@@ -427,6 +430,24 @@ export function DashboardPreview({ topSlot }: DashboardPreviewProps = {}) {
                   Clear
                 </button>
               </div>
+            </div>
+
+            <div className={`${styles.timeRange} ${styles.windowRow}`}>
+              <label htmlFor="window-start">Start</label>
+              <input
+                id="window-start"
+                type="time"
+                value={windowStart}
+                onChange={(event) => event.target.value && setWindowStart(event.target.value)}
+              />
+              <span aria-hidden="true">–</span>
+              <label htmlFor="window-end">End</label>
+              <input
+                id="window-end"
+                type="time"
+                value={windowEnd}
+                onChange={(event) => event.target.value && setWindowEnd(event.target.value)}
+              />
             </div>
 
             <div className={styles.dayList}>
@@ -445,34 +466,14 @@ export function DashboardPreview({ topSlot }: DashboardPreviewProps = {}) {
                     <span className={styles.dayName}>{day.label}</span>{" "}
                     <span className={styles.dayLong}>{day.long}</span>
                   </button>
-                  <div className={styles.timeRange}>
-                    <label className="visuallyHidden" htmlFor={`${day.key}-start`}>
-                      {day.long} start time
-                    </label>
-                    <input
-                      id={`${day.key}-start`}
-                      type="time"
-                      value={day.start}
-                      disabled={!day.enabled}
-                      onChange={(event) => setDayTime(day.key, "start", event.target.value)}
-                    />
-                    <span aria-hidden="true">–</span>
-                    <label className="visuallyHidden" htmlFor={`${day.key}-end`}>
-                      {day.long} end time
-                    </label>
-                    <input
-                      id={`${day.key}-end`}
-                      type="time"
-                      value={day.end}
-                      disabled={!day.enabled}
-                      onChange={(event) => setDayTime(day.key, "end", event.target.value)}
-                    />
-                  </div>
+                  <span className={styles.timeRange}>
+                    {day.enabled ? `${windowStart} – ${windowEnd}` : "—"}
+                  </span>
                   <span className={styles.dayHours}>
-                    {day.enabled ? formatHours(dailyHours(day)) : "—"}
+                    {day.enabled ? formatHours(dayHours) : "—"}
                   </span>
                   <span className={styles.night}>
-                    {day.enabled && toMinutes(day.end) <= toMinutes(day.start) ? "overnight" : ""}
+                    {day.enabled && toMinutes(windowEnd) < toMinutes(windowStart) ? "overnight" : ""}
                   </span>
                 </div>
               ))}
