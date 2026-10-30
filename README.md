@@ -12,6 +12,7 @@
 </p>
 
 <p align="center">
+  <a href="https://stillgreen.vercel.app"><img src="https://img.shields.io/badge/live%20dashboard-stillgreen.vercel.app-0e7a4d?style=flat-square" alt="Live dashboard"></a>
   <a href="https://github.com/laxmideepak/slack/stargazers"><img src="https://img.shields.io/github/stars/laxmideepak/slack?style=flat-square&amp;color=0e7a4d&amp;label=stars" alt="GitHub stars"></a>
   <a href="https://nextjs.org"><img src="https://img.shields.io/badge/Next.js-16-14231a?style=flat-square&amp;logo=nextdotjs&amp;logoColor=white" alt="Next.js 16"></a>
   <a href="https://www.python.org"><img src="https://img.shields.io/badge/Python-3.11%2B-14231a?style=flat-square&amp;logo=python&amp;logoColor=white" alt="Python 3.11+"></a>
@@ -20,6 +21,7 @@
 </p>
 
 <p align="center">
+  <a href="https://stillgreen.vercel.app/dashboard"><strong>Live dashboard</strong></a> ·
   <a href="#product-tour"><strong>Product tour</strong></a> ·
   <a href="#how-it-works"><strong>How it works</strong></a> ·
   <a href="#cloud-setup-recommended"><strong>Cloud setup</strong></a> ·
@@ -102,9 +104,9 @@ flowchart LR
 
 Three steps, about five minutes. You need a Vercel account and one always-on host.
 
-### 1. Deploy the dashboard to Vercel
+### 1. Open the dashboard
 
-Import <https://github.com/laxmideepak/slack> at <https://vercel.com/new>. Keep the repository root as the root directory; Vercel detects Next.js automatically. No environment variables or database are required.
+The dashboard is already live at **<https://stillgreen.vercel.app>**. Use it as-is, or deploy your own copy: import <https://github.com/laxmideepak/slack> at <https://vercel.com/new>, keep the repository root as the root directory, and deploy. Vercel detects Next.js automatically. No environment variables or database are required, and the site is fully static.
 
 ### 2. Deploy the daemon
 
@@ -305,7 +307,7 @@ Dockerfile            daemon image for Fly, Render, Railway, or a VPS
 
 **Working today:** presence daemon, weekly schedules, global and per-workspace pause, stay-online overrides, multi-workspace support, local and cloud control surfaces, dashboard pairing, Docker/Fly/Render/Railway deployment files, and 65 passing unit tests.
 
-**Not shipped:** a public hosted demo, a managed cloud offering, and a browser extension. The dashboard is honest about this — it stays a preview until you connect a daemon.
+**Not shipped:** a managed cloud offering (you run the daemon yourself), and a browser extension. The dashboard stays an explicit preview until you connect a daemon — there is no sample data pretending to be live.
 
 ## Contributing
 

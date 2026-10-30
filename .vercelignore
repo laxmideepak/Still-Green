@@ -1,0 +1,17 @@
+# The Vercel deployment is the dashboard only.
+# The presence daemon, its tests, and its deployment files never ship here.
+sg_local/
+tests/
+docs/
+Dockerfile
+docker-compose.yml
+fly.toml
+render.yaml
+railway.json
+install.sh
+sg-local
+pyproject.toml
+requirements.txt
+.pytest_cache/
+__pycache__/
+*.py
