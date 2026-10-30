@@ -31,17 +31,8 @@ import {
   type DaemonState,
   type WorkspaceState,
 } from "@/lib/bridge";
+import { DAYS, WEEKDAY_KEYS, initials, statusTone, weeklyHours } from "@/lib/dashboard";
 import styles from "./dashboard-live.module.css";
-
-const DAYS = [
-  { key: "monday", label: "Mon" },
-  { key: "tuesday", label: "Tue" },
-  { key: "wednesday", label: "Wed" },
-  { key: "thursday", label: "Thu" },
-  { key: "friday", label: "Fri" },
-  { key: "saturday", label: "Sat" },
-  { key: "sunday", label: "Sun" },
-];
 
 const stays = ["30m", "1h", "2h", "4h", "8h"];
 
@@ -71,51 +62,6 @@ function draftFromSchedule(schedule: DaemonState["schedule"]): ScheduleDraft {
     end: schedule.end_time || "17:00",
     timezone: schedule.timezone || "local",
   };
-}
-
-function initials(name: string) {
-  return (
-    name
-      .split(/\s+/)
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((part) => part[0]?.toUpperCase())
-      .join("") || "S"
-  );
-}
-
-function toMinutes(value: string) {
-  const [hours, minutes] = (value || "0:0").split(":").map(Number);
-  return (hours || 0) * 60 + (minutes || 0);
-}
-
-function weeklyHours(days: string[], start: string, end: string) {
-  if (!days.length || !start || !end) return 0;
-  const span = toMinutes(end) - toMinutes(start);
-  if (span === 0) return 0;
-  const hours = (span > 0 ? span : span + 1440) / 60;
-  return days.length * hours;
-}
-
-// Green only for a confirmed active session; unknown statuses never look online.
-function statusTone(status: string) {
-  if (status === "active") return "green";
-  if (
-    [
-      "connected",
-      "starting",
-      "reconnecting",
-      "restarting",
-      "invalid_token",
-      "invalid_config",
-      "error",
-      "away",
-      "auto_away",
-    ].includes(status)
-  ) {
-    return "amber";
-  }
-  return "muted";
 }
 
 function clockTime(ms: number) {
@@ -287,7 +233,7 @@ export function DashboardLive({ config, initialState, onDisconnect, onReconnect 
     updateDraft({
       days:
         kind === "weekdays"
-          ? DAYS.slice(0, 5).map((day) => day.key)
+          ? [...WEEKDAY_KEYS]
           : kind === "everyday"
             ? DAYS.map((day) => day.key)
             : [],
@@ -763,7 +709,7 @@ export function DashboardLive({ config, initialState, onDisconnect, onReconnect 
                     {invalidWindow
                       ? "Start and end must be set and differ"
                       : mode === "scheduled"
-                        ? `${weeklyHours(days, start, end).toFixed(1)}h / week · ${days.length} days`
+                        ? `${weeklyHours(days.length, start, end).toFixed(1)}h / week · ${days.length} days`
                         : "24 / 7"}
                   </span>
                   <span>
