@@ -1,0 +1,61 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    name: Python tests (${{ matrix.python }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.11 is the oldest version pyproject.toml allows.
+        python: ["3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install dependencies
+        run: python -m pip install websockets pytest
+      - name: Run unit and end-to-end tests
+        run: python -m pytest -q
+
+  browser:
+    name: Type check, build and browser tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      # The browser tests start the real daemon and fake Slack from tests/e2e.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install dependencies
+        run: |
+          npm ci
+          python -m pip install websockets
+      # Full Chromium, not only the headless shell: the extension test loads
+      # the unpacked extension, which the headless shell cannot do.
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Type check
+        run: npx tsc --noEmit
+      - name: Build the dashboard and run the browser tests
+        run: npm run test:e2e
