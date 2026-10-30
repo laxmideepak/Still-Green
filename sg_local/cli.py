@@ -7,11 +7,12 @@ import getpass
 import os
 import stat
 import sys
+import threading
 import time
 from datetime import datetime, timezone
 from typing import Any
 
-from . import __version__, config, launchd, schedule, state
+from . import __version__, config, launchd, schedule, state, web
 from .slack import SlackAPIError, SlackClient, redact
 
 TOKEN_HELP = """\
@@ -20,12 +21,18 @@ How to get the two Slack values
 Use the Slack web app in a desktop browser (not the desktop app):
 
 1. Open your workspace at https://app.slack.com and sign in.
-2. Open DevTools (Cmd+Option+I on macOS) and switch to Console.
-3. Run:
+2. Open DevTools (Cmd+Option+I on macOS), select Network, and reload.
+   Find the xoxc token using either network path:
+     - Filter by "api", open a request such as client.boot or
+       users.getPresence, and look in Payload/Form Data for "token".
+     - Or filter by "WS", open wss-primary.slack.com, and copy the
+       token=xoxc-... value from the Request URL (stop at "&").
+   Newer Slack builds may not keep the token in localStorage. If yours
+   still does, this also works in the Console:
      JSON.parse(localStorage.localConfig_v2).teams
-   Find your workspace and copy its "token" value (starts with xoxc-).
-4. In DevTools, open Application > Cookies > https://app.slack.com
+3. In DevTools, open Application > Cookies > https://app.slack.com
    and copy the value of the cookie named "d" (starts with xoxd-).
+   It is HttpOnly, so document.cookie will not show it.
 
 The tokens are read with hidden input, verified against Slack, and stored
 only in your local config file with mode 0600. Treat them like a password:
@@ -760,6 +767,56 @@ def cmd_logs(args: argparse.Namespace) -> int:
             current.close()
 
 
+# ------------------------------------------------------------- web / cloud
+
+
+def cmd_web(args: argparse.Namespace) -> int:
+    """Serve the control surface. Local mode is loopback-only by default."""
+    config.ensure_dirs()
+    host = args.host or os.environ.get("SG_LOCAL_WEB_HOST", "127.0.0.1")
+    port = int(args.port or os.environ.get("SG_LOCAL_WEB_PORT", web.DEFAULT_PORT))
+    if args.show_code:
+        print(web.load_code())
+        return 0
+    if args.daemon and not state.daemon_pid():
+        ok, message = state.start_daemon()
+        print(message)
+        if not ok:
+            return 1
+    code = web.load_code()
+    if host not in {"127.0.0.1", "::1", "localhost"}:
+        print("Cloud mode: protect this origin with HTTPS and set SG_LOCAL_WEB_ORIGIN.")
+        print("Access code: set SG_LOCAL_BRIDGE_CODE in the deployment secrets.")
+        if not os.environ.get("SG_LOCAL_BRIDGE_CODE"):
+            print(f"Generated code (stored in {web.BRIDGE_PATH}): {code}")
+    if args.open:
+        threading.Timer(0.7, lambda: __import__("webbrowser").open(f"http://127.0.0.1:{port}")).start()
+    web.serve(host, port)
+    return 0
+
+
+def cmd_cloud(args: argparse.Namespace) -> int:
+    """Run the presence daemon and its HTTPS-proxied control surface together."""
+    from . import daemon as daemon_module
+
+    config.ensure_dirs()
+    host = args.host or os.environ.get("SG_LOCAL_WEB_HOST", "0.0.0.0")
+    port = int(args.port or os.environ.get("PORT") or os.environ.get("SG_LOCAL_WEB_PORT") or web.DEFAULT_PORT)
+    code = web.load_code()
+    server = web.make_server(host, port)
+    server_thread = threading.Thread(target=server.serve_forever, name="stillgreen-web", daemon=True)
+    server_thread.start()
+    print(f"Control surface listening on {host}:{port}")
+    if not os.environ.get("SG_LOCAL_BRIDGE_CODE"):
+        print(f"Access code (set SG_LOCAL_BRIDGE_CODE to choose your own): {code}")
+    print("Presence daemon starting. Keep this process running.")
+    try:
+        return daemon_module.main()
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
 # ---------------------------------------------------------------- launchd
 
 
@@ -879,6 +936,25 @@ def build_parser() -> argparse.ArgumentParser:
         help="verify each workspace's tokens with Slack (network call)",
     )
     doctor.set_defaults(func=cmd_doctor)
+
+    web_cmd = sub.add_parser(
+        "web",
+        help="serve the local control surface (status, schedule, add workspace)",
+    )
+    web_cmd.add_argument("--host", default=os.environ.get("SG_LOCAL_WEB_HOST", "127.0.0.1"))
+    web_cmd.add_argument("--port", type=int, default=int(os.environ.get("SG_LOCAL_WEB_PORT", web.DEFAULT_PORT)))
+    web_cmd.add_argument("--daemon", action="store_true", help="start the presence daemon first")
+    web_cmd.add_argument("--open", action="store_true", help="open the control surface in a browser")
+    web_cmd.add_argument("--show-code", action="store_true", help="print the access code and exit")
+    web_cmd.set_defaults(func=cmd_web)
+
+    cloud = sub.add_parser(
+        "cloud",
+        help="run the daemon and control surface together (for Docker/cloud hosts)",
+    )
+    cloud.add_argument("--host", default=os.environ.get("SG_LOCAL_WEB_HOST", "0.0.0.0"))
+    cloud.add_argument("--port", type=int, default=int(os.environ.get("PORT") or os.environ.get("SG_LOCAL_WEB_PORT") or web.DEFAULT_PORT))
+    cloud.set_defaults(func=cmd_cloud)
 
     logs = sub.add_parser("logs", help="show or follow the daemon log")
     logs.add_argument("-n", "--lines", type=int, default=80, help="lines to show (default 80)")

@@ -1,0 +1,994 @@
+/* ── Masthead ───────────────────────────────────────────────────── */
+
+.main {
+  padding-bottom: 0;
+}
+
+.masthead {
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 84% 12%, rgba(34, 189, 119, 0.18), transparent 42%),
+    var(--ink);
+  color: var(--paper);
+}
+
+.mastheadInner {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+  align-items: end;
+  gap: clamp(38px, 6vw, 88px);
+  padding-block: clamp(64px, 8vw, 104px) clamp(50px, 6vw, 76px);
+}
+
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: rgba(241, 246, 237, 0.58);
+  font-size: 0.76rem;
+  font-weight: 550;
+}
+
+.eyebrow span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--green-bright);
+  box-shadow: 0 0 0 4px rgba(34, 189, 119, 0.16);
+}
+
+.masthead h1 {
+  margin-top: 16px;
+  font-family: var(--display);
+  font-size: clamp(3rem, 6vw, 4.8rem);
+  font-weight: 650;
+  letter-spacing: -0.065em;
+  line-height: 0.94;
+}
+
+.dot {
+  color: var(--green-bright);
+}
+
+.lede {
+  max-width: 34rem;
+  margin-top: 20px;
+  color: rgba(241, 246, 237, 0.64);
+  font-size: clamp(0.98rem, 1.3vw, 1.08rem);
+  line-height: 1.65;
+  text-wrap: pretty;
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border-top: 1px solid rgba(241, 246, 237, 0.16);
+  border-left: 1px solid rgba(241, 246, 237, 0.16);
+}
+
+.facts > div {
+  padding: 16px 18px;
+  border-right: 1px solid rgba(241, 246, 237, 0.16);
+  border-bottom: 1px solid rgba(241, 246, 237, 0.16);
+}
+
+.facts dt {
+  color: rgba(241, 246, 237, 0.46);
+  font-size: 0.66rem;
+}
+
+.facts dd {
+  margin-top: 4px;
+  color: var(--paper);
+  font-size: 0.84rem;
+  font-weight: 550;
+}
+
+/* ── Layout ─────────────────────────────────────────────────────── */
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  align-items: start;
+  gap: clamp(38px, 5vw, 72px);
+  padding-block: clamp(56px, 7vw, 88px);
+}
+
+.content {
+  display: grid;
+  gap: clamp(56px, 7vw, 88px);
+  min-width: 0;
+}
+
+.content h2 {
+  font-family: var(--display);
+  font-weight: 650;
+  letter-spacing: -0.05em;
+  line-height: 1.03;
+  text-wrap: balance;
+}
+
+/* ── Where it runs ──────────────────────────────────────────────── */
+
+.where {
+  display: grid;
+  gap: 24px;
+}
+
+.whereCopy {
+  max-width: 44rem;
+}
+
+.whereCopy h2 {
+  font-size: clamp(1.8rem, 3.2vw, 2.6rem);
+}
+
+.whereCopy p {
+  max-width: 40rem;
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: 0.94rem;
+  line-height: 1.65;
+}
+
+.diagram {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 42px minmax(0, 1fr);
+  align-items: stretch;
+  gap: 0;
+}
+
+.machine,
+.hosted {
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+
+.machine {
+  background: var(--sage);
+}
+
+.hosted {
+  background: var(--paper-raised);
+}
+
+.diagramHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+  font-family: var(--display);
+  font-size: 0.98rem;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+}
+
+.diagramDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--green-bright);
+  box-shadow: 0 0 0 4px rgba(34, 189, 119, 0.15);
+}
+
+.diagramHollow {
+  width: 8px;
+  height: 8px;
+  border: 1.5px solid var(--line-strong);
+  border-radius: 50%;
+}
+
+.diagram ul {
+  display: grid;
+  gap: 8px;
+  margin-top: 13px;
+}
+
+.diagram li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: var(--ink-soft);
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.diagram li svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+  color: var(--green);
+}
+
+.hosted li svg {
+  color: var(--muted);
+}
+
+.connector {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  color: var(--muted);
+}
+
+.connector span {
+  width: 10px;
+  border-top: 1px dashed var(--line-strong);
+}
+
+/* ── Steps ──────────────────────────────────────────────────────── */
+
+.stepsSection {
+  display: grid;
+  gap: 12px;
+}
+
+.stepsHead {
+  max-width: 38rem;
+  margin-bottom: 14px;
+}
+
+.stepsHead h2 {
+  font-size: clamp(1.9rem, 3.4vw, 2.75rem);
+}
+
+.stepsHead p {
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: 0.94rem;
+  line-height: 1.6;
+}
+
+.steps {
+  display: grid;
+}
+
+.step {
+  display: grid;
+  grid-template-columns: 62px minmax(0, 1fr);
+  gap: 22px;
+  padding-block: clamp(26px, 3.4vw, 38px);
+  border-top: 1px solid var(--line);
+}
+
+.step:last-child {
+  border-bottom: 1px solid var(--line);
+}
+
+.stepNumber {
+  padding-top: 4px;
+  color: var(--muted);
+  font-family: var(--display);
+  font-size: 1.5rem;
+  font-weight: 650;
+  letter-spacing: -0.04em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.stepBody {
+  min-width: 0;
+}
+
+.stepBody h3 {
+  font-family: var(--display);
+  font-size: clamp(1.25rem, 2vw, 1.52rem);
+  font-weight: 600;
+  letter-spacing: -0.04em;
+  line-height: 1.12;
+}
+
+.stepBody > p {
+  max-width: 40rem;
+  margin-top: 9px;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.65;
+}
+
+.stepBody a {
+  color: var(--ink);
+  font-weight: 550;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.18em;
+}
+
+.stepBody a:hover {
+  color: var(--green);
+}
+
+.stepBody code,
+.finePrint code,
+.warning code,
+.tokenCard p code,
+.trouble code {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.84em;
+  color: var(--ink-soft);
+}
+
+.finePrint {
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: 0.76rem;
+  line-height: 1.6;
+}
+
+/* ── Commands ───────────────────────────────────────────────────── */
+
+.command {
+  margin-top: 16px;
+  border: 1px solid rgba(20, 35, 26, 0.5);
+  border-radius: 12px;
+  background: #0d1912;
+  overflow: hidden;
+}
+
+.commandTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 32px;
+  padding: 6px 8px 0 14px;
+}
+
+.commandTop > span {
+  color: rgba(241, 246, 237, 0.64);
+  font-size: 0.64rem;
+}
+
+.copyButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 26px;
+  margin-left: auto;
+  padding: 0 8px;
+  border: 1px solid rgba(241, 246, 237, 0.16);
+  border-radius: 6px;
+  background: transparent;
+  color: rgba(241, 246, 237, 0.58);
+  font-size: 0.64rem;
+  font-weight: 600;
+  transition:
+    background-color 150ms ease,
+    color 150ms ease;
+}
+
+.copyButton:hover {
+  background: rgba(241, 246, 237, 0.1);
+  color: var(--paper);
+}
+
+.command pre {
+  margin: 0;
+  padding: 8px 16px 15px;
+  overflow-x: auto;
+  color: rgba(241, 246, 237, 0.9);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: clamp(0.72rem, 1.1vw, 0.79rem);
+  line-height: 1.7;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.command pre span {
+  color: var(--green-bright);
+}
+
+.command code {
+  color: inherit;
+  font-family: inherit;
+  font-size: inherit;
+}
+
+.commandCompact {
+  margin-top: 12px;
+}
+
+.commandCompact .commandTop {
+  justify-content: flex-end;
+}
+
+.commandCompact pre {
+  padding-top: 5px;
+}
+
+/* ── Tokens ─────────────────────────────────────────────────────── */
+
+.tokenGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.tokenCard {
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--paper-raised);
+}
+
+.tokenTag {
+  display: inline-block;
+  padding: 3px 7px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--sage);
+  color: var(--ink-soft);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.66rem;
+}
+
+.tokenCard h3 {
+  margin-top: 11px;
+  font-size: 0.92rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+
+.tokenCard p {
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.55;
+}
+
+.tokenSteps {
+  counter-reset: token-step;
+  display: grid;
+  gap: 7px;
+  margin-top: 11px;
+}
+
+.tokenSteps li {
+  position: relative;
+  padding-left: 21px;
+  color: var(--ink-soft);
+  font-size: 0.76rem;
+  line-height: 1.5;
+}
+
+.tokenSteps li::before {
+  counter-increment: token-step;
+  content: counter(token-step);
+  position: absolute;
+  top: 0.1em;
+  left: 0;
+  display: grid;
+  width: 14px;
+  height: 14px;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  color: var(--green);
+  font-size: 0.56rem;
+  font-weight: 600;
+}
+
+.tokenSteps strong {
+  color: var(--ink);
+  font-weight: 650;
+}
+
+.tokenFine {
+  padding-top: 9px;
+  border-top: 1px dashed var(--line);
+}
+
+.fallback {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--line);
+}
+
+.fallback summary {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  list-style: none;
+}
+
+.fallback summary::-webkit-details-marker {
+  display: none;
+}
+
+.fallback summary::before {
+  content: "+";
+  display: inline-block;
+  width: 13px;
+  color: var(--green);
+}
+
+.fallback[open] summary::before {
+  content: "−";
+}
+
+.warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px solid rgba(154, 103, 17, 0.22);
+  border-radius: 10px;
+  background: var(--amber-soft);
+  color: #6e4a0d;
+  font-size: 0.78rem;
+  line-height: 1.55;
+}
+
+.warning svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+.pathRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+  padding-top: 13px;
+  border-top: 1px dashed var(--line);
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.pathRow code {
+  padding: 5px 7px;
+  border-radius: 6px;
+  background: var(--sage);
+  font-size: 0.72rem;
+  overflow-wrap: anywhere;
+}
+
+.pathMode {
+  padding: 3px 6px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  color: var(--green);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.64rem;
+  font-weight: 600;
+}
+
+.exampleRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px 16px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--line);
+}
+
+.exampleRow code {
+  color: var(--ink-soft);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.76rem;
+}
+
+.exampleRow span {
+  color: var(--muted);
+  font-size: 0.74rem;
+}
+
+/* ── Security ───────────────────────────────────────────────────── */
+
+.security {
+  display: grid;
+  gap: 26px;
+}
+
+.securityHead {
+  max-width: 42rem;
+}
+
+.securityTag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--green);
+  font-size: 0.74rem;
+  font-weight: 600;
+}
+
+.securityHead h2 {
+  margin-top: 12px;
+  font-size: clamp(1.9rem, 3.4vw, 2.75rem);
+}
+
+.securityHead p {
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: 0.94rem;
+  line-height: 1.65;
+}
+
+.securityGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border-top: 1px solid var(--line-strong);
+  border-left: 1px solid var(--line);
+}
+
+.securityCard {
+  padding: 22px;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  background: var(--paper-raised);
+}
+
+.securityCard svg {
+  color: var(--green);
+}
+
+.securityCard h3 {
+  margin-top: 10px;
+  font-family: var(--display);
+  font-size: 1.02rem;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+}
+
+.securityCard p {
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.6;
+}
+
+.never {
+  display: grid;
+  grid-template-columns: minmax(0, 0.7fr) minmax(0, 1.3fr);
+  gap: 24px;
+  padding: 22px;
+  border-radius: 12px;
+  background: var(--sage);
+}
+
+.never h3 {
+  font-family: var(--display);
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+}
+
+.never ul {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 20px;
+}
+
+.never li {
+  position: relative;
+  padding-left: 15px;
+  color: var(--ink-soft);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.never li::before {
+  content: "";
+  position: absolute;
+  top: 0.5em;
+  left: 0;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--rust);
+}
+
+/* ── Troubleshooting ────────────────────────────────────────────── */
+
+.trouble {
+  display: grid;
+  gap: 0;
+  border-top: 1px solid var(--line-strong);
+}
+
+.trouble h2 {
+  padding-block: 22px;
+  font-size: clamp(1.5rem, 2.4vw, 2rem);
+}
+
+.trouble details {
+  border-top: 1px solid var(--line);
+}
+
+.trouble summary {
+  padding-block: 15px;
+  color: var(--ink);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  list-style: none;
+}
+
+.trouble summary::-webkit-details-marker {
+  display: none;
+}
+
+.trouble summary::before {
+  content: "+";
+  display: inline-block;
+  width: 18px;
+  color: var(--green);
+  font-weight: 500;
+}
+
+.trouble details[open] summary::before {
+  content: "−";
+}
+
+.trouble details p {
+  max-width: 42rem;
+  padding: 0 0 18px 18px;
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.65;
+}
+
+/* ── Aside ──────────────────────────────────────────────────────── */
+
+.aside {
+  position: sticky;
+  top: 96px;
+  display: grid;
+  gap: 14px;
+}
+
+.asideCard {
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--paper-raised);
+}
+
+.asideCard h2 {
+  font-size: 1rem;
+}
+
+.checklist {
+  display: grid;
+  gap: 9px;
+  margin-top: 15px;
+}
+
+.checklist li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: var(--ink-soft);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.checklist svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: var(--green);
+}
+
+.checklist code {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+.asideNote {
+  margin-top: 15px;
+  padding-top: 13px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.55;
+}
+
+.commandList {
+  display: grid;
+  margin-top: 11px;
+}
+
+.commandList > div {
+  display: grid;
+  gap: 2px;
+  padding-block: 9px;
+  border-bottom: 1px solid var(--line);
+}
+
+.commandList > div:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.commandList dt {
+  color: var(--muted);
+  font-size: 0.68rem;
+}
+
+.commandList dd {
+  overflow-wrap: anywhere;
+}
+
+.commandList code {
+  color: var(--ink-soft);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.72rem;
+}
+
+.asideDark {
+  padding: 22px;
+  border-radius: 14px;
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.asideDark > svg {
+  color: var(--green-bright);
+}
+
+.asideDark h2 {
+  margin-top: 12px;
+  color: var(--paper);
+  font-size: 1.05rem;
+}
+
+.asideDark p {
+  margin-top: 7px;
+  color: rgba(241, 246, 237, 0.6);
+  font-size: 0.78rem;
+  line-height: 1.6;
+}
+
+.asideLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 14px;
+  color: var(--green-bright);
+  font-size: 0.72rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.asideLink:hover {
+  color: var(--paper);
+}
+
+/* ── Closing ────────────────────────────────────────────────────── */
+
+.closing {
+  padding-block: clamp(48px, 6vw, 72px);
+  border-top: 1px solid var(--line);
+  background: var(--sage);
+}
+
+.closingInner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 28px;
+}
+
+.closingInner h2 {
+  font-family: var(--display);
+  font-size: clamp(1.7rem, 3vw, 2.4rem);
+  font-weight: 650;
+  letter-spacing: -0.05em;
+  line-height: 1.04;
+}
+
+.closingInner p {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.closingActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+/* ── Responsive ─────────────────────────────────────────────────── */
+
+@media (max-width: 1080px) {
+  .mastheadInner {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+    gap: 32px;
+  }
+
+  .facts {
+    max-width: 520px;
+  }
+
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .aside {
+    position: static;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-items: start;
+  }
+}
+
+@media (max-width: 800px) {
+  .tokenGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .securityGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .never {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .never ul {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .aside {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .diagram {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .connector {
+    padding-block: 4px;
+  }
+
+  .connector span {
+    display: none;
+  }
+
+  .connector svg {
+    transform: rotate(90deg);
+  }
+}
+
+@media (max-width: 560px) {
+  .step {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .stepNumber {
+    font-size: 1rem;
+  }
+
+  .facts {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .facts > div {
+    padding: 13px;
+  }
+
+  .pathMode {
+    display: none;
+  }
+
+  .closingInner {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .closingActions .button {
+    width: 100%;
+  }
+}

@@ -1,0 +1,40 @@
+# Fly.io deployment for the Stillgreen daemon.
+# 1. fly launch --copy-config --name stillgreen-<yourname> --no-deploy
+# 2. fly volumes create stillgreen_data --size 1 --region ams
+# 3. fly secrets set SG_LOCAL_BRIDGE_CODE="SG-..." SG_LOCAL_WEB_ORIGIN="https://your-app.vercel.app"
+# 4. fly deploy
+app = "stillgreen-presence"
+primary_region = "ams"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  SG_LOCAL_CONFIG_DIR = "/data/config"
+  SG_LOCAL_STATE_DIR = "/data/state"
+  SG_LOCAL_WEB_HOST = "0.0.0.0"
+  SG_LOCAL_WEB_PORT = "8080"
+  SG_LOCAL_ALLOW_VERCEL = "1"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["app"]
+
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "10s"
+    method = "GET"
+    path = "/api/health"
+
+[[mounts]]
+  source = "stillgreen_data"
+  destination = "/data"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"

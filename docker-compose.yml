@@ -1,0 +1,18 @@
+services:
+  stillgreen:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "8765:8765"
+    environment:
+      SG_LOCAL_CONFIG_DIR: /data/config
+      SG_LOCAL_STATE_DIR: /data/state
+      SG_LOCAL_WEB_HOST: 0.0.0.0
+      SG_LOCAL_WEB_PORT: "8765"
+      SG_LOCAL_BRIDGE_CODE: ${SG_LOCAL_BRIDGE_CODE:?set a code in .env}
+      SG_LOCAL_WEB_ORIGIN: ${SG_LOCAL_WEB_ORIGIN:-http://localhost:3000}
+    volumes:
+      - stillgreen-data:/data
+
+volumes:
+  stillgreen-data:

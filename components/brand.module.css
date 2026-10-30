@@ -1,0 +1,46 @@
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink);
+  border-radius: 8px;
+}
+
+.inverted {
+  color: var(--paper-raised);
+}
+
+.mark {
+  position: relative;
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border: 1px solid currentColor;
+  border-radius: 9px;
+  opacity: 0.92;
+}
+
+.orbit {
+  position: absolute;
+  inset: 4px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  opacity: 0.24;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--green-bright);
+  box-shadow: 0 0 0 3px rgba(34, 189, 119, 0.14);
+}
+
+.word {
+  font-family: var(--display);
+  font-size: 1.16rem;
+  font-weight: 650;
+  letter-spacing: -0.055em;
+  line-height: 1;
+}

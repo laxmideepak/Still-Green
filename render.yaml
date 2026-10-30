@@ -1,0 +1,25 @@
+# Render Blueprint. The starter plan is required for a persistent disk.
+services:
+  - type: web
+    name: stillgreen
+    runtime: docker
+    plan: starter
+    region: frankfurt
+    healthCheckPath: /api/health
+    envVars:
+      - key: SG_LOCAL_CONFIG_DIR
+        value: /data/config
+      - key: SG_LOCAL_STATE_DIR
+        value: /data/state
+      - key: SG_LOCAL_WEB_HOST
+        value: 0.0.0.0
+      - key: SG_LOCAL_ALLOW_VERCEL
+        value: "1"
+      - key: SG_LOCAL_BRIDGE_CODE
+        generateValue: true
+      - key: SG_LOCAL_WEB_ORIGIN
+        sync: false
+    disk:
+      name: stillgreen-data
+      mountPath: /data
+      sizeGB: 1

@@ -1,0 +1,57 @@
+.bannerWrap {
+  padding-top: 20px;
+}
+
+.banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 13px;
+  padding: 12px 15px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: rgba(251, 253, 248, 0.72);
+}
+
+.bannerIcon {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  color: var(--green);
+}
+
+.bannerCopy {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+
+.bannerCopy strong {
+  font-size: 0.82rem;
+  font-weight: 650;
+}
+
+.bannerCopy span {
+  color: var(--muted);
+  font-size: 0.76rem;
+  line-height: 1.45;
+}
+
+.bannerActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+@media (max-width: 700px) {
+  .bannerActions {
+    width: 100%;
+    margin-left: 47px;
+  }
+}
