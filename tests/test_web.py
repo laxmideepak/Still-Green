@@ -369,6 +369,22 @@ class SecurityTests(WebTestCase):
         with urllib.request.urlopen(request, timeout=10) as response:
             self.assertEqual(response.status, 200)
 
+    def test_code_comparison_ignores_case_and_spaces(self) -> None:
+        # Clients upper-case the code; a lowercase custom code must still work.
+        with mock.patch.dict(os.environ, {"SG_LOCAL_BRIDGE_CODE": "3f9a0c1e7b2d4a6f8e1c"}):
+            for sent in ("3f9a0c1e7b2d4a6f8e1c", "3F9A0C1E7B2D4A6F8E1C", "3f9a 0c1e 7b2d 4a6f 8e1c"):
+                status, _, _ = self.request("/api/state", code=sent)
+                self.assertEqual(status, 200, sent)
+            status, _, _ = self.request("/api/state", code="3f9a0c1e7b2d4a6f8e1d")
+            self.assertEqual(status, 401)
+
+    def test_unknown_origin_gets_a_readable_refusal_without_data(self) -> None:
+        status, body, headers = self.request("/api/state", code=self.code, origin="https://evil.example")
+        self.assertEqual(status, 403)
+        self.assertEqual(headers.get("Access-Control-Allow-Origin"), "https://evil.example")
+        self.assertEqual(set(body), {"ok", "error"})
+        self.assertIn("SG_LOCAL_WEB_ORIGIN", body["error"])
+
     def test_rotate_is_refused_from_another_origin(self) -> None:
         status, _, _ = self.request(
             "/api/code/rotate", method="POST", code=self.code, body={},

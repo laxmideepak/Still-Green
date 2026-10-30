@@ -280,6 +280,11 @@ class PresenceSession:
                         self._reconnect_delay = min(delay * 2, self.RECONNECT_MAX)
                         continue
 
+                if (
+                    self.connected_at is not None
+                    and time.time() - self.connected_at >= self.STABLE_AFTER
+                ):
+                    self._reconnect_delay = self.RECONNECT_MIN
                 await self._maybe_ping()
                 await self._maybe_tickle()
                 await self._maybe_check_presence()

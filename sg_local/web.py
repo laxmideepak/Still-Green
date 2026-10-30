@@ -61,6 +61,14 @@ def generate_code() -> str:
     return "SG-" + "-".join(groups)
 
 
+def normalize_code(value: str) -> str:
+    """Canonical form for comparing codes: dashes unified, no spaces, upper case.
+
+    The dashboard and extension apply the same rules before sending a code.
+    """
+    return re.sub(r"\s+", "", value.translate(_DASHES)).upper()
+
+
 def env_code() -> str:
     return (os.environ.get("SG_LOCAL_BRIDGE_CODE") or "").strip()
 
@@ -436,9 +444,9 @@ class Handler(BaseHTTPRequestHandler):
 
     # ---------------------------------------------------------------- headers
 
-    def _cors(self) -> None:
+    def _cors(self, *, any_origin: bool = False) -> None:
         origin = self.headers.get("Origin")
-        if origin and origin_allowed(origin):
+        if origin and (any_origin or origin_allowed(origin)):
             self.send_header("Access-Control-Allow-Origin", origin)
             self.send_header("Vary", "Origin")
             self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type")
@@ -446,14 +454,14 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Access-Control-Allow-Private-Network", "true")
             self.send_header("Access-Control-Max-Age", "600")
 
-    def _json(self, payload: Any, status: int = 200) -> None:
+    def _json(self, payload: Any, status: int = 200, *, any_origin: bool = False) -> None:
         body = json.dumps(payload).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
-        self._cors()
+        self._cors(any_origin=any_origin)
         self.end_headers()
         self.wfile.write(body)
 
@@ -494,10 +502,10 @@ class Handler(BaseHTTPRequestHandler):
             supplied = supplied.encode("latin-1").decode("utf-8")
         except (UnicodeEncodeError, UnicodeDecodeError):
             pass
-        supplied = supplied.translate(_DASHES)
+        supplied = normalize_code(supplied)
         # Compare bytes: compare_digest refuses non-ASCII str input.
         return bool(supplied) and hmac.compare_digest(
-            supplied.encode("utf-8"), code.encode("utf-8")
+            supplied.encode("utf-8"), normalize_code(code).encode("utf-8")
         )
 
     def _body(self) -> dict[str, Any]:
@@ -526,9 +534,12 @@ class Handler(BaseHTTPRequestHandler):
 
     def _guard(self) -> bool:
         if not origin_allowed(self.headers.get("Origin")):
-            self._error(
+            # Readable by that origin so the dashboard can explain the fix;
+            # the response carries no data.
+            self._json(
+                {"ok": False, "error": "origin is not allowed; add it to SG_LOCAL_WEB_ORIGIN on the daemon"},
                 HTTPStatus.FORBIDDEN,
-                "origin is not allowed; add it to SG_LOCAL_WEB_ORIGIN on the daemon",
+                any_origin=True,
             )
             return False
         if not self._authorized():
@@ -551,7 +562,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         self.send_response(HTTPStatus.NO_CONTENT)
         if urlparse(self.path).path.startswith("/api/"):
-            self._cors()
+            # Let every preflight through; _guard then refuses unknown
+            # origins with a readable 403 instead of an opaque network error.
+            self._cors(any_origin=True)
         self.send_header("Content-Length", "0")
         self.end_headers()
 

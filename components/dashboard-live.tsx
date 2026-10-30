@@ -166,6 +166,7 @@ export function DashboardLive({ config, initialState, onDisconnect, onReconnect 
         if (cancelled || seq !== mutationSeq.current) return;
         setState(next);
         setPollError("");
+        setActionError("");
         setUnreachableSince(null);
         setLastOkAt(Date.now());
         if (!dirtyRef.current) setDraft(draftFromSchedule(next.schedule));
@@ -395,6 +396,15 @@ export function DashboardLive({ config, initialState, onDisconnect, onReconnect 
               </span>
             </div>
           )}
+          {state.config_error && (
+            <div className={styles.alert} role="alert">
+              <strong>The daemon cannot read its config file.</strong>
+              <span>
+                Your workspaces are still in that file. Fix or restore it, then check with{" "}
+                <code>./sg-local doctor</code>. Details: {state.config_error}
+              </span>
+            </div>
+          )}
           {error && (
             <div className={styles.alert} role="alert">
               <strong>{unreachable ? "Daemon unreachable." : "Daemon error."}</strong>
@@ -424,7 +434,7 @@ export function DashboardLive({ config, initialState, onDisconnect, onReconnect 
               </a>
             </div>
             <div className={styles.rail}>
-              {state.workspaces.length === 0 ? (
+              {state.workspaces.length === 0 && !state.config_error ? (
                 <a className={styles.emptyWorkspace} href={`${config.url}/#add`} target="_blank" rel="noreferrer">
                   <span className={styles.emptyPlus} aria-hidden="true">
                     +

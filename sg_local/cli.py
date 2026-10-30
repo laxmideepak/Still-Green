@@ -732,6 +732,17 @@ def _control_page_up(port: int) -> bool:
         return False
 
 
+def _code_accepted(port: int, code: str) -> bool:
+    request = urllib.request.Request(
+        f"http://127.0.0.1:{port}/api/state", headers={"Authorization": f"Bearer {code}"}
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=3) as response:
+            return response.status == 200
+    except (OSError, ValueError):
+        return False
+
+
 def cmd_web(args: argparse.Namespace) -> int:
     """Show or serve the control page. Local mode is loopback-only by default."""
     config.ensure_dirs()
@@ -746,21 +757,36 @@ def cmd_web(args: argparse.Namespace) -> int:
             "serving beyond this machine needs a strong code: set SG_LOCAL_BRIDGE_CODE "
             "to at least 16 random characters"
         )
+    if not loopback and _control_page_up(port):
+        return _fail(
+            f"the background daemon already serves port {port} on this machine; "
+            "pick another --port, or start the daemon with SG_LOCAL_DAEMON_WEB=0"
+        )
     if args.daemon and not state.daemon_pid():
+        if not loopback:
+            # This command serves the page itself; keep the daemon off the port.
+            os.environ["SG_LOCAL_DAEMON_WEB"] = "0"
         ok, message = state.start_daemon()
         print(message)
         if not ok:
             return 1
         deadline = time.monotonic() + 8
-        while time.monotonic() < deadline and not _control_page_up(port):
+        while loopback and time.monotonic() < deadline and not _control_page_up(port):
             time.sleep(0.2)
 
     url = f"http://127.0.0.1:{port}"
     if loopback and _control_page_up(port):
         # The background daemon already serves the page on this port.
+        code = web.load_code()
         print(f"Stillgreen control page: {url}")
-        print(f"Access code: {web.load_code()}")
+        print(f"Access code: {code}")
         print("It is served by the background daemon; stop it with: ./sg-local stop")
+        if not _code_accepted(port, code):
+            _eprint(
+                "warning: the running daemon does not accept this code. It was started "
+                "with different settings (for example SG_LOCAL_BRIDGE_CODE); restart it "
+                "from this shell with: ./sg-local restart"
+            )
         if args.open:
             webbrowser.open(url)
         return 0

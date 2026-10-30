@@ -27,6 +27,7 @@ LOGGER = logging.getLogger("sg_local.daemon")
 RECONCILE_INTERVAL = 2.0
 STATE_WRITE_INTERVAL = 5.0
 RESTART_DELAY = 30.0
+CONTROL_RETRY_INTERVAL = 15.0
 
 
 def setup_logging() -> None:
@@ -76,6 +77,8 @@ class Daemon:
         self.invalid_tokens: dict[str, tuple[str, str, str]] = {}
         self.duplicate_keys: set[str] = set()
         self.control_server: Any = None
+        self.next_control_attempt = 0.0
+        self.control_warned = False
         self.invalid_config: dict[str, str] = {}
         self.next_start: dict[str, float] = {}
         self.schedule_active = True
@@ -484,6 +487,7 @@ class Daemon:
 
         try:
             while not self.stop_event.is_set():
+                self.ensure_control_server()
                 if self.reload_requested or self._current_mtime() != self.config_mtime:
                     self.load_config()
                 try:
@@ -536,6 +540,29 @@ class Daemon:
         except OSError:
             pass
 
+    def ensure_control_server(self) -> None:
+        """Serve the control page on loopback so the dashboard and extension work.
+
+        Retried from the main loop, so it comes up once a busy port frees.
+        Set SG_LOCAL_DAEMON_WEB=0 to turn this off (then run ``sg-local web``).
+        """
+        if self.control_server is not None or os.environ.get("SG_LOCAL_DAEMON_WEB", "1") == "0":
+            return
+        now = time.monotonic()
+        if now < self.next_control_attempt:
+            return
+        self.next_control_attempt = now + CONTROL_RETRY_INTERVAL
+        try:
+            port = web.port_from_env()
+            self.control_server = web.start_background("127.0.0.1", port)
+        except (OSError, config.ConfigError) as exc:
+            if not self.control_warned:
+                LOGGER.warning("control page not started (%s); will keep trying", exc)
+                self.control_warned = True
+            return
+        web.load_code()
+        LOGGER.info("control page at http://127.0.0.1:%s", self.control_server.server_address[1])
+
     async def stop_all(self) -> None:
         keys = list(self.sessions)
         if keys:
@@ -544,38 +571,20 @@ class Daemon:
             await self._stop_session(key, "daemon stopping")
 
 
-def start_control_server() -> Any:
-    """Serve the control page on loopback so the dashboard and extension work.
-
-    Set SG_LOCAL_DAEMON_WEB=0 to turn this off (then run ``sg-local web``).
-    """
-    if os.environ.get("SG_LOCAL_DAEMON_WEB", "1") == "0":
-        return None
-    try:
-        port = web.port_from_env()
-        server = web.start_background("127.0.0.1", port)
-    except (OSError, config.ConfigError) as exc:
-        LOGGER.warning("control page not started: %s", exc)
-        return None
-    web.load_code()
-    LOGGER.info("control page at http://127.0.0.1:%s", server.server_address[1])
-    return server
-
-
 def main() -> int:
     setup_logging()
     daemon = Daemon()
     if not daemon.acquire_lock():
         return 1
-    server = start_control_server()
+    daemon.ensure_control_server()
     try:
         return asyncio.run(daemon.run())
     except KeyboardInterrupt:
         return 0
     finally:
-        if server is not None:
-            server.shutdown()
-            server.server_close()
+        if daemon.control_server is not None:
+            daemon.control_server.shutdown()
+            daemon.control_server.server_close()
         daemon.release_lock()
 
 

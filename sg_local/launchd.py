@@ -38,6 +38,11 @@ def build_plist(python: str | None = None) -> dict[str, Any]:
         value = os.environ.get(name)
         if value and value != default:
             environment[name] = value
+    # The daemon serves the control page, so carry its settings along. The
+    # access code is deliberately not copied into the plist file.
+    for name in ("SG_LOCAL_WEB_PORT", "SG_LOCAL_DAEMON_WEB", "SG_LOCAL_WEB_ORIGIN", "SG_LOCAL_WEB_HOSTS"):
+        if os.environ.get(name):
+            environment[name] = os.environ[name]
 
     return {
         "Label": LABEL,

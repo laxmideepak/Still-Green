@@ -121,6 +121,23 @@ class CliTests(TempConfig):
             self.assertEqual(code, 2)
             self.assertIn("SG_LOCAL_WEB_PORT", err)
 
+    def test_network_mode_refuses_a_port_the_daemon_serves(self) -> None:
+        with mock.patch.dict(os.environ, {"SG_LOCAL_BRIDGE_CODE": "a-long-enough-random-code"}), \
+                mock.patch.object(cli, "_control_page_up", return_value=True), \
+                mock.patch.object(cli.web, "serve") as serve:
+            code, _, err = self.run_cli("web", "--host", "0.0.0.0", "--port", "18799")
+        self.assertEqual(code, 1)
+        self.assertIn("already serves port 18799", err)
+        serve.assert_not_called()
+
+    def test_web_warns_when_the_daemon_rejects_the_printed_code(self) -> None:
+        with mock.patch.object(cli, "_control_page_up", return_value=True), \
+                mock.patch.object(cli, "_code_accepted", return_value=False):
+            code, out, err = self.run_cli("web", "--port", "18799")
+        self.assertEqual(code, 0)
+        self.assertIn("Access code:", out)
+        self.assertIn("does not accept this code", err)
+
     def test_network_mode_needs_a_strong_code(self) -> None:
         with mock.patch.dict(os.environ, {"SG_LOCAL_BRIDGE_CODE": "short"}):
             code, _, err = self.run_cli("web", "--host", "0.0.0.0")

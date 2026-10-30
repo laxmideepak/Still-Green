@@ -61,6 +61,8 @@ export type DaemonState = {
   workspaces: WorkspaceState[];
   connected_count: number;
   activity: ActivityEntry[];
+  /** Set when the daemon cannot read config.json; workspaces is then empty. */
+  config_error?: string | null;
 };
 
 const STORAGE_KEY = "stillgreen.bridge.v1";
@@ -70,7 +72,9 @@ export const DEFAULT_DAEMON_URL = "http://127.0.0.1:8765";
 
 // The local daemon speaks plain HTTP, so a scheme-less loopback address
 // ("127.0.0.1:8765", "localhost:8765") gets http://. Anything else gets https://.
-const LOOPBACK_HOST = /^(localhost|127(?:\.\d{1,3}){3}|\[::1\])(?::\d*)?(?:[/?#]|$)/i;
+// [::1] is left out on purpose: the site's CSP cannot list IPv6 literals in
+// connect-src, so use 127.0.0.1 instead.
+const LOOPBACK_HOST = /^(localhost|127(?:\.\d{1,3}){3})(?::\d*)?(?:[/?#]|$)/i;
 
 // Origins the daemon's CORS allowlist accepts without SG_LOCAL_WEB_ORIGIN.
 const DEFAULT_ALLOWED_ORIGIN = /^(https:\/\/stillgreen\.vercel\.app|https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?)$/i;
