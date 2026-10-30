@@ -75,6 +75,9 @@ button:disabled { opacity: 0.55; cursor: wait; }
 .facts dt { color: var(--ink-soft); font-size: 0.8rem; }
 .facts dd { margin: 0; font-weight: 600; text-align: right; font-size: 0.84rem; }
 .actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.stayLabel { margin-top: 18px; margin-bottom: 8px; }
+.stayUntil { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; font-size: 0.82rem; color: var(--ink-soft); }
+.stayUntil input { width: auto; padding: 7px 9px; }
 .muted { color: var(--ink-soft); font-size: 0.9rem; }
 .segmented { display: inline-flex; padding: 3px; border: 1px solid var(--line); border-radius: 999px; margin-bottom: 16px; background: rgba(255,255,255,0.4); }
 .segmented button { border: 0; background: transparent; color: var(--ink-soft); padding: 7px 12px; border-radius: 999px; font-size: 0.8rem; font-weight: 600; }

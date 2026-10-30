@@ -26,6 +26,7 @@ import {
   saveSchedule,
   scheduleTimezone,
   stayOnline,
+  todayAt,
   statusLabel,
   workspaceTime,
   type BridgeConfig,
@@ -35,7 +36,7 @@ import {
 import { DAYS, WEEKDAY_KEYS, initials, statusTone, weeklyHours } from "@/lib/dashboard";
 import styles from "./dashboard-live.module.css";
 
-const stays = ["30m", "1h", "2h", "4h", "8h"];
+const stays = ["30m", "1h", "2h", "3h"];
 
 type Props = {
   config: BridgeConfig;
@@ -74,6 +75,7 @@ export function DashboardLive({ config, initialState, onDisconnect, onReconnect 
   const [selectedId, setSelectedId] = useState(initialState.workspaces[0]?.team_id || "");
   const [busy, setBusy] = useState("");
   const [actionError, setActionError] = useState("");
+  const [untilTime, setUntilTime] = useState("17:00");
   const [pollError, setPollError] = useState("");
   const [unreachableSince, setUnreachableSince] = useState<number | null>(null);
   const [lastOkAt, setLastOkAt] = useState(() => Date.now());
@@ -173,6 +175,20 @@ export function DashboardLive({ config, initialState, onDisconnect, onReconnect 
       mutationSeq.current += 1;
       setBusy("");
     }
+  }
+
+  function stayUntil(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const until = todayAt(untilTime);
+    if (!until) {
+      setActionError(`${untilTime} has already passed today. Pick a later time.`);
+      return;
+    }
+    void run(
+      "stay-until",
+      () => stayOnline(config, { until }),
+      `Staying online until ${untilTime}.`,
+    );
   }
 
   function pauseOne(workspace: WorkspaceState) {
@@ -764,24 +780,39 @@ export function DashboardLive({ config, initialState, onDisconnect, onReconnect 
                   </button>
                 </div>
               ) : (
-                <div className={styles.stayGrid}>
-                  {stays.map((duration) => (
-                    <button
-                      key={duration}
-                      type="button"
-                      onClick={() =>
-                        void run(
-                          `stay-${duration}`,
-                          () => stayOnline(config, duration),
-                          `Staying online for ${duration}.`,
-                        )
-                      }
-                      disabled={Boolean(busy)}
-                    >
-                      {duration}
+                <>
+                  <div className={styles.stayGrid}>
+                    {stays.map((duration) => (
+                      <button
+                        key={duration}
+                        type="button"
+                        onClick={() =>
+                          void run(
+                            `stay-${duration}`,
+                            () => stayOnline(config, duration),
+                            `Staying online for ${duration}.`,
+                          )
+                        }
+                        disabled={Boolean(busy)}
+                      >
+                        {duration}
+                      </button>
+                    ))}
+                  </div>
+                  <form className={styles.stayUntil} onSubmit={stayUntil}>
+                    <label htmlFor="stay-until">Or until today at</label>
+                    <input
+                      id="stay-until"
+                      type="time"
+                      value={untilTime}
+                      onChange={(event) => setUntilTime(event.target.value)}
+                      required
+                    />
+                    <button type="submit" disabled={Boolean(busy)}>
+                      Keep on until
                     </button>
-                  ))}
-                </div>
+                  </form>
+                </>
               )}
               <div className={styles.keepActions}>
                 <button

@@ -743,7 +743,7 @@
 
 .stayGrid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 5px;
   margin-top: 15px;
 }
@@ -759,6 +759,41 @@
 }
 
 .stayGrid button:hover {
+  border-color: var(--green);
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+.stayUntil {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  margin-top: 9px;
+  color: var(--ink-soft);
+  font-size: 0.74rem;
+}
+
+.stayUntil input {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.55);
+  padding: 6px 8px;
+  color: var(--ink);
+  font: inherit;
+}
+
+.stayUntil button {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.55);
+  padding: 7px 10px;
+  color: var(--ink-soft);
+  font-size: 0.72rem;
+  font-weight: 650;
+}
+
+.stayUntil button:hover {
   border-color: var(--green);
   background: var(--green-soft);
   color: var(--green);
