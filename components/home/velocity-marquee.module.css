@@ -1,0 +1,42 @@
+.strip {
+  overflow: hidden;
+  white-space: nowrap;
+  padding-block: 0.08em;
+}
+
+.track {
+  display: inline-flex;
+  will-change: transform;
+}
+
+.item {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--display);
+  font-size: clamp(2.6rem, 8vw, 7.5rem);
+  font-weight: 700;
+  font-variation-settings: "wdth" 80;
+  letter-spacing: -0.035em;
+  word-spacing: 0.08em;
+  line-height: 1;
+  color: var(--ink);
+}
+
+.outline .item {
+  color: color-mix(in srgb, var(--ink) 16%, transparent);
+}
+
+.star {
+  display: inline-block;
+  margin-inline: 0.35em;
+  color: var(--acid);
+  font-style: normal;
+  font-size: 0.5em;
+  animation: turn 8s linear infinite;
+}
+
+@keyframes turn {
+  to {
+    transform: rotate(1turn);
+  }
+}

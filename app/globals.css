@@ -23,6 +23,7 @@
   --gutter: clamp(20px, 5vw, 68px);
   --display: var(--font-display), "Bricolage Grotesque", "Arial Black", sans-serif;
   --body: var(--font-body), "Instrument Sans", "Helvetica Neue", sans-serif;
+  --mono: var(--font-mono), "JetBrains Mono", ui-monospace, "SFMono-Regular", monospace;
 }
 
 *,

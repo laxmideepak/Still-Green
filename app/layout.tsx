@@ -1,10 +1,17 @@
 import type { Metadata, Viewport } from "next";
-import { Bricolage_Grotesque, Instrument_Sans } from "next/font/google";
+import { Bricolage_Grotesque, Instrument_Sans, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
 const display = Bricolage_Grotesque({
   subsets: ["latin"],
   variable: "--font-display",
+  display: "swap",
+  axes: ["wdth", "opsz"],
+});
+
+const mono = JetBrains_Mono({
+  subsets: ["latin"],
+  variable: "--font-mono",
   display: "swap",
 });
 
@@ -53,7 +60,7 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={`${display.variable} ${body.variable}`}>
+    <html lang="en" className={`${display.variable} ${body.variable} ${mono.variable}`}>
       <body>
         <a className="skipLink" href="#main">
           Skip to content
