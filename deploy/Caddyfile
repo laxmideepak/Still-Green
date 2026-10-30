@@ -1,0 +1,6 @@
+# HTTPS in front of Stillgreen. Caddy gets and renews a free Let's Encrypt
+# certificate for STILLGREEN_DOMAIN by itself; ports 80 and 443 must be open.
+{$STILLGREEN_DOMAIN} {
+	encode gzip
+	reverse_proxy stillgreen:8765
+}

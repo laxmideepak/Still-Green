@@ -17,7 +17,7 @@
   <section class="login" id="login" hidden>
     <p class="eyebrow"><span></span> Locked</p>
     <h1>Enter the access code.</h1>
-    <p>Print the access code on the computer running Stillgreen with <code>./sg-local web --show-code</code>, then paste it here.</p>
+    <p>Print the access code where Stillgreen runs, then paste it here. On your computer: <code>./sg-local web --show-code</code>. On a cloud server: <code>sudo docker compose exec stillgreen sg-local web --show-code</code>.</p>
     <form id="loginForm">
       <label for="accessCode">Access code</label>
       <div class="inline"><input id="accessCode" name="code" autocomplete="current-password" spellcheck="false" placeholder="SG-XXXX-XXXX-XXXX" required><button class="primary" type="submit">Unlock</button></div>

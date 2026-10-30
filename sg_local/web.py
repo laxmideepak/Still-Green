@@ -28,6 +28,8 @@ import re
 import secrets
 import socket
 import threading
+import time
+from collections import deque
 from functools import lru_cache
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -105,7 +107,8 @@ def rotate_code() -> str:
 
 
 def port_from_env() -> int:
-    raw = os.environ.get("SG_LOCAL_WEB_PORT") or str(DEFAULT_PORT)
+    # PORT is what hosts such as Fly.io, Render and Railway hand to the app.
+    raw = os.environ.get("SG_LOCAL_WEB_PORT") or os.environ.get("PORT") or str(DEFAULT_PORT)
     try:
         port = int(raw)
     except ValueError:
@@ -155,6 +158,41 @@ def host_allowed(host_header: str | None, bound_host: str) -> bool:
     # A server bound to the network is reached by its LAN or public name;
     # without an explicit list, accept any name there.
     return bound_host not in LOOPBACK_HOSTS and not extra
+
+
+class FailureThrottle:
+    """Refuse a client for a while after too many wrong access codes.
+
+    Matters once the server is reachable from the internet (``sg-local
+    cloud``): it turns guessing a code into years of work. Behind a proxy all
+    clients share the proxy's address, so the limit then applies to everyone.
+    """
+
+    def __init__(self, limit: int = 10, window: float = 60.0) -> None:
+        self.limit = limit
+        self.window = window
+        self._failures: dict[str, deque[float]] = {}
+        self._lock = threading.Lock()
+
+    def _recent(self, key: str, now: float) -> deque[float]:
+        times = self._failures.setdefault(key, deque())
+        while times and now - times[0] > self.window:
+            times.popleft()
+        return times
+
+    def blocked(self, key: str) -> bool:
+        with self._lock:
+            return len(self._recent(key, time.monotonic())) >= self.limit
+
+    def fail(self, key: str) -> None:
+        with self._lock:
+            now = time.monotonic()
+            self._recent(key, now).append(now)
+            if len(self._failures) > 10_000:  # bound memory under a flood
+                self._failures = {k: v for k, v in self._failures.items() if v}
+
+
+THROTTLE = FailureThrottle()
 
 
 # --------------------------------------------------------------------- helpers
@@ -542,7 +580,12 @@ class Handler(BaseHTTPRequestHandler):
                 any_origin=True,
             )
             return False
+        client = self.client_address[0]
+        if THROTTLE.blocked(client):
+            self._error(HTTPStatus.TOO_MANY_REQUESTS, "too many wrong access codes; wait a minute")
+            return False
         if not self._authorized():
+            THROTTLE.fail(client)
             self._error(HTTPStatus.UNAUTHORIZED, "access code is required")
             return False
         return True

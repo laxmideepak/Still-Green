@@ -4,6 +4,8 @@ sg_local/
 tests/
 docs/
 Dockerfile
+.dockerignore
+deploy/
 docker-compose.yml
 fly.toml
 render.yaml

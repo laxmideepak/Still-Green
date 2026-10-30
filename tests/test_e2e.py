@@ -227,5 +227,30 @@ class DaemonServesPageTest(unittest.TestCase):
         )
 
 
+
+class CloudModeTest(unittest.TestCase):
+    """The daemon as `sg-local cloud` runs it: page on all interfaces."""
+
+    def test_network_bound_daemon_only_answers_its_own_name(self) -> None:
+        stack = Stack()
+        stack.start(
+            daemon_serves_page=True,
+            extra_env={"SG_LOCAL_WEB_HOST": "0.0.0.0", "SG_LOCAL_WEB_HOSTS": "stillgreen.example"},
+        )
+        self.addCleanup(stack.stop)
+        port = stack.port
+        own = {"Host": f"stillgreen.example:{port}"}
+        status, _ = stack.call("GET", "/api/state", headers=own)
+        self.assertEqual(status, 200)
+        status, _ = stack.call("GET", "/api/state", headers={"Host": f"rebind.attacker.example:{port}"})
+        self.assertEqual(status, 421)
+        status, _ = stack.call("POST", "/api/workspaces", {"xoxc": GOOD_XOXC, "xoxd": GOOD_XOXD}, headers=own)
+        self.assertEqual(status, 200)
+        wait_for(
+            lambda: (stack.state()["workspaces"] or [{}])[0].get("status") == "active",
+            "workspace active",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

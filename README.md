@@ -31,7 +31,7 @@ Slack.
 
 | Part | What it is | Where it runs |
 | --- | --- | --- |
-| **Daemon** | A small Python program that holds the Slack connection. | Your computer |
+| **Daemon** | A small Python program that holds the Slack connection. | Your computer, or a cloud server ([see below](#run-it-in-the-cloud)) |
 | **Browser extension** | Copies your Slack login from your browser to the daemon in one click. | Chrome on your computer |
 | **Dashboard** | A web page to see the status and change settings. | <https://stillgreen.vercel.app/dashboard>, or the daemon's own page at <http://127.0.0.1:8765> |
 
@@ -132,6 +132,121 @@ same controls.
 
 You are done. Your status stays green while the daemon is running.
 
+> [!NOTE]
+> On your own computer, the daemon stops when the computer sleeps or shuts
+> down. To stay green when your laptop is closed, run it in the cloud instead.
+
+## Run it in the cloud
+
+Run the daemon on a small server that is always on. The dashboard and the
+extension work the same way; you just use the server's `https://` address
+instead of `http://127.0.0.1:8765`.
+
+### Why a server, and why not Vercel?
+
+Stillgreen has to keep **one connection to Slack open all the time**. Vercel
+only runs short pieces of code that stop after a few minutes at most, so it
+can show the dashboard but cannot hold that connection. You need a small
+always-on server for the daemon. The dashboard stays on Vercel.
+
+The server needs `https://`, because the dashboard is an `https://` page and
+browsers block it from talking to a plain `http://` server on the internet.
+The setup below gets a free HTTPS certificate automatically.
+
+### Which server?
+
+| Option | Cost | Notes |
+| --- | --- | --- |
+| **Google Cloud e2-micro** (recommended) | Free | One small always-on server in the US regions us-west1, us-central1 or us-east1. Needs a card on file, but stays free within the limits. |
+| **Oracle Cloud Always Free** | Free | Also works with the same steps. Free servers are sometimes not available in a region. |
+| **Fly.io** | About $2-3 a month | Easiest to set up; HTTPS included. No free plan for new accounts. |
+| **A computer at home** (Raspberry Pi, old laptop) | Free | Use the normal Mac/Linux setup above; it must stay on. |
+
+Free plans that put the server to sleep when no one visits (for example
+Render's free plan) do **not** work: a sleeping server drops the Slack
+connection.
+
+### Free setup on Google Cloud (about 15 minutes)
+
+1. Open <https://console.cloud.google.com/compute/instances> and choose
+   **Create instance**.
+2. Pick **Region**: `us-central1` (or `us-west1` / `us-east1`), and **Machine
+   type**: `e2-micro`. Keep the default Debian image.
+3. Under **Firewall**, tick **Allow HTTP traffic** and **Allow HTTPS traffic**.
+   Create the instance.
+4. Click **SSH** next to the new instance. In the window that opens, run:
+
+```bash
+sudo apt-get update && sudo apt-get install -y git
+```
+
+```bash
+git clone https://github.com/laxmideepak/slack.git && cd slack
+```
+
+```bash
+sudo sh deploy/setup-vm.sh
+```
+
+The script installs Docker, starts Stillgreen with a free HTTPS address such
+as `https://34-1-2-3.sslip.io` (made from the server's IP address), and prints:
+
+```text
+  Daemon URL:   https://34-1-2-3.sslip.io
+  Access code:  SG-ABCD-EFGH-JKLM
+```
+
+Have your own domain? Point it at the server and run
+`sudo sh deploy/setup-vm.sh stillgreen.example.com` instead.
+
+5. Use that **Daemon URL** and **Access code** in the dashboard
+   (**Connect daemon**) and in the extension (instead of
+   `http://127.0.0.1:8765`), then click **Capture from Slack** as usual.
+
+To update later, run `git pull && sudo docker compose up -d --build` in the
+`slack` folder on the server.
+
+### Setup on Fly.io (paid)
+
+Install the `fly` command (<https://fly.io/docs/flyctl/install/>), then in the
+`slack` folder:
+
+```bash
+fly launch --copy-config --no-deploy --name your-stillgreen
+```
+
+```bash
+fly volumes create stillgreen_data --size 1
+```
+
+```bash
+fly deploy
+```
+
+```bash
+fly ssh console -C "sg-local web --show-code"
+```
+
+Your Daemon URL is `https://your-stillgreen.fly.dev`.
+
+### Any other Docker host
+
+`docker compose up -d --build` with `STILLGREEN_DOMAIN=your.domain` in a `.env`
+file starts the daemon behind Caddy, which gets the HTTPS certificate. Without
+Compose, the image alone is `docker build -t stillgreen .` and
+`docker run -d -p 127.0.0.1:8765:8765 -v stillgreen-data:/data stillgreen`;
+put your own HTTPS proxy in front of port 8765.
+
+### Good to know
+
+- Your Slack login is stored on your server, in a Docker volume only the
+  Stillgreen user can read. It is never sent to the dashboard website.
+- After 10 wrong access codes in a minute, the server refuses further tries
+  for a minute.
+- Slack may notice that your session is being used from a data-centre address
+  and sign it out. If the status keeps showing **Tokens rejected**, capture
+  again; if it keeps happening, run Stillgreen at home instead.
+
 ## Everyday use
 
 You can do all of this from the dashboard, the control page, or the terminal.
@@ -178,6 +293,8 @@ on automatic start).
 | Status is **Manual away** | You set yourself away in Slack. Stillgreen leaves this alone. Set yourself active in Slack. |
 | Status is **Outside schedule** | You are outside your schedule. Use **Keep me online** or change the schedule. |
 | Extension says **No Slack token found** | Reload app.slack.com while signed in, then try again. |
+| **Too many wrong access codes** | Wait one minute, then paste the code again. |
+| Cloud server: the `https://` address does not open | Check ports 80 and 443 are open (Google Cloud: **Allow HTTP/HTTPS traffic**) and run `sudo docker compose logs caddy` on the server. The first certificate can take a minute. |
 | Anything else | Run `./sg-local doctor --check-tokens`, then look at `./sg-local logs -f`. |
 
 ## Your data
@@ -210,6 +327,7 @@ Run `./sg-local --help`, or `./sg-local COMMAND --help` for one command.
 | `pause` / `resume` | Pause or resume, for all workspaces or one |
 | `stay DURATION` / `stay --cancel` | Stay online for a while, ignoring pause and schedule |
 | `web` | Run the control page (`--daemon` also starts the daemon, `--open` opens the browser, `--show-code` prints the code) |
+| `cloud` | Run the daemon and control page on a server or in a container (used by the Docker image) |
 | `doctor` | Check the setup (`--check-tokens` also checks the login with Slack) |
 | `logs` | Show the log (`-f` keeps following it) |
 | `install-launchd` / `uninstall-launchd` | Turn automatic start at macOS login on or off |

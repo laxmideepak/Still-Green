@@ -77,7 +77,12 @@ class Stack:
             stderr=subprocess.DEVNULL,
         )
 
-    def start(self, with_daemon: bool = True, daemon_serves_page: bool = False) -> "Stack":
+    def start(
+        self,
+        with_daemon: bool = True,
+        daemon_serves_page: bool = False,
+        extra_env: dict[str, str] | None = None,
+    ) -> "Stack":
         """Start fake Slack and the daemon.
 
         By default the control page runs as its own process (``sg-local web``)
@@ -85,6 +90,7 @@ class Stack:
         ``daemon_serves_page`` the daemon serves it, as after ``sg-local start``.
         """
         self.slack.start()
+        self.env.update(extra_env or {})
         self.daemon_serves_page = daemon_serves_page
         if not daemon_serves_page:
             self.env["SG_LOCAL_DAEMON_WEB"] = "0"

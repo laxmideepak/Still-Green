@@ -393,8 +393,12 @@ export function StartGuide() {
                 </p>
                 <p className={styles.finePrint}>
                   The trade is the laptop: sleep it and the session ends. Keep the machine
-                  awake, or run the daemon on a machine you leave on. Your Slack plan may
-                  also restrict automated presence — check your workspace rules.
+                  awake, or{" "}
+                  <a href="https://github.com/laxmideepak/slack#run-it-in-the-cloud" target="_blank" rel="noreferrer">
+                    run the daemon in the cloud
+                  </a>{" "}
+                  on a free always-on server. Your Slack plan may also restrict automated
+                  presence — check your workspace rules.
                 </p>
               </div>
             </div>

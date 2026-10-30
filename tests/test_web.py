@@ -41,6 +41,9 @@ class WebTestCase(unittest.TestCase):
         for patch in self.patches:
             patch.start()
         config.ensure_dirs()
+        throttle = mock.patch.object(web, "THROTTLE", web.FailureThrottle())
+        throttle.start()
+        self.patches.append(throttle)
         self.code = web.load_code()
         self.server = web.make_server("127.0.0.1", 0)
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
@@ -384,6 +387,27 @@ class SecurityTests(WebTestCase):
         self.assertEqual(headers.get("Access-Control-Allow-Origin"), "https://evil.example")
         self.assertEqual(set(body), {"ok", "error"})
         self.assertIn("SG_LOCAL_WEB_ORIGIN", body["error"])
+
+    def test_wrong_codes_are_rate_limited(self) -> None:
+        for _ in range(10):
+            status, _, _ = self.request("/api/state", code="SG-WRNG-WRNG-WRNG")
+            self.assertEqual(status, 401)
+        status, body, _ = self.request("/api/state", code="SG-WRNG-WRNG-WRNG")
+        self.assertEqual(status, 429)
+        self.assertIn("too many", body["error"])
+        # While locked out, even the right code waits, so guessing gains nothing.
+        status, _, _ = self.request("/api/state", code=self.code)
+        self.assertEqual(status, 429)
+        # The limit lifts once the window passes.
+        web.THROTTLE.window = 0.0
+        status, _, _ = self.request("/api/state", code=self.code)
+        self.assertEqual(status, 200)
+
+    def test_port_comes_from_port_env(self) -> None:
+        with mock.patch.dict(os.environ, {"SG_LOCAL_WEB_PORT": "", "PORT": "10001"}):
+            self.assertEqual(web.port_from_env(), 10001)
+        with mock.patch.dict(os.environ, {"SG_LOCAL_WEB_PORT": "9000", "PORT": "10001"}):
+            self.assertEqual(web.port_from_env(), 9000)
 
     def test_rotate_is_refused_from_another_origin(self) -> None:
         status, _, _ = self.request(

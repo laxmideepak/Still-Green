@@ -752,11 +752,8 @@ def cmd_web(args: argparse.Namespace) -> int:
         print(web.load_code())
         return 0
     loopback = host in web.LOOPBACK_HOSTS
-    if not loopback and len(web.env_code()) < 16:
-        return _fail(
-            "serving beyond this machine needs a strong code: set SG_LOCAL_BRIDGE_CODE "
-            "to at least 16 random characters"
-        )
+    if not loopback and _weak_env_code():
+        return _fail(WEAK_CODE_MESSAGE)
     if not loopback and _control_page_up(port):
         return _fail(
             f"the background daemon already serves port {port} on this machine; "
@@ -798,6 +795,47 @@ def cmd_web(args: argparse.Namespace) -> int:
         threading.Timer(0.7, lambda: webbrowser.open(url)).start()
     web.serve(host, port)
     return 0
+
+
+WEAK_CODE_MESSAGE = (
+    "SG_LOCAL_BRIDGE_CODE is too short for a server on the network: use at least "
+    "16 random characters, or unset it to use a generated code"
+)
+
+
+def _weak_env_code() -> bool:
+    # A generated code (SG-XXXX-XXXX-XXXX, about 60 random bits) is fine; a
+    # hand-picked one must be long enough to resist guessing.
+    code = web.env_code()
+    return bool(code) and len(code) < 16
+
+
+def cmd_cloud(args: argparse.Namespace) -> int:
+    """Run the daemon and its control page for a server or container.
+
+    The page listens on all interfaces (put HTTPS in front of it), logs go to
+    the console, and the access code is never printed.
+    """
+    if _weak_env_code():
+        return _fail(WEAK_CODE_MESSAGE)
+    port = args.port if args.port is not None else web.port_from_env()
+    config.ensure_dirs()
+    created = not web.load_code(create=False)
+    web.load_code()
+    if created:
+        print("A new access code was created. Read it with: sg-local web --show-code", flush=True)
+    env = {
+        **os.environ,
+        "SG_LOCAL_WEB_HOST": args.host,
+        "SG_LOCAL_WEB_PORT": str(port),
+        "SG_LOCAL_DAEMON_WEB": "1",
+        "SG_LOCAL_LOG_STDOUT": "1",
+        "PYTHONUNBUFFERED": "1",
+    }
+    # Replace this process with the daemon, so the container's main process is
+    # the daemon itself and is recognised as one (see state.DAEMON_MARKER).
+    os.execve(sys.executable, [sys.executable, "-m", state.DAEMON_MARKER], env)
+    return 0  # not reached
 
 
 # ---------------------------------------------------------------- launchd
@@ -930,6 +968,14 @@ def build_parser() -> argparse.ArgumentParser:
     web_cmd.add_argument("--open", action="store_true", help="open the control surface in a browser")
     web_cmd.add_argument("--show-code", action="store_true", help="print the access code and exit")
     web_cmd.set_defaults(func=cmd_web)
+
+    cloud = sub.add_parser(
+        "cloud",
+        help="run the daemon and control page on a server or in a container (put HTTPS in front)",
+    )
+    cloud.add_argument("--host", default=os.environ.get("SG_LOCAL_WEB_HOST", "0.0.0.0"))
+    cloud.add_argument("--port", type=int, default=None, help="port (default $PORT, SG_LOCAL_WEB_PORT or 8765)")
+    cloud.set_defaults(func=cmd_cloud)
 
     logs = sub.add_parser("logs", help="show or follow the daemon log")
     logs.add_argument("-n", "--lines", type=int, default=80, help="lines to show (default 80)")

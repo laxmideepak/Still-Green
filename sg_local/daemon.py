@@ -48,7 +48,7 @@ def setup_logging() -> None:
     root.addHandler(handler)
 
     # When started by the CLI, stderr already points at the same log file.
-    if sys.stderr.isatty():
+    if sys.stderr.isatty() or os.environ.get("SG_LOCAL_LOG_STDOUT") == "1":
         stream = logging.StreamHandler()
         stream.setFormatter(formatter)
         root.addHandler(stream)
@@ -541,8 +541,9 @@ class Daemon:
             pass
 
     def ensure_control_server(self) -> None:
-        """Serve the control page on loopback so the dashboard and extension work.
+        """Serve the control page so the dashboard and extension work.
 
+        Loopback by default; ``sg-local cloud`` sets SG_LOCAL_WEB_HOST=0.0.0.0.
         Retried from the main loop, so it comes up once a busy port frees.
         Set SG_LOCAL_DAEMON_WEB=0 to turn this off (then run ``sg-local web``).
         """
@@ -554,14 +555,16 @@ class Daemon:
         self.next_control_attempt = now + CONTROL_RETRY_INTERVAL
         try:
             port = web.port_from_env()
-            self.control_server = web.start_background("127.0.0.1", port)
+            host = os.environ.get("SG_LOCAL_WEB_HOST") or "127.0.0.1"
+            self.control_server = web.start_background(host, port)
         except (OSError, config.ConfigError) as exc:
             if not self.control_warned:
                 LOGGER.warning("control page not started (%s); will keep trying", exc)
                 self.control_warned = True
             return
         web.load_code()
-        LOGGER.info("control page at http://127.0.0.1:%s", self.control_server.server_address[1])
+        host, port = self.control_server.server_address[:2]
+        LOGGER.info("control page listening on %s port %s", host, port)
 
     async def stop_all(self) -> None:
         keys = list(self.sessions)

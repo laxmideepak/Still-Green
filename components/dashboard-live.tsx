@@ -900,9 +900,9 @@ export function DashboardLive({ config, initialState, onDisconnect, onReconnect 
                 <h2>Tokens never touch this page.</h2>
                 <p>
                   The dashboard has your daemon URL and access code, not your Slack
-                  credentials. Tokens live in config.json on this machine; the browser
-                  talks to the daemon over loopback (127.0.0.1) and sends only schedule
-                  and presence commands.
+                  credentials. Tokens live in config.json wherever the daemon runs (this
+                  computer or your own server); the browser talks to the daemon directly
+                  and sends only schedule and presence commands.
                 </p>
               </div>
               <Link href="/start" className={styles.securityLink}>
