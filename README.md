@@ -1,115 +1,119 @@
-# Stillgreen
+<p align="center">
+  <a href="https://github.com/laxmideepak/slack">
+    <img src="docs/banner.svg" alt="Stillgreen — your green dot, on your schedule" width="100%">
+  </a>
+</p>
 
-A personal, self-hosted Slack presence daemon with an editorial web interface.
-It keeps your Slack status "active" using your own browser session tokens — no
-account on a third-party service, no relay, and no telemetry.
+<h2 align="center">Slack presence that runs on your own cloud.</h2>
 
-It comes in two parts that you can run together or separately:
+<p align="center">
+  A personal, self-hosted presence daemon with an editorial dashboard.<br>
+  Close the laptop. The dot stays green.
+</p>
 
-- a **daemon** (`sg-local`) that holds the Slack connection and your tokens;
-- a **dashboard** (Next.js) that can be hosted on Vercel and connects straight to
-  your daemon over HTTPS.
+<p align="center">
+  <a href="https://github.com/laxmideepak/slack/stargazers"><img src="https://img.shields.io/github/stars/laxmideepak/slack?style=flat-square&amp;color=0e7a4d&amp;label=stars" alt="GitHub stars"></a>
+  <a href="https://nextjs.org"><img src="https://img.shields.io/badge/Next.js-16-14231a?style=flat-square&amp;logo=nextdotjs&amp;logoColor=white" alt="Next.js 16"></a>
+  <a href="https://www.python.org"><img src="https://img.shields.io/badge/Python-3.11%2B-14231a?style=flat-square&amp;logo=python&amp;logoColor=white" alt="Python 3.11+"></a>
+  <a href="https://www.docker.com"><img src="https://img.shields.io/badge/Docker-ready-14231a?style=flat-square&amp;logo=docker&amp;logoColor=white" alt="Docker ready"></a>
+  <a href="#security-model"><img src="https://img.shields.io/badge/telemetry-none-0e7a4d?style=flat-square" alt="No telemetry"></a>
+</p>
 
-Put the daemon on any always-on Linux host — a small VPS, Fly.io, Render, or
-Railway — and the dashboard on Vercel. Close the laptop and presence continues.
+<p align="center">
+  <a href="#product-tour"><strong>Product tour</strong></a> ·
+  <a href="#how-it-works"><strong>How it works</strong></a> ·
+  <a href="#cloud-setup-recommended"><strong>Cloud setup</strong></a> ·
+  <a href="#local-setup"><strong>Local setup</strong></a> ·
+  <a href="#security-model"><strong>Security</strong></a> ·
+  <a href="#cli-reference"><strong>CLI</strong></a>
+</p>
 
-The Python package and CLI keep their original internal name,
-`slack-green-local`; **Stillgreen** is the product name used by the interface.
+---
 
-This is an independent project. It is not affiliated with Slack or
-[slack.green](https://slack.green).
+> [!IMPORTANT]
+> **Two pieces, one system.** Vercel hosts the dashboard. An always-on host runs the daemon. The dashboard is frontend-only and never receives Slack tokens — those live on the daemon with file mode `0600`.
 
-> **Use responsibly.** Automating presence may violate your employer's policy
-> or Slack's terms. Use it only on workspaces you own or have explicit
-> permission to use.
+## The short version
 
-## What it does
+<table>
+  <tr>
+    <td width="25%" valign="top">
+      <h3>Always on</h3>
+      <p>One small Python process holds the Slack session, pings every 30 seconds, and reconnects when presence drops.</p>
+    </td>
+    <td width="25%" valign="top">
+      <h3>On your schedule</h3>
+      <p>Weekly windows, global or per-workspace pause, and temporary stay-online overrides. Manual “away” is never overridden.</p>
+    </td>
+    <td width="25%" valign="top">
+      <h3>Honest dashboard</h3>
+      <p>Paired to a daemon, it is live. Unpaired, it says so and stays an explicit sample. No pretend controls.</p>
+    </td>
+    <td width="25%" valign="top">
+      <h3>No middleman</h3>
+      <p>No Stillgreen account, no relay, no analytics. Tokens stay on your host; traffic goes to Slack.</p>
+    </td>
+  </tr>
+</table>
 
-- Connects to Slack's presence WebSocket (`wss-primary.slack.com`) as the web
-  client does.
-- Sends a JSON `ping` every 30 seconds and a simulated activity `tickle` every
-  5 minutes.
-- Checks `users.getPresence` every 60 seconds and reconnects if Slack marks you
-  away. It **never overrides a manual "away"**.
-- Supports one or many workspaces, a weekly schedule, global or per-workspace
-  pause, temporary stay-online windows, and optional macOS login auto-start.
-- Stores everything on the host you choose. Outbound traffic goes only to Slack.
+## Product tour
 
-## Web interface
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="docs/screenshots/dashboard.jpg" alt="Stillgreen dashboard showing presence, session, schedule, and activity" width="100%" />
+      <p align="center"><sub><strong>Dashboard</strong> — live when paired, explicit sample otherwise.</sub></p>
+    </td>
+    <td width="50%" valign="top">
+      <img src="docs/screenshots/cloud.jpg" alt="Stillgreen cloud setup page with deployment and pairing steps" width="100%" />
+      <p align="center"><sub><strong>Cloud setup</strong> — deploy the daemon, add tokens, pair the UI.</sub></p>
+    </td>
+  </tr>
+</table>
 
-The repository includes a Next.js interface in `app/` and `components/`:
+## Why Stillgreen
 
-- `/` — the Stillgreen landing page.
-- `/dashboard` — live controls when paired with a daemon, sample data otherwise.
-- `/start` — cloud deployment and daemon pairing.
-- `/setup` — the local CLI setup and security guide.
+Most presence tools ask you to hand a third-party service a Slack session cookie and trust its uptime, its pricing, and its promises. Stillgreen takes the opposite route:
 
-The dashboard is **frontend only by design**. It never asks for Slack tokens.
-When you pair it with a daemon it stores two things in `localStorage`: the
-daemon's HTTPS URL and a bridge access code. Every request then goes directly
-from your browser to your daemon. Vercel only serves static files and never sees
-either value on a server.
+- **A daemon, not a subscription.** You run one process on a host you already own.
+- **No relay in the middle.** Your browser talks directly to your daemon over HTTPS with an access code.
+- **No tokens on Vercel.** The hosted UI never asks for Slack credentials and has no server-side secret to leak.
+- **No silent behavior.** It never overrides a manual away status, and the dashboard is explicit about preview vs. live.
+- **No lock-in.** The same CLI runs on a laptop, a VPS, or a container platform. Stop it whenever you want.
 
-Without a paired daemon the dashboard stays in an explicit "Preview mode ·
-sample data" state. It does not pretend to control anything. Keep that
-boundary if you fork it.
+## How it works
 
-### Run the interface locally
-
-```sh
-npm install
-npm run dev
-# http://localhost:3000
+```mermaid
+flowchart LR
+  U["Your browser"] -->|loads static UI| V["Vercel<br/>dashboard"]
+  U -->|HTTPS + access code| D["Your host<br/>presence daemon"]
+  D <-->|WebSocket · ping 30s| S["Slack"]
+  D <-->|users.getPresence · 60s| S
+  D --- T["Tokens<br/>mode 0600"]
 ```
 
-```sh
-npm run build   # production build
-npm run start   # serve the production build
-```
+- The daemon connects to `wss-primary.slack.com` the way the Slack web client does.
+- It sends a JSON `ping` every 30 seconds and a simulated activity `tickle` every 5 minutes.
+- It checks `users.getPresence` every 60 seconds and reconnects if Slack marks you away.
+- It **never** overrides a manual “away”.
+- The dashboard receives only token-free state: schedule, session health, workspace names, and activity.
 
-### Deploy the interface to Vercel
+## Cloud setup (recommended)
 
-1. Import <https://github.com/laxmideepak/slack> at
-   <https://vercel.com/new>.
-2. Keep the root directory as the repository root. Vercel detects Next.js from
-   `package.json`; the framework preset should be **Next.js**.
-3. No environment variables, database, or server functions are required.
-4. Deploy. The Python files are ignored by the Next.js build.
+Three steps, about five minutes. You need a Vercel account and one always-on host.
 
-The Vercel deployment and the daemon are independent: redeploying the site does
-not start, stop, or configure presence on your host.
+### 1. Deploy the dashboard to Vercel
 
-## Run the daemon 24/7
+Import <https://github.com/laxmideepak/slack> at <https://vercel.com/new>. Keep the repository root as the root directory; Vercel detects Next.js automatically. No environment variables or database are required.
 
-Pick one always-on host. The daemon is one Python process with a WebSocket per
-workspace; 256 MB of memory is enough. The repository ships four deployment
-options:
+### 2. Deploy the daemon
 
-| Host | Files | Notes |
-| --- | --- | --- |
-| Any Docker host / VPS | `Dockerfile`, `docker-compose.yml` | Mount a volume at `/data` |
-| Fly.io | `fly.toml` | `fly volumes create stillgreen_data --size 1` |
-| Render | `render.yaml` | Starter plan or higher; a persistent disk is required |
-| Railway | `railway.json` | Add a volume mounted at `/data` |
+Use the shipped configuration for Fly.io, Render, Railway, or any Docker host.
 
-### Environment
-
-| Variable | Required | Purpose |
-| --- | --- | --- |
-| `SG_LOCAL_BRIDGE_CODE` | Cloud: yes | Access code for the dashboard. Set it as a secret. |
-| `SG_LOCAL_WEB_ORIGIN` | Cloud: yes | Comma-separated dashboard origins, e.g. `https://stillgreen.vercel.app` |
-| `SG_LOCAL_CONFIG_DIR` | With a volume | Where `config.json` and `bridge.json` live |
-| `SG_LOCAL_STATE_DIR` | With a volume | Where the PID file and logs live |
-| `PORT` | Platform-provided | Render and Railway set this; do not override it |
-
-`*.vercel.app` origins and loopback are allowed by default; add a custom domain
-to `SG_LOCAL_WEB_ORIGIN`. Set `SG_LOCAL_ALLOW_VERCEL=0` to disable the Vercel
-wildcard entirely.
-
-### Fly.io
+**Fly.io**
 
 ```sh
-fly launch --copy-config --name stillgreen-yourname --no-deploy
+fly launch --copy-config --name stillgreen-you --no-deploy
 fly volumes create stillgreen_data --size 1 --region ams
 fly secrets set \
   SG_LOCAL_BRIDGE_CODE="SG-$(openssl rand -hex 8)" \
@@ -117,10 +121,7 @@ fly secrets set \
 fly deploy
 ```
 
-Edit `app` and `primary_region` in `fly.toml` first. The volume keeps tokens
-across deploys.
-
-### Docker (VPS or local)
+**Docker**
 
 ```sh
 export SG_LOCAL_BRIDGE_CODE="SG-$(openssl rand -hex 8)"
@@ -128,158 +129,123 @@ export SG_LOCAL_WEB_ORIGIN="https://your-app.vercel.app"
 docker compose up -d --build
 ```
 
-Put the container behind Caddy, nginx, or a platform TLS proxy. The daemon
-speaks plain HTTP; TLS termination is the proxy's job. Do not expose port 8765
-directly to the internet without HTTPS.
+Put the container behind Caddy, nginx, or your platform’s TLS proxy. The daemon speaks plain HTTP internally; HTTPS is mandatory at the edge.
 
-### First run
+| Variable | Purpose |
+| --- | --- |
+| `SG_LOCAL_BRIDGE_CODE` | Access code required by every dashboard request |
+| `SG_LOCAL_WEB_ORIGIN` | Comma-separated dashboard origins allowed by CORS |
+| `SG_LOCAL_CONFIG_DIR` | Persistent directory for `config.json` and `bridge.json` |
+| `SG_LOCAL_STATE_DIR` | Persistent directory for the PID file and logs |
+| `PORT` | Supplied by Render/Railway; do not override it |
 
-1. Open `https://your-daemon-host/` in a browser.
-2. Enter the access code when prompted.
-3. Add each workspace with `sg-local add`, or use the daemon page's token form.
-   Tokens are written to the volume with mode `0600`; they never reach Vercel.
-4. Confirm the daemon is healthy: `curl https://your-daemon-host/api/health`.
-5. In the hosted dashboard, choose **Connect daemon**, enter the daemon URL and
-   the same access code, and open `/dashboard`.
+### 3. Add the workspace and pair the dashboard
 
-The dashboard polls the daemon every few seconds. The control surface exposes
-schedule, pause, resume, stay-online, and per-workspace actions. Token values
-are never returned by any endpoint.
+1. Open `https://your-daemon-host/` and enter the bridge code.
+2. Add the workspace on the daemon page with your `xoxc` token and `xoxd` cookie.
+3. In the Vercel dashboard, choose **Connect daemon**, then enter the daemon URL and the same code.
+4. Confirm health at `https://your-daemon-host/api/health`.
 
-## Requirements
+The URL and access code are stored in your browser’s `localStorage`. They are never sent to Vercel.
 
-- Python 3.11 or newer
-- [`websockets`](https://pypi.org/project/websockets/) 12 or newer
-- Node.js 20.9+ and npm (only for the web interface)
-- macOS, Linux, or another Unix-like system (optional launchd support is
-  macOS-only)
-
-The included wrapper prefers the Python at
-`/opt/homebrew/Caskroom/miniforge/base/bin/python3` if present, then falls back
-to `python3`. Set `SG_LOCAL_PYTHON` to choose a specific interpreter.
+## Local setup
 
 ```sh
+git clone https://github.com/laxmideepak/slack.git
+cd slack
 python3 -m pip install --user "websockets>=12"
+
+./sg-local add          # hidden prompts for xoxc + xoxd
+./sg-local start
+./sg-local web --daemon --open
 ```
 
-## Install
+The local control page runs at `http://127.0.0.1:8765`. To pair the hosted dashboard with it:
 
 ```sh
-cd /path/to/slack
-chmod +x sg-local install.sh
-./install.sh
+./sg-local web --show-code
 ```
 
-`install.sh` creates a symlink at `~/.local/bin/sg-local`. If that directory is
-not on your `PATH`, add it:
+Then connect the dashboard to `http://127.0.0.1:8765` with that code. A laptop daemon stops when the machine sleeps — use a cloud host for 24/7 presence.
 
-```sh
-echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
-```
+### Getting the two Slack values
 
-You can also run the tool without installing:
+Use the Slack **web app** in a desktop browser, not the desktop app.
 
-```sh
-./sg-local --help
-```
+<details>
+<summary><strong>Show the token walkthrough</strong></summary>
 
-## 1. Get your Slack tokens
-
-Use the Slack **web app** in a desktop browser (not the desktop app). These
-values grant full access to your Slack account, so treat them like passwords.
+<br />
 
 1. Open your workspace at <https://app.slack.com> and sign in.
-2. Open DevTools (`Cmd+Option+I` on macOS) and select the **Network** tab.
-   Keep DevTools open and reload the Slack tab.
-3. Find the `xoxc` token. Newer Slack builds no longer always persist it in
-   `localStorage`, so use one of these network-based paths:
+2. Open DevTools (`Cmd+Option+I` on macOS), select **Network**, and reload the tab.
+3. Find the `xoxc` token:
+   - Filter by `api`, open a request such as `client.boot` or `users.getPresence`, and inspect **Payload → Form Data** for `token`.
+   - Or filter by `WS`, open `wss-primary.slack.com`, and copy `token=xoxc-...` from the request URL. Stop at the next `&`.
+   - On older Slack builds, `JSON.parse(localStorage.localConfig_v2).teams` may still work. If it is empty, use the Network tab.
+4. Open **Application → Cookies → https://app.slack.com** and copy the cookie named `d`. It starts with `xoxd-`. It is `HttpOnly`, so `document.cookie` will not show it.
 
-   - Filter requests by `api`, open one such as `client.boot` or
-     `users.getPresence`, and check **Payload → Form Data** (Chrome) or
-     **Request → Form Data** (Firefox) for a `token` field starting with
-     `xoxc-`.
-   - Or filter by `WS`, open the `wss-primary.slack.com` request, and copy the
-     `token=xoxc-...` value from its Request URL. Stop at the next `&`.
+Both values must come from the same signed-in browser session. Treat them like passwords: never paste them into chat, issues, or shell history. The daemon reads them with hidden input.
 
-   On older Slack builds you can still try this in the **Console**:
+</details>
 
-   ```js
-   JSON.parse(localStorage.localConfig_v2).teams
-   ```
+## Dashboard
 
-   If it returns `undefined` or an empty object, use the Network tab instead.
+| State | What you see |
+| --- | --- |
+| **Paired** | Live session health, schedule, pause/resume, stay-online, per-workspace controls, and activity |
+| **Unpaired** | A labeled sample preview with a **Connect daemon** action |
+| **Unreachable** | The saved daemon is shown with an error and a path to update the URL or code |
 
-4. In DevTools, open **Application → Cookies → https://app.slack.com** and copy
-   the cookie named `d`. It starts with `xoxd-`. This cookie is `HttpOnly`, so
-   it will not appear in `document.cookie`; the Application panel is the
-   reliable place to read it.
+The dashboard polls the daemon every few seconds. Mutations go straight to the daemon over HTTPS. There is no Vercel API route and no server-side proxy.
 
-Do not paste these values into chat, issue trackers, websites, or shell
-commands where they could end up in history. The tool reads them with hidden
-input.
+## Security model
 
-## 2. Add a workspace
+| Data | Where it lives | Who can read it |
+| --- | --- | --- |
+| Slack `xoxc` + `xoxd` | Daemon volume, `config.json`, mode `0600` | You and the daemon process |
+| Bridge code | `bridge.json` (`0600`) or `SG_LOCAL_BRIDGE_CODE` | You and the daemon |
+| Daemon URL + code | Browser `localStorage` | That browser profile |
+| Presence events | Daemon logs | You |
+| Dashboard assets | Vercel | Public |
 
-```sh
-sg-local add
-```
+- Token values are **never** returned by the API, written to logs, or included in errors.
+- The control surface requires the bridge code on every state and mutation request.
+- CORS is an allowlist; `*.vercel.app` and loopback are allowed by default. Set `SG_LOCAL_ALLOW_VERCEL=0` to disable the Vercel wildcard.
+- In cloud mode the daemon binds `0.0.0.0` behind the platform TLS proxy. Never expose port `8765` directly to the internet.
+- Revoking access is equivalent to signing out of Slack or changing your password. If Slack rejects the tokens, run `sg-local add` again.
 
-The token is verified with Slack before it is saved. Config lives at:
-
-```text
-~/.config/slack-green-local/config.json   (mode 0600)
-```
-
-To add another workspace, run `sg-local add` again. To replace expired tokens,
-run it for the same workspace; existing settings are preserved.
-
-## 3. Start it
-
-```sh
-sg-local start
-sg-local status
-sg-local logs -f
-```
-
-The daemon follows the schedule (always-on by default). `stop` shuts it down:
-
-```sh
-sg-local stop
-```
-
-## Commands
+## CLI reference
 
 | Command | Purpose |
 | --- | --- |
-| `sg-local add` | Add or update a workspace using hidden token prompts |
+| `sg-local add` | Add or update a workspace with hidden token prompts |
 | `sg-local list` | List workspaces and live status |
-| `sg-local remove NAME` | Remove a workspace by name or team ID |
-| `sg-local schedule show` | Show the schedule and whether it is active now |
-| `sg-local schedule always` | Keep presence on all the time |
-| `sg-local schedule set --days mon-fri --start 09:00 --end 17:00 --timezone local` | Set a weekly window |
+| `sg-local remove NAME` | Remove a workspace |
 | `sg-local start` / `stop` / `restart` | Control the background daemon |
 | `sg-local status` | Daemon, schedule, pause, and workspace status |
-| `sg-local pause --for 2h` | Pause all presence for a while |
-| `sg-local pause --workspace NAME` | Pause one workspace until resumed |
+| `sg-local schedule set --days mon-fri --start 09:00 --end 17:00` | Set a weekly window |
+| `sg-local schedule always` | Keep presence on all the time |
+| `sg-local pause --for 2h` | Pause everything temporarily |
+| `sg-local pause --workspace NAME` | Pause one workspace |
 | `sg-local resume` | Clear global and per-workspace pauses |
-| `sg-local resume --workspace NAME` | Resume one workspace |
 | `sg-local stay 90m` | Stay online temporarily, overriding pause/schedule |
-| `sg-local stay --cancel` | Cancel a stay-online window |
-| `sg-local doctor` | Check configuration, permissions, and runtime |
-| `sg-local doctor --check-tokens` | Also verify tokens with Slack |
-| `sg-local web --daemon --open` | Run the local control surface and open it |
-| `sg-local cloud` | Run the control surface on `0.0.0.0:$PORT` for a cloud host |
-| `sg-local logs -n 100` | Show recent logs |
-| `sg-local install-launchd` | Start automatically at macOS login |
-| `sg-local uninstall-launchd` | Remove macOS login auto-start |
+| `sg-local web --daemon --open` | Run the local control surface |
+| `sg-local cloud` | Run the daemon and control surface on `0.0.0.0:$PORT` |
+| `sg-local doctor --check-tokens` | Check config, permissions, and token validity |
+| `sg-local logs -f` | Follow daemon logs |
+| `sg-local install-launchd` | Start at macOS login |
 
-### Schedule examples
+<details>
+<summary><strong>Schedule examples</strong></summary>
+
+<br />
 
 ```sh
 # Weekdays, 9am to 5pm in the machine's timezone
 sg-local schedule set --days weekdays --start 09:00 --end 17:00
 
-# Weekdays in New York, even if the Mac is elsewhere
+# Weekdays in New York, even if the host is elsewhere
 sg-local schedule set --days mon-fri --start 09:00 --end 17:00 --timezone America/New_York
 
 # Overnight window: Monday 22:00 through Tuesday 06:00
@@ -288,125 +254,70 @@ sg-local schedule set --days monday --start 22:00 --end 06:00 --timezone local
 # Split days and weekends
 sg-local schedule set --days mon,wed,fri --start 08:30 --end 18:00
 sg-local schedule set --days weekends --start 10:00 --end 14:00
-
-# Turn scheduling off
-sg-local schedule always
 ```
 
-An overnight window belongs to the day it starts. `--timezone local` uses the
-machine's current timezone; any IANA name such as `Europe/London` also works.
+An overnight window belongs to the day it starts. `--timezone local` uses the host’s current timezone; any IANA name also works.
 
-## How it works
+</details>
 
-```text
-Slack web tokens (xoxc + xoxd)
-        │
-        ▼
-sg-local daemon ── WebSocket ──> wss-primary.slack.com
-        │              ping every 30s, tickle every 5m
-        │
-        └──────── HTTP ────────> slack.com/api/users.getPresence every 60s
-                                  reconnect if away (never if manual_away)
-```
+## Deploy anywhere
 
-- The `xoxc` token is sent in the WebSocket query string, exactly as the Slack
-  web client does. The `xoxd` cookie is sent in the `Cookie` header.
-- Tokens are never written to logs.
-- There are no external servers, no analytics, no crash reporting, and no
-  inbound listening ports.
-- The config is plain JSON protected by filesystem permissions (`0600`). It is
-  not encrypted at rest; use full-disk encryption and keep backups secure.
+| Host | Files | Notes |
+| --- | --- | --- |
+| Vercel | `package.json`, `app/` | Dashboard only; no daemon, no tokens |
+| Fly.io | `fly.toml` | Create the `stillgreen_data` volume first |
+| Render | `render.yaml` | Starter plan or higher for a persistent disk |
+| Railway | `railway.json` | Mount a volume at `/data` |
+| Docker / VPS | `Dockerfile`, `docker-compose.yml` | Terminate TLS at your proxy |
 
-## Sleep, laptops, and 24/7 operation
-
-macOS suspends processes while the machine sleeps, so a daemon on a laptop
-cannot keep presence alive when the lid is closed. The supported way to get
-24/7 presence is to run the daemon on an always-on host (see
-[Run the daemon 24/7](#run-the-daemon-247)).
-
-If you keep it on a laptop instead:
-
-- Keep the machine awake while it should be online, for example:
-  `caffeinate -dimsu` (this prevents sleep; it does not bypass corporate
-  policies).
-- Use `sg-local install-launchd` so the daemon restarts after login.
-
-## Security and privacy
-
-- Tokens are read with hidden input, verified with `auth.test`, and stored only
-  in `~/.config/slack-green-local/config.json` with mode `0600`.
-- Logs contain workspace names, connection states, and errors — never token
-  values. Runtime files live in `~/.local/state/slack-green-local/`.
-- The control surface (`sg-local web` / `sg-local cloud`) requires the bridge
-  access code on every state and mutation request. The code lives in
-  `bridge.json` with mode `0600`, or in `SG_LOCAL_BRIDGE_CODE` on a cloud host.
-- In cloud mode the server binds `0.0.0.0` behind the platform's TLS proxy. Use
-  HTTPS and set `SG_LOCAL_WEB_ORIGIN` to your dashboard origin. CORS is an
-  allowlist, and an unknown origin cannot read or change anything without the
-  code.
-- The dashboard stores only the daemon URL and access code in `localStorage`.
-  It never receives Slack tokens; those exist only on the daemon.
-- Revoking access is equivalent to signing out of Slack or changing your
-  password; tokens may also expire on their own. If Slack rejects them, run
-  `sg-local add` again.
-- `sg-local doctor` checks file permissions. `--check-tokens` contacts Slack to
-  verify the stored tokens.
-- Never commit your config file. It is outside this repository by default, and
-  `.gitignore` also excludes common secret files.
-
-## Uninstall
-
-```sh
-sg-local stop
-sg-local uninstall-launchd   # if installed
-rm -f ~/.local/bin/sg-local
-rm -rf ~/.config/slack-green-local ~/.local/state/slack-green-local
-```
-
-The last command deletes your stored tokens and logs. Run it only if you no
-longer need the tool.
+The daemon is small: one Python process and one WebSocket per workspace. A 256 MB shared instance is enough. Hosting costs a few dollars a month; there is no Stillgreen subscription.
 
 ## Development
 
-Python daemon:
-
 ```sh
-python3 -m unittest discover -s tests -v
-./sg-local doctor
-```
+# Python daemon — 65 tests, no network
+python3 -m pytest -q
 
-The unit tests do not contact Slack; they use fake tokens and mock the network.
-The package uses only `websockets` plus the Python standard library.
-
-Web interface:
-
-```sh
+# Web interface
 npm install
 npm run build
+npm run dev
 ```
 
-Project layout:
-
 ```text
-app/                  Next.js App Router pages, layout, and global styles
-components/           landing, live dashboard, connect dialog, setup, and shared UI
+app/                  Next.js App Router pages and global styles
+components/           landing, live dashboard, connect dialog, guides
 lib/                  typed daemon client and localStorage pairing
 sg_local/
   cli.py              command-line interface
-  config.py           paths, config schema, permissions, pause/stay helpers
-  daemon.py           background supervisor and schedule reconciliation
-  launchd.py          optional macOS login auto-start
+  config.py           paths, schema, permissions, pause/stay helpers
+  daemon.py           supervisor and schedule reconciliation
   schedule.py         weekly schedule parsing and evaluation
-  slack.py            Slack HTTP client and presence WebSocket session
+  slack.py            Slack HTTP client and presence WebSocket
   state.py            PID/lock handling, runtime state, log tailing
-  web.py              local/cloud control surface, bridge auth, and API
+  web.py              local/cloud control surface, bridge auth, API
 tests/                Python unit tests (no network)
-sg-local              wrapper script
-install.sh            user-level launcher installer
-package.json          Next.js interface dependencies and scripts
+docs/                 launch banner and product screenshots
 Dockerfile            daemon image for Fly, Render, Railway, or a VPS
-fly.toml              Fly.io configuration and volume mount
-render.yaml           Render blueprint
-railway.json          Railway build and health check
-docker-compose.yml    local or VPS container with a named volume
 ```
+
+## Status
+
+**Working today:** presence daemon, weekly schedules, global and per-workspace pause, stay-online overrides, multi-workspace support, local and cloud control surfaces, dashboard pairing, Docker/Fly/Render/Railway deployment files, and 65 passing unit tests.
+
+**Not shipped:** a public hosted demo, a managed cloud offering, and a browser extension. The dashboard is honest about this — it stays a preview until you connect a daemon.
+
+## Contributing
+
+This is a personal project, but issues and focused pull requests are welcome. Please never include real Slack tokens, cookies, workspace names, or account email in an issue. Use the fake values from the test suite when demonstrating a problem.
+
+## Disclaimer
+
+Stillgreen is an independent project. It is not affiliated with Slack or [slack.green](https://slack.green).
+
+Automating presence may violate your employer’s policy or Slack’s terms. Use it only on workspaces you own or have explicit permission to use.
+
+<div align="center">
+  <br />
+  <sub>Built for people who close their laptops.</sub>
+</div>
