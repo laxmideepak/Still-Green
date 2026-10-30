@@ -15,7 +15,7 @@ const body = Instrument_Sans({
 });
 
 const description =
-  "A self-hosted Slack presence daemon. Keep your green dot active during the hours you choose, with no cloud relay and no telemetry.";
+  "A self-hosted Slack presence daemon. Keep your green dot active during the hours you choose, with no relay and no telemetry.";
 
 export const metadata: Metadata = {
   title: {

@@ -5,7 +5,7 @@ import styles from "./site-header.module.css";
 
 const nav = [
   { href: "/#how", label: "How it works" },
-  { href: "/start", label: "Cloud" },
+  { href: "/start", label: "Setup" },
   { href: "/setup", label: "CLI" },
 ];
 

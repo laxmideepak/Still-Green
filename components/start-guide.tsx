@@ -7,9 +7,7 @@ import { SiteFooter } from "./site-footer";
 import { SiteHeader } from "./site-header";
 import {
   ArrowRight,
-  ArrowUpRight,
   Check,
-  Clock,
   Copy,
   Github,
   Lock,
@@ -24,53 +22,24 @@ import {
 } from "@/lib/bridge";
 import styles from "./start-guide.module.css";
 
-type Provider = "fly" | "render" | "railway" | "local";
-
-const providers: Array<{ id: Provider; label: string; note: string }> = [
-  { id: "fly", label: "Fly.io", note: "Docker + volume · always on" },
-  { id: "render", label: "Render", note: "Blueprint · persistent disk" },
-  { id: "railway", label: "Railway", note: "Docker + volume" },
-  { id: "local", label: "This laptop", note: "No cloud, no 24/7" },
-];
-
-const commands: Record<Provider, { label: string; command: string; note: string }> = {
-  fly: {
+const commands = {
+  install: {
     label: "Terminal",
-    command: `fly launch --copy-config --name stillgreen-yourname --no-deploy
-fly volumes create stillgreen_data --size 1 --region ams
-fly secrets set \\
-  SG_LOCAL_BRIDGE_CODE="SG-$(openssl rand -hex 8)" \\
-  SG_LOCAL_WEB_ORIGIN="https://your-app.vercel.app"
-fly deploy`,
-    note: "Edit app and primary_region in fly.toml first. The volume keeps tokens across deploys. Fly asks for a card.",
-  },
-  render: {
-    label: "Render Blueprint",
-    command: `# New → Blueprint → connect this GitHub repository
-# render.yaml creates the service and 1 GB disk
-# Set SG_LOCAL_WEB_ORIGIN to your Vercel URL
-# Copy the generated SG_LOCAL_BRIDGE_CODE from the dashboard`,
-    note: "The starter plan is required for a persistent disk. The free plan sleeps and loses the volume.",
-  },
-  railway: {
-    label: "Railway",
-    command: `# New Project → Deploy from GitHub → laxmideepak/slack
-# Add a volume mounted at /data
-# Variables:
-#   SG_LOCAL_BRIDGE_CODE=SG-...
-#   SG_LOCAL_WEB_ORIGIN=https://your-app.vercel.app
-#   SG_LOCAL_CONFIG_DIR=/data/config
-#   SG_LOCAL_STATE_DIR=/data/state`,
-    note: "railway.json selects the Dockerfile and the /api/health check.",
-  },
-  local: {
-    label: "Local terminal",
     command: `git clone https://github.com/laxmideepak/slack.git
 cd slack
+./sg-local add
 ./sg-local web --daemon --open`,
-    note: "This keeps the daemon on your machine. It stops when the laptop sleeps or closes. Use a cloud provider if you want 24/7.",
+    note: "`add` prompts for both Slack values with hidden input. `web --daemon` starts the presence daemon and its control page at 127.0.0.1:8765.",
   },
-};
+  autostart: {
+    label: "Optional · macOS",
+    command: `./sg-local install-launchd
+./sg-local status`,
+    note: "Starts the daemon at login so the dot survives a reboot. Without it, the daemon stops when the terminal closes.",
+  },
+} as const;
+
+type CommandKey = keyof typeof commands;
 
 function CommandBlock({ command, label }: { command: string; label: string }) {
   const [copied, setCopied] = useState(false);
@@ -111,7 +80,7 @@ function CommandBlock({ command, label }: { command: string; label: string }) {
 
 function ConnectForm() {
   const router = useRouter();
-  const [url, setUrl] = useState("https://");
+  const [url, setUrl] = useState("http://127.0.0.1:8765");
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -131,11 +100,10 @@ function ConnectForm() {
     setError("");
     try {
       const next = await connectBridge(url, code);
-      const config = { url, code: code.trim() };
+      const config = { url: url.replace(/\/+$/, ""), code: code.trim() };
       saveBridge(config);
       setSaved(config);
-      const target = `/dashboard?workspaces=${next.workspaces.length}`;
-      router.push(target);
+      router.push(`/dashboard?workspaces=${next.workspaces.length}`);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not connect to the daemon.");
     } finally {
@@ -167,22 +135,22 @@ function ConnectForm() {
   return (
     <form className={styles.connectForm} onSubmit={submit}>
       <div className={styles.field}>
-        <label htmlFor="cloud-url">Daemon URL</label>
+        <label htmlFor="daemon-url">Daemon URL</label>
         <input
-          id="cloud-url"
+          id="daemon-url"
           type="url"
           value={url}
           onChange={(event) => setUrl(event.target.value)}
-          placeholder="https://stillgreen-yourname.fly.dev"
+          placeholder="http://127.0.0.1:8765"
           autoComplete="url"
           spellCheck={false}
           required
         />
       </div>
       <div className={styles.field}>
-        <label htmlFor="cloud-code">Access code</label>
+        <label htmlFor="daemon-code">Access code</label>
         <input
-          id="cloud-code"
+          id="daemon-code"
           type="password"
           value={code}
           onChange={(event) => setCode(event.target.value)}
@@ -203,15 +171,15 @@ function ConnectForm() {
       </button>
       <p className={styles.finePrint}>
         The URL and code are stored in this browser. They are never sent to Vercel or
-        any third party.
+        any third party. Loopback addresses are allowed even though this page is HTTPS.
       </p>
     </form>
   );
 }
 
 export function StartGuide() {
-  const [provider, setProvider] = useState<Provider>("fly");
-  const active = commands[provider];
+  const [tab, setTab] = useState<CommandKey>("install");
+  const active = commands[tab];
 
   return (
     <>
@@ -222,25 +190,25 @@ export function StartGuide() {
             <div>
               <p className={styles.eyebrow}>
                 <span aria-hidden="true" />
-                Cloud setup · about 5 minutes
+                Local setup · about 3 minutes
               </p>
               <h1>
                 Your dot,
                 <br />
-                without your laptop<span className={styles.dot}>.</span>
+                from this laptop<span className={styles.dot}>.</span>
               </h1>
               <p className={styles.lede}>
-                Vercel can host this page, but it cannot hold a long-lived Slack
-                connection. The daemon runs on one small always-on host that you own.
-                Close the laptop; the session keeps going.
+                Vercel hosts this dashboard and nothing else — it cannot hold a Slack
+                connection, and it never sees a token. The presence daemon runs on your
+                own machine, next to your Slack session.
               </p>
               <div className={styles.heroActions}>
-                <a href="#connect" className="button buttonPrimary">
-                  Connect an existing daemon
+                <a href="#deploy" className="button buttonPrimary">
+                  Set it up
                   <ArrowRight width={16} height={16} />
                 </a>
-                <a href="#deploy" className="button buttonSecondary">
-                  Deploy one
+                <a href="#connect" className="button buttonSecondary">
+                  I already run it
                 </a>
               </div>
             </div>
@@ -255,7 +223,7 @@ export function StartGuide() {
                 <span>HTTPS · access code</span>
               </div>
               <div className={`${styles.stackCard} ${styles.stackDaemon}`}>
-                <span className={styles.stackLabel}>Your cloud</span>
+                <span className={styles.stackLabel}>Your machine</span>
                 <strong>Presence daemon</strong>
                 <em>WebSocket · schedule · tokens</em>
               </div>
@@ -275,10 +243,10 @@ export function StartGuide() {
         <section className={styles.stepsSection} id="deploy">
           <div className={`container ${styles.stepsInner}`}>
             <div className={styles.sectionHead}>
-              <h2>Three steps, then close the lid.</h2>
+              <h2>Three steps, then close the tab.</h2>
               <p>
-                One daemon process, one volume, one access code. No account system, no
-                database, no relay.
+                One Python process, one browser extension, one access code. No account
+                system, no database, no relay.
               </p>
             </div>
 
@@ -288,66 +256,66 @@ export function StartGuide() {
                   01
                 </div>
                 <div className={styles.stepBody}>
-                  <h3>Put the daemon on an always-on host</h3>
+                  <h3>Run the daemon on your machine</h3>
                   <p>
-                    Pick a host that keeps a container running. Fly.io, Render, Railway,
-                    or any VPS with Docker works. The repository ships the{" "}
-                    <code>Dockerfile</code>, <code>fly.toml</code>,{" "}
-                    <code>render.yaml</code>, and <code>railway.json</code>.
+                    Python 3.11+ and one dependency. The daemon holds the Slack session,
+                    watches the clock, and serves a control page on loopback.
                   </p>
-                  <div className={styles.providerTabs} role="tablist" aria-label="Deployment provider">
-                    {providers.map((item) => (
+                  <div className={styles.providerTabs} role="tablist" aria-label="Command">
+                    {(
+                      [
+                        ["install", "First run", "clone, add tokens, start"],
+                        ["autostart", "Keep it running", "macOS login item"],
+                      ] as Array<[CommandKey, string, string]>
+                    ).map(([id, label, note]) => (
                       <button
-                        key={item.id}
+                        key={id}
                         type="button"
                         role="tab"
-                        aria-selected={provider === item.id}
-                        onClick={() => setProvider(item.id)}
+                        aria-selected={tab === id}
+                        onClick={() => setTab(id)}
                       >
-                        <strong>{item.label}</strong>
-                        <span>{item.note}</span>
+                        <strong>{label}</strong>
+                        <span>{note}</span>
                       </button>
                     ))}
                   </div>
                   <CommandBlock command={active.command} label={active.label} />
-                  <p className={styles.finePrint}>
-                    {active.note} The daemon listens on its platform port and is checked at{" "}
-                    <code>/api/health</code>.
-                  </p>
+                  <p className={styles.finePrint}>{active.note}</p>
                 </div>
               </li>
 
-              <li className={styles.step} id="tokens">
+              <li className={styles.step} id="extension">
                 <div className={styles.stepNumber} aria-hidden="true">
                   02
                 </div>
                 <div className={styles.stepBody}>
-                  <h3>Add Slack tokens on the daemon, not here</h3>
+                  <h3>Let the extension capture your Slack session</h3>
                   <p>
-                    Open your daemon URL in a browser and enter the access code. That
-                    page is served by the daemon itself. Paste the <code>xoxc</code>{" "}
-                    token and the <code>xoxd</code> cookie there; they never reach
-                    Vercel.
+                    The <code>xoxc</code> token lives in the page; the <code>xoxd</code>{" "}
+                    cookie is <code>HttpOnly</code>. Neither can be read by a bookmarklet,
+                    so the repository ships a small unpacked extension that reads both from
+                    your own browser and posts them to the daemon on loopback.
                   </p>
                   <div className={styles.tokenRow}>
                     <div>
-                      <span>xoxc</span>
+                      <span>Install</span>
                       <p>
-                        DevTools → Network → filter <code>api</code> → open{" "}
-                        <code>client.boot</code> → Payload → <code>token</code>.
+                        Load <code>extension/</code> as an unpacked extension from{" "}
+                        <code>chrome://extensions</code>.
                       </p>
                     </div>
                     <div>
-                      <span>xoxd</span>
+                      <span>Capture</span>
                       <p>
-                        DevTools → Application → Cookies →{" "}
-                        <code>https://app.slack.com</code> → the <code>d</code> cookie.
+                        Paste the access code and press <strong>Capture from Slack</strong>.
+                        Every signed-in workspace is added at once.
                       </p>
                     </div>
                   </div>
                   <p className={styles.finePrint}>
-                    Both values must come from the same signed-in browser session.{" "}
-                    <Link href="/setup#tokens">Full token walkthrough</Link>.
+                    Prefer doing it by hand? DevTools works too.{" "}
+                    <Link href="/setup#tokens">Manual walkthrough</Link>.
                   </p>
                 </div>
               </li>
@@ -359,8 +327,9 @@ export function StartGuide() {
                 <div className={styles.stepBody}>
                   <h3>Connect this dashboard to the daemon</h3>
                   <p>
-                    Paste the daemon&apos;s HTTPS URL and the same access code. The browser
-                    stores them locally and talks to the daemon directly.
+                    The daemon listens on <code>127.0.0.1:8765</code>. Paste that URL and
+                    the access code. Your browser stores both locally and talks to the
+                    daemon directly.
                   </p>
                   <ConnectForm />
                 </div>
@@ -383,8 +352,12 @@ export function StartGuide() {
                     <dd>This static UI. It stores your daemon URL and access code in localStorage.</dd>
                   </div>
                   <div>
-                    <dt>Your cloud host</dt>
+                    <dt>Your machine</dt>
                     <dd>The daemon, the Slack WebSocket, the schedule, and the tokens.</dd>
+                  </div>
+                  <div>
+                    <dt>The extension</dt>
+                    <dd>Reads your Slack session once, then hands it to the daemon.</dd>
                   </div>
                   <div>
                     <dt>Slack</dt>
@@ -401,14 +374,14 @@ export function StartGuide() {
               <div>
                 <h2>What it costs</h2>
                 <p>
-                  The daemon is small: one Python process and a WebSocket per workspace.
-                  A 256 MB shared instance is enough. Fly and Railway charge a few
-                  dollars a month; Render&apos;s starter plan is about $7. There is no
-                  Stillgreen subscription.
+                  Nothing. The daemon is one Python process and a WebSocket per
+                  workspace; the dashboard is a static site. There is no subscription and
+                  no account.
                 </p>
                 <p className={styles.finePrint}>
-                  Your Slack plan may restrict automated presence. Check your workspace
-                  rules before using it.
+                  The trade is the laptop: sleep it and the session ends. Keep the machine
+                  awake, or run the daemon on a machine you leave on. Your Slack plan may
+                  also restrict automated presence — check your workspace rules.
                 </p>
               </div>
             </div>
@@ -423,9 +396,7 @@ export function StartGuide() {
                 Already running?
               </p>
               <h2>Point the dashboard at it.</h2>
-              <p>
-                Local or cloud, the flow is the same: URL, access code, live state.
-              </p>
+              <p>One URL, one code, live state. The same flow every time.</p>
             </div>
             <div className={styles.closingActions}>
               <a href="#connect" className="button buttonPrimary">

@@ -304,6 +304,19 @@ class PageTests(unittest.TestCase):
             self.assertTrue(web.origin_allowed("https://demo.vercel.app"))
             self.assertFalse(web.origin_allowed("https://evil.example"))
 
+    def test_extension_origins(self) -> None:
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("SG_LOCAL_ALLOW_EXTENSIONS", None)
+            self.assertTrue(
+                web.origin_allowed("chrome-extension://abcdefghijklmnopabcdefghijklmnop")
+            )
+            self.assertFalse(web.origin_allowed("https://evil.example"))
+
+        with mock.patch.dict(os.environ, {"SG_LOCAL_ALLOW_EXTENSIONS": "0"}):
+            self.assertFalse(
+                web.origin_allowed("chrome-extension://abcdefghijklmnopabcdefghijklmnop")
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

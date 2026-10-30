@@ -67,8 +67,8 @@ export default function HomePage() {
               </h1>
               <p className={styles.lede}>
                 Stillgreen keeps Slack presence active during the hours you choose.
-                Run one small daemon on your own always-on cloud host — close the
-                laptop and the dot stays green.
+                One small daemon on your own machine holds the session, and one
+                extension captures the two values it needs. No account, no relay.
               </p>
               <div className={styles.heroActions}>
                 <Link href="/dashboard" className="button buttonPrimary">
@@ -76,7 +76,7 @@ export default function HomePage() {
                   <ArrowUpRight width={16} height={16} />
                 </Link>
                 <Link href="/start" className="button buttonSecondary">
-                  Set up the cloud
+                  Set it up
                 </Link>
               </div>
               <p className={styles.previewNote}>
@@ -84,7 +84,7 @@ export default function HomePage() {
                 stays an honest sample.
               </p>
               <ul className={styles.proof} aria-label="Product principles">
-                {["Your own host", "No cloud relay", "No telemetry"].map((item) => (
+                {["Your own machine", "No relay", "No telemetry"].map((item) => (
                   <li key={item}>
                     <Check width={13} height={13} />
                     {item}
@@ -312,7 +312,7 @@ export default function HomePage() {
             </div>
             <div className={styles.closingActions}>
               <Link href="/start" className="button buttonPrimary">
-                Put it in the cloud
+                Set it up
                 <ArrowUpRight width={16} height={16} />
               </Link>
               <Link href="/dashboard" className="button buttonSecondary">

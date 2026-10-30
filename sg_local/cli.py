@@ -767,7 +767,7 @@ def cmd_logs(args: argparse.Namespace) -> int:
             current.close()
 
 
-# ------------------------------------------------------------- web / cloud
+# ------------------------------------------------------------------- web
 
 
 def cmd_web(args: argparse.Namespace) -> int:
@@ -785,36 +785,14 @@ def cmd_web(args: argparse.Namespace) -> int:
             return 1
     code = web.load_code()
     if host not in {"127.0.0.1", "::1", "localhost"}:
-        print("Cloud mode: protect this origin with HTTPS and set SG_LOCAL_WEB_ORIGIN.")
-        print("Access code: set SG_LOCAL_BRIDGE_CODE in the deployment secrets.")
+        print(f"Listening on {host}:{port}. Anyone who can reach that address can try the code.")
+        print("Access code: set SG_LOCAL_BRIDGE_CODE, or read it with --show-code.")
         if not os.environ.get("SG_LOCAL_BRIDGE_CODE"):
             print(f"Generated code (stored in {web.BRIDGE_PATH}): {code}")
     if args.open:
         threading.Timer(0.7, lambda: __import__("webbrowser").open(f"http://127.0.0.1:{port}")).start()
     web.serve(host, port)
     return 0
-
-
-def cmd_cloud(args: argparse.Namespace) -> int:
-    """Run the presence daemon and its HTTPS-proxied control surface together."""
-    from . import daemon as daemon_module
-
-    config.ensure_dirs()
-    host = args.host or os.environ.get("SG_LOCAL_WEB_HOST", "0.0.0.0")
-    port = int(args.port or os.environ.get("PORT") or os.environ.get("SG_LOCAL_WEB_PORT") or web.DEFAULT_PORT)
-    code = web.load_code()
-    server = web.make_server(host, port)
-    server_thread = threading.Thread(target=server.serve_forever, name="stillgreen-web", daemon=True)
-    server_thread.start()
-    print(f"Control surface listening on {host}:{port}")
-    if not os.environ.get("SG_LOCAL_BRIDGE_CODE"):
-        print(f"Access code (set SG_LOCAL_BRIDGE_CODE to choose your own): {code}")
-    print("Presence daemon starting. Keep this process running.")
-    try:
-        return daemon_module.main()
-    finally:
-        server.shutdown()
-        server.server_close()
 
 
 # ---------------------------------------------------------------- launchd
@@ -947,14 +925,6 @@ def build_parser() -> argparse.ArgumentParser:
     web_cmd.add_argument("--open", action="store_true", help="open the control surface in a browser")
     web_cmd.add_argument("--show-code", action="store_true", help="print the access code and exit")
     web_cmd.set_defaults(func=cmd_web)
-
-    cloud = sub.add_parser(
-        "cloud",
-        help="run the daemon and control surface together (for Docker/cloud hosts)",
-    )
-    cloud.add_argument("--host", default=os.environ.get("SG_LOCAL_WEB_HOST", "0.0.0.0"))
-    cloud.add_argument("--port", type=int, default=int(os.environ.get("PORT") or os.environ.get("SG_LOCAL_WEB_PORT") or web.DEFAULT_PORT))
-    cloud.set_defaults(func=cmd_cloud)
 
     logs = sub.add_parser("logs", help="show or follow the daemon log")
     logs.add_argument("-n", "--lines", type=int, default=80, help="lines to show (default 80)")

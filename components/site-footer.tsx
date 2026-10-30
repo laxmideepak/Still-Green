@@ -9,12 +9,12 @@ export function SiteFooter() {
       <div className={`container ${styles.grid}`}>
         <div className={styles.identity}>
           <Brand />
-          <p>Presence on your schedule, running on your own cloud host.</p>
+          <p>Presence on your schedule, running on your own machine.</p>
         </div>
         <div className={styles.column}>
           <p className={styles.heading}>Product</p>
           <Link href="/dashboard">Dashboard</Link>
-          <Link href="/start">Cloud setup</Link>
+          <Link href="/start">Local setup</Link>
           <Link href="/setup">CLI setup</Link>
         </div>
         <div className={styles.column}>
@@ -35,7 +35,7 @@ export function SiteFooter() {
       </div>
       <div className={`container ${styles.bottom}`}>
         <p>Not affiliated with Slack. Use only on workspaces you have permission to automate.</p>
-        <p>Built for your own cloud.</p>
+        <p>Built to run on your own machine.</p>
       </div>
     </footer>
   );

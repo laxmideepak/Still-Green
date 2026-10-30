@@ -106,7 +106,7 @@ function friendlyError(error: unknown, url: string): string {
     return `The daemon at ${url} did not answer in time. Check that it is running and that the URL is reachable.`;
   }
   if (error instanceof TypeError) {
-    return `Could not reach ${url}. On a local daemon this can be the browser's local-network permission; on a cloud daemon, check the URL, HTTPS, and SG_LOCAL_WEB_ORIGIN.`;
+    return `Could not reach ${url}. Check that the daemon is running (./sg-local start), that the URL and port are right, and that the browser allowed the local-network request.`;
   }
   return error instanceof Error ? error.message : "Something went wrong.";
 }

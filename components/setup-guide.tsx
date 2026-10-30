@@ -199,7 +199,7 @@ const steps = [
       <>
         <p>
           That is the whole running system: one background process, talking only to
-          Slack. Stop it whenever you want; nothing is left running in the cloud.
+          Slack. Stop it whenever you want; nothing is left running anywhere else.
         </p>
         <Command command="sg-local start\nsg-local status" label="Start and check" />
         <div className={styles.exampleRow}>

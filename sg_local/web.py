@@ -108,6 +108,13 @@ def origin_allowed(origin: str | None) -> bool:
         and host.endswith(".vercel.app")
     ):
         return True
+    if (
+        os.environ.get("SG_LOCAL_ALLOW_EXTENSIONS", "1") == "1"
+        and parsed.scheme in {"chrome-extension", "moz-extension"}
+    ):
+        # Browser extensions have an opaque ID but still need an allowlist entry.
+        # The access code remains the actual credential.
+        return True
     return False
 
 

@@ -308,8 +308,8 @@ export function DashboardLive({ config, initialState, onDisconnect }: Props) {
             <div className={styles.alert} role="alert">
               <strong>The daemon process is not running.</strong>
               <span>
-                A cloud host should restart it automatically. If this persists, open your
-                host&apos;s logs and check the service.
+                Restart it with <code>./sg-local start</code>. If it keeps stopping,
+                check <code>./sg-local logs</code>.
               </span>
             </div>
           )}

@@ -76,7 +76,7 @@ export function ConnectDialog({ open, onClose, onConnected, initialUrl = "" }: P
         </div>
 
         <p className={styles.lede}>
-          Point this dashboard at the daemon running in your cloud account or on this
+          Point this dashboard at the daemon running on this
           machine. The access code stays in this browser and is sent only to that daemon.
         </p>
 
@@ -126,7 +126,7 @@ export function ConnectDialog({ open, onClose, onConnected, initialUrl = "" }: P
           </p>
           <p>
             <Shield width={13} height={13} />
-            HTTPS only for cloud daemons.
+            Loopback is allowed from this HTTPS page.
           </p>
         </div>
 

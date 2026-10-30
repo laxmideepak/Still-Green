@@ -30,7 +30,7 @@ export default function NotFound() {
                 Dashboard
               </Link>
               <Link href="/start" className="button buttonQuiet">
-                Cloud setup
+                Local setup
               </Link>
             </div>
           </div>
