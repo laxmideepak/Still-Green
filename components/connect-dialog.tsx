@@ -77,6 +77,7 @@ export function ConnectDialog({ open, onClose, onConnected, initialUrl = "" }: P
         <div className={styles.head}>
           <div className={styles.mark} aria-hidden="true">
             <span />
+            <i />
           </div>
           <div>
             <p className={styles.kicker}>Private connection</p>
