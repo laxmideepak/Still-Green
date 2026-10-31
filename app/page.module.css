@@ -1,44 +1,5 @@
-/*
- * The home page runs in a dark "night" palette. It redefines the shared
- * colour tokens so the header, footer, brand and buttons follow along.
- */
-.night {
-  --night: #050806;
-  --night-2: #0b120e;
-  --acid: #39ff9c;
-  --amber-hot: #ffb547;
-  --rust-hot: #ff5a3c;
-
-  --ink: #eaf5ee;
-  --ink-soft: #c9dbd0;
-  --muted: #8ba095;
-  --paper: var(--night);
-  --paper-raised: var(--night-2);
-  --sage: #101a14;
-  --line: rgba(234, 245, 238, 0.1);
-  --line-strong: rgba(234, 245, 238, 0.22);
-  --green: var(--acid);
-  --green-bright: var(--acid);
-  --green-soft: rgba(57, 255, 156, 0.18);
-
-  min-height: 100vh;
-  background: var(--night);
-  color: var(--ink);
+.page {
   overflow-x: clip;
-}
-
-:global(html):has(.night) {
-  background: #050806;
-  color-scheme: dark;
-}
-
-:global(html):has(.night) body {
-  background: #050806;
-}
-
-.night ::selection {
-  background: var(--acid);
-  color: var(--night);
 }
 
 .marquees {

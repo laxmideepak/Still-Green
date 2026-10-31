@@ -33,6 +33,11 @@ export function SiteFooter() {
           </a>
         </div>
       </div>
+      <div className={`container ${styles.wordmarkWrap}`} aria-hidden="true">
+        <p className={styles.wordmark} data-reveal>
+          stillgreen<span>.</span>
+        </p>
+      </div>
       <div className={`container ${styles.bottom}`}>
         <p>Not affiliated with Slack. Use only on workspaces you have permission to automate.</p>
         <p>Built to run on your own machine.</p>

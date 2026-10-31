@@ -3,41 +3,106 @@
 }
 
 .banner {
+  position: relative;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 13px;
-  padding: 12px 15px;
-  border: 1px solid var(--line);
-  border-radius: 13px;
-  background: rgba(251, 253, 248, 0.72);
+  gap: 14px 16px;
+  padding: 14px 14px 14px 18px;
+  border: 1px solid color-mix(in srgb, var(--acid) 28%, transparent);
+  border-radius: 20px;
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--acid) 9%, transparent), transparent 55%),
+    var(--night-2);
+  box-shadow: 0 24px 60px -40px color-mix(in srgb, var(--acid) 60%, transparent);
+  overflow: hidden;
+}
+
+/* Acid accent along the left edge. */
+.banner::before {
+  content: "";
+  position: absolute;
+  top: 14px;
+  bottom: 14px;
+  left: 0;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--acid);
+  box-shadow: 0 0 14px var(--acid);
+}
+
+.banner[data-error="true"] {
+  border-color: color-mix(in srgb, var(--amber-hot) 35%, transparent);
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--amber-hot) 9%, transparent), transparent 55%),
+    var(--night-2);
+  box-shadow: none;
+}
+
+.banner[data-error="true"]::before {
+  background: var(--amber-hot);
+  box-shadow: 0 0 14px var(--amber-hot);
 }
 
 .bannerIcon {
+  --tone: var(--acid);
+  position: relative;
   display: grid;
   flex: 0 0 auto;
   place-items: center;
-  width: 34px;
-  height: 34px;
-  border: 1px solid var(--line);
+  width: 40px;
+  height: 40px;
+  border: 1px solid color-mix(in srgb, var(--tone) 45%, transparent);
   border-radius: 50%;
-  color: var(--green);
+  background: var(--night);
+  color: var(--tone);
+}
+
+.banner[data-error="true"] .bannerIcon {
+  --tone: var(--amber-hot);
+}
+
+.bannerIcon i {
+  position: absolute;
+  inset: -1px;
+  border: 1px solid var(--tone);
+  border-radius: 50%;
+  opacity: 0;
+  animation: bannerPing 2.4s cubic-bezier(0, 0, 0.2, 1) infinite;
+  will-change: transform, opacity;
+}
+
+@keyframes bannerPing {
+  0% {
+    transform: scale(1);
+    opacity: 0.8;
+  }
+  70%,
+  100% {
+    transform: scale(1.7);
+    opacity: 0;
+  }
 }
 
 .bannerCopy {
   display: grid;
+  flex: 1 1 200px;
   min-width: 0;
-  gap: 1px;
+  gap: 3px;
 }
 
 .bannerCopy strong {
-  font-size: 0.82rem;
-  font-weight: 650;
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .bannerCopy span {
   color: var(--muted);
-  font-size: 0.76rem;
+  font-size: 0.86rem;
   line-height: 1.45;
 }
 
@@ -52,6 +117,6 @@
 @media (max-width: 700px) {
   .bannerActions {
     width: 100%;
-    margin-left: 47px;
+    margin-left: 56px;
   }
 }

@@ -4,8 +4,8 @@ import Link from "next/link";
 import { AnimatePresence, motion, useScroll, useTransform } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { ArrowUpRight } from "../icons";
-import { Magnetic } from "./magnetic";
-import { SplitText } from "./split-text";
+import { Magnetic } from "../motion/magnetic";
+import { SplitText } from "../motion/split-text";
 import styles from "./hero.module.css";
 
 export type Mode = "scheduled" | "always" | "paused";
@@ -104,9 +104,9 @@ export function Hero() {
             <AnimatePresence mode="wait">
               <motion.strong
                 key={current.state}
-                initial={{ y: 18, opacity: 0, filter: "blur(8px)" }}
-                animate={{ y: 0, opacity: 1, filter: "blur(0px)" }}
-                exit={{ y: -18, opacity: 0, filter: "blur(8px)" }}
+                initial={{ y: 18, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                exit={{ y: -18, opacity: 0 }}
                 transition={{ duration: 0.35 }}
               >
                 {current.state}
@@ -192,13 +192,13 @@ function PresenceField({ mode }: { mode: Mode }) {
     let width = 0;
     let height = 0;
     let dpr = 1;
-    let points: Array<{ x: number; y: number; heat: number; seed: number }> = [];
+    let points: Array<{ x: number; y: number; heat: number; seed: number; edge: number }> = [];
     const mouse = { x: -9999, y: -9999 };
     let frame = 0;
     let visible = true;
     let waves: Array<{ born: number }> = [];
     let lastWave = 0;
-    const gap = 26;
+    const gap = 28;
 
     const origin = () => {
       const narrow = width < 900;
@@ -209,17 +209,23 @@ function PresenceField({ mode }: { mode: Mode }) {
       const box = el.getBoundingClientRect();
       width = box.width;
       height = box.height;
-      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      dpr = Math.min(window.devicePixelRatio || 1, 1.5);
       el.width = width * dpr;
       el.height = height * dpr;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       points = [];
       for (let y = gap / 2; y < height; y += gap) {
         for (let x = gap / 2; x < width; x += gap) {
-          points.push({ x, y, heat: 0, seed: Math.random() });
+          const edge = Math.max(0, Math.min(1, y / (height * 0.15), (height - y) / (height * 0.25)));
+          points.push({ x, y, heat: 0, seed: Math.random(), edge });
         }
       }
     };
+
+    // Dots are grouped into a few brightness levels so each frame needs only
+    // a handful of fill calls instead of one per dot.
+    const LEVELS = 8;
+    const buckets = Array.from({ length: LEVELS + 1 }, () => [] as number[]);
 
     const draw = (time: number) => {
       const m = modeRef.current;
@@ -230,40 +236,58 @@ function PresenceField({ mode }: { mode: Mode }) {
         lastWave = time;
       }
       waves = waves.filter((w) => time - w.born < 5200);
+      const radii = waves.map((w) => (time - w.born) * 0.42);
+      const peak = m === "always" ? 1 : 0.85;
+      const linger = m !== "paused";
 
-      ctx.clearRect(0, 0, width, height);
+      for (const b of buckets) b.length = 0;
+
       for (const p of points) {
-        const dx = p.x - o.x;
-        const dy = p.y - o.y;
-        const dist = Math.hypot(dx, dy);
-
-        for (const w of waves) {
-          const radius = (time - w.born) * 0.42;
-          const band = Math.abs(dist - radius);
-          if (band < 30) p.heat = Math.max(p.heat, (1 - band / 30) * (m === "always" ? 1 : 0.85));
+        if (radii.length) {
+          const dist = Math.hypot(p.x - o.x, p.y - o.y);
+          for (const radius of radii) {
+            const band = Math.abs(dist - radius);
+            if (band < 30) p.heat = Math.max(p.heat, (1 - band / 30) * peak);
+          }
         }
-        // a few dots stay green for longer — teammates who are also online
-        p.heat *= p.seed > 0.93 && m !== "paused" ? 0.996 : 0.955;
+        // a few dots stay green for longer: teammates who are also online
+        p.heat *= p.seed > 0.93 && linger ? 0.996 : 0.955;
 
+        let x = p.x;
+        let y = p.y;
+        let pull = 0;
         const mx = p.x - mouse.x;
         const my = p.y - mouse.y;
-        const md = Math.hypot(mx, my);
-        const pull = md < 150 ? 1 - md / 150 : 0;
-        const ox = pull ? (mx / (md || 1)) * pull * 14 : 0;
-        const oy = pull ? (my / (md || 1)) * pull * 14 : 0;
-
-        const heat = Math.min(1, p.heat + pull * 0.9);
-        const r = 1.1 + heat * 2.2 + pull * 1.4;
-        const fadeEdge = Math.min(1, p.y / (height * 0.15), (height - p.y) / (height * 0.25));
-        if (heat > 0.04) {
-          ctx.fillStyle = m === "paused"
-            ? `rgba(255, 181, 71, ${(0.15 + heat * 0.6) * fadeEdge})`
-            : `rgba(57, 255, 156, ${(0.12 + heat * 0.85) * fadeEdge})`;
-        } else {
-          ctx.fillStyle = `rgba(234, 245, 238, ${0.09 * fadeEdge})`;
+        if (mx > -150 && mx < 150 && my > -150 && my < 150) {
+          const md = Math.hypot(mx, my);
+          if (md < 150) {
+            pull = 1 - md / 150;
+            x += (mx / (md || 1)) * pull * 14;
+            y += (my / (md || 1)) * pull * 14;
+          }
         }
+        const heat = Math.min(1, p.heat + pull * 0.9) * p.edge;
+        const level = heat > 0.04 ? 1 + Math.min(LEVELS - 1, Math.floor(heat * LEVELS)) : 0;
+        if (level === 0 && p.edge < 0.4) continue;
+        buckets[level].push(x, y, 1.1 + heat * 2.2 + pull * 1.4);
+      }
+
+      ctx.clearRect(0, 0, width, height);
+      for (let level = 0; level <= LEVELS; level++) {
+        const list = buckets[level];
+        if (!list.length) continue;
+        const heat = level === 0 ? 0 : level / LEVELS;
+        ctx.fillStyle =
+          level === 0
+            ? "rgba(234, 245, 238, 0.09)"
+            : m === "paused"
+              ? `rgba(255, 181, 71, ${0.15 + heat * 0.6})`
+              : `rgba(57, 255, 156, ${0.12 + heat * 0.85})`;
         ctx.beginPath();
-        ctx.arc(p.x + ox, p.y + oy, r, 0, Math.PI * 2);
+        for (let i = 0; i < list.length; i += 3) {
+          ctx.moveTo(list[i] + list[i + 2], list[i + 1]);
+          ctx.arc(list[i], list[i + 1], list[i + 2], 0, Math.PI * 2);
+        }
         ctx.fill();
       }
     };

@@ -1,29 +1,14 @@
 "use client";
 
-import Lenis from "lenis";
 import { useEffect, useRef, useState } from "react";
 import styles from "./motion-shell.module.css";
 
 /**
- * Smooth scrolling, a custom cursor and a film-grain layer for the home page.
- * Everything here turns itself off for touch screens and reduced motion.
+ * A custom cursor and a film-grain layer. Scrolling is left to the browser on
+ * purpose: native scrolling runs off the main thread and never stutters.
+ * The cursor turns itself off for touch screens and reduced motion.
  */
 export function MotionShell({ children }: { children: React.ReactNode }) {
-  useEffect(() => {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const lenis = new Lenis({ lerp: 0.11, wheelMultiplier: 0.95 });
-    let frame = 0;
-    const raf = (time: number) => {
-      lenis.raf(time);
-      frame = requestAnimationFrame(raf);
-    };
-    frame = requestAnimationFrame(raf);
-    return () => {
-      cancelAnimationFrame(frame);
-      lenis.destroy();
-    };
-  }, []);
-
   return (
     <>
       {children}
@@ -50,16 +35,25 @@ function Cursor() {
     let rx = x;
     let ry = y;
     let frame = 0;
+    let idle = true;
+    let lastTarget: EventTarget | null = null;
 
     const move = (event: PointerEvent) => {
       x = event.clientX;
       y = event.clientY;
-      const target = event.target as Element | null;
-      const hot = target?.closest("a, button, [data-cursor]");
+      if (idle) {
+        idle = false;
+        frame = requestAnimationFrame(tick);
+      }
+      // Only touch the DOM when the hovered element changes.
+      if (event.target === lastTarget || !ring.current) return;
+      lastTarget = event.target;
+      const hot = (event.target as Element | null)?.closest?.("a, button, label, [data-cursor]");
       const label = hot?.getAttribute("data-cursor") ?? "";
-      ring.current?.setAttribute("data-hot", hot ? "true" : "false");
-      ring.current?.setAttribute("data-label", label);
-      if (ring.current) ring.current.dataset.text = label;
+      const text = (event.target as Element | null)?.closest?.("input, textarea, select");
+      const next = text ? "text" : hot ? "true" : "false";
+      if (ring.current.dataset.hot !== next) ring.current.dataset.hot = next;
+      if (ring.current.dataset.text !== label) ring.current.dataset.text = label;
     };
     const down = () => ring.current?.setAttribute("data-down", "true");
     const up = () => ring.current?.setAttribute("data-down", "false");
@@ -68,14 +62,18 @@ function Cursor() {
       y = -100;
     };
 
+    // Runs only while the ring is still catching up with the pointer.
     const tick = () => {
-      rx += (x - rx) * 0.18;
-      ry += (y - ry) * 0.18;
+      rx += (x - rx) * 0.22;
+      ry += (y - ry) * 0.22;
       if (dot.current) dot.current.style.transform = `translate3d(${x}px, ${y}px, 0)`;
       if (ring.current) ring.current.style.transform = `translate3d(${rx}px, ${ry}px, 0)`;
+      if (Math.abs(x - rx) + Math.abs(y - ry) < 0.3) {
+        idle = true;
+        return;
+      }
       frame = requestAnimationFrame(tick);
     };
-    frame = requestAnimationFrame(tick);
 
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerdown", down);
