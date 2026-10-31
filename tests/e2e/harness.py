@@ -45,6 +45,8 @@ class Stack:
         self.port = free_port()
         self.web: subprocess.Popen[bytes] | None = None
         self.daemon: subprocess.Popen[bytes] | None = None
+        self.log_dir = root / "logs"
+        self.log_dir.mkdir()
         self.env = {
             **os.environ,
             "SG_LOCAL_CONFIG_DIR": str(self.config_dir),
@@ -70,12 +72,22 @@ class Stack:
             self.slack.ws_url,
             *extra,
         ]
-        return subprocess.Popen(
-            command,
-            env=self.env,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
+        # Keep the output so a process that dies at start can be explained.
+        with open(self.log_dir / f"{mode}.log", "ab") as log:
+            return subprocess.Popen(
+                command,
+                env=self.env,
+                stdout=log,
+                stderr=subprocess.STDOUT,
+            )
+
+    def output(self) -> str:
+        """The last lines each subprocess printed, for failure messages."""
+        parts = []
+        for log in sorted(self.log_dir.glob("*.log")):
+            lines = log.read_text(encoding="utf-8", errors="replace").splitlines()
+            parts.append(f"--- {log.name} ---\n" + "\n".join(lines[-40:]))
+        return "\n".join(parts)
 
     def start(
         self,
@@ -89,6 +101,20 @@ class Stack:
         so tests can stop the daemon and still query the page. With
         ``daemon_serves_page`` the daemon serves it, as after ``sg-local start``.
         """
+        try:
+            self._start(with_daemon, daemon_serves_page, extra_env)
+        except Exception as exc:
+            output = self.output()
+            self.stop()
+            raise RuntimeError(f"the test stack did not start: {exc}\n{output}") from exc
+        return self
+
+    def _start(
+        self,
+        with_daemon: bool,
+        daemon_serves_page: bool,
+        extra_env: dict[str, str] | None,
+    ) -> None:
         self.slack.start()
         self.env.update(extra_env or {})
         self.daemon_serves_page = daemon_serves_page
@@ -98,7 +124,6 @@ class Stack:
             wait_for(lambda: self.health() is not None, "control server")
         if with_daemon or daemon_serves_page:
             self.start_daemon()
-        return self
 
     def start_daemon(self) -> None:
         self.daemon = self._launch("daemon", "--label", "sg_local.daemon")
