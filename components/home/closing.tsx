@@ -10,7 +10,10 @@ import styles from "./closing.module.css";
 export function Closing() {
   const ref = useRef<HTMLElement>(null);
   const { scrollYProgress } = useScroll({ target: ref, offset: ["start end", "end end"] });
-  const fill = useTransform(scrollYProgress, [0.1, 0.75], ["100%", "0%"]);
+  // The green copy is revealed by sliding a clipping box one way and its
+  // contents the other way: transforms only, so nothing is repainted.
+  const clipX = useTransform(scrollYProgress, [0.1, 0.75], ["-100%", "0%"]);
+  const textX = useTransform(scrollYProgress, [0.1, 0.75], ["100%", "0%"]);
   const scale = useTransform(scrollYProgress, [0, 0.8], [0.82, 1]);
   const dot = useTransform(scrollYProgress, [0.55, 0.85], [0, 1]);
 
@@ -18,9 +21,14 @@ export function Closing() {
     <section ref={ref} className={styles.section}>
       <div className="container">
         <motion.h2 className={styles.giant} style={{ scale }}>
-          <motion.span className={styles.fill} style={{ "--fill": fill } as React.CSSProperties}>
-            Stay green
-          </motion.span>
+          <span className={styles.words}>
+            <span className={styles.base}>Stay green</span>
+            <motion.span className={styles.clip} style={{ x: clipX }} aria-hidden="true">
+              <motion.span className={styles.lit} style={{ x: textX }}>
+                Stay green
+              </motion.span>
+            </motion.span>
+          </span>
           <motion.span className={styles.dot} style={{ scale: dot }} aria-hidden="true" />
         </motion.h2>
         <div className={styles.row}>

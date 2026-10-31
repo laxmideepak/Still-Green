@@ -24,28 +24,27 @@ export function RevealObserver() {
       },
       { rootMargin: "0px 0px -8% 0px" },
     );
-    const scan = () => {
-      document.querySelectorAll("[data-reveal]:not([data-shown])").forEach((el) => {
-        if (seen.has(el)) return;
-        seen.add(el);
-        io.observe(el);
-      });
+    const watch = (el: Element) => {
+      if (seen.has(el) || el.hasAttribute("data-shown")) return;
+      seen.add(el);
+      io.observe(el);
     };
-    scan();
+    document.querySelectorAll("[data-reveal]").forEach(watch);
     // Pages render more content after loading (for example the live dashboard).
-    let queued = 0;
-    const mo = new MutationObserver(() => {
-      if (queued) return;
-      queued = requestAnimationFrame(() => {
-        queued = 0;
-        scan();
-      });
+    // Only newly added elements are checked, so text updates cost nothing.
+    const mo = new MutationObserver((records) => {
+      for (const record of records) {
+        record.addedNodes.forEach((node) => {
+          if (!(node instanceof Element)) return;
+          if (node.hasAttribute("data-reveal")) watch(node);
+          if (node.firstElementChild) node.querySelectorAll("[data-reveal]").forEach(watch);
+        });
+      }
     });
     mo.observe(document.body, { childList: true, subtree: true });
     return () => {
       io.disconnect();
       mo.disconnect();
-      cancelAnimationFrame(queued);
     };
   }, [pathname]);
 
