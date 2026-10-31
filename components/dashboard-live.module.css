@@ -594,9 +594,41 @@
 
 .stayGrid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 6px;
   margin-top: 20px;
+}
+
+.stayUntil {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.stayUntil input {
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--night);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  transition: border-color 200ms ease;
+}
+
+.stayUntil input:focus {
+  border-color: var(--acid);
+}
+
+.stayUntil .stayButton {
+  min-height: 44px;
+  padding: 0 14px;
+  font-size: 0.9rem;
 }
 
 .stayButton {
@@ -630,6 +662,41 @@
   border-color: var(--acid);
   color: var(--acid);
   opacity: 1;
+}
+
+.stayUntil {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  margin-top: 9px;
+  color: var(--ink-soft);
+  font-size: 0.74rem;
+}
+
+.stayUntil input {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.55);
+  padding: 6px 8px;
+  color: var(--ink);
+  font: inherit;
+}
+
+.stayUntil button {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.55);
+  padding: 7px 10px;
+  color: var(--ink-soft);
+  font-size: 0.72rem;
+  font-weight: 650;
+}
+
+.stayUntil button:hover {
+  border-color: var(--green);
+  background: var(--green-soft);
+  color: var(--green);
 }
 
 .stayActive {

@@ -253,8 +253,24 @@
     const action = button.dataset.action;
     if (action === "pause") await act("/api/pause", { duration: "1h" });
     if (action === "resume") await act("/api/resume", {});
-    if (action === "stay") await act("/api/stay", { duration: "1h" });
+    if (action === "stay-cancel") await act("/api/stay", { cancel: true });
   }));
+
+  $$("[data-stay]").forEach((button) => button.addEventListener("click", () => act("/api/stay", { duration: button.dataset.stay })));
+
+  // Today at the chosen time in this browser's timezone, sent with its offset
+  // so a server running on UTC stays on until the right moment.
+  $("#stayUntilForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const [hours, minutes] = $("#stayUntil").value.split(":").map(Number);
+    const until = new Date();
+    until.setHours(hours, minutes, 0, 0);
+    if (until.getTime() <= Date.now()) { alert(`${$("#stayUntil").value} has already passed today. Pick a later time.`); return; }
+    const pad = (n) => String(Math.abs(n)).padStart(2, "0");
+    const offset = -until.getTimezoneOffset();
+    const iso = `${until.getFullYear()}-${pad(until.getMonth() + 1)}-${pad(until.getDate())}T${pad(hours)}:${pad(minutes)}:00${offset >= 0 ? "+" : "-"}${pad(Math.trunc(offset / 60))}:${pad(offset % 60)}`;
+    await act("/api/stay", { until: iso });
+  });
 
   init();
   setInterval(() => { if (state.code && !document.hidden) refresh().catch(() => {}); }, 15000);

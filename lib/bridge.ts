@@ -243,11 +243,42 @@ export function resumePresence(
   }).then(asState);
 }
 
-export function stayOnline(config: BridgeConfig, duration: string | null): Promise<DaemonState> {
+/** Stay online for a duration ("2h"), until a moment, or cancel (null). */
+export function stayOnline(
+  config: BridgeConfig,
+  choice: string | { until: Date } | null,
+): Promise<DaemonState> {
+  const body =
+    choice === null
+      ? { cancel: true }
+      : typeof choice === "string"
+        ? { duration: choice }
+        : { until: isoWithOffset(choice.until) };
   return request<unknown>(config, "/api/stay", {
     method: "POST",
-    body: JSON.stringify(duration ? { duration } : { cancel: true }),
+    body: JSON.stringify(body),
   }).then(asState);
+}
+
+/** Local time with its UTC offset, e.g. 2026-10-31T17:00:00-04:00. */
+function isoWithOffset(date: Date): string {
+  const pad = (value: number) => String(Math.abs(value)).padStart(2, "0");
+  const offset = -date.getTimezoneOffset();
+  const sign = offset >= 0 ? "+" : "-";
+  return (
+    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
+    `T${pad(date.getHours())}:${pad(date.getMinutes())}:00` +
+    `${sign}${pad(Math.trunc(offset / 60))}:${pad(offset % 60)}`
+  );
+}
+
+/** Today at HH:MM in this browser's timezone, or null if that time has passed. */
+export function todayAt(clock: string): Date | null {
+  const [hours, minutes] = clock.split(":").map(Number);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
+  const moment = new Date();
+  moment.setHours(hours, minutes, 0, 0);
+  return moment.getTime() > Date.now() ? moment : null;
 }
 
 type RemoveResult = { ok: true; removed: string; state: DaemonState };

@@ -514,14 +514,16 @@ def cmd_resume(args: argparse.Namespace) -> int:
 
 def cmd_stay(args: argparse.Namespace) -> int:
     if args.cancel:
-        if args.duration:
-            return _fail("pass either a duration or --cancel, not both")
+        if args.duration or args.until:
+            return _fail("pass a duration, --until or --cancel, not more than one")
         config.clear_stay()
         print("Stay-online window cleared.")
         return 0
-    if not args.duration:
-        return _fail("pass a duration, e.g. 'sg-local stay 2h' (or --cancel)")
-    until = config.now_plus(args.duration)
+    if args.duration and args.until:
+        return _fail("pass either a duration or --until, not both")
+    if not args.duration and not args.until:
+        return _fail("pass a duration, e.g. 'sg-local stay 2h', or a time: 'sg-local stay --until 17:00'")
+    until = config.parse_until(args.until) if args.until else config.now_plus(args.duration)
     config.write_stay(until)
     print(f"Staying online {_until_text(until.isoformat())} (overrides pause and schedule).")
     if not _daemon_running():
@@ -983,6 +985,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     stay = sub.add_parser("stay", help="stay online for a while, overriding pause/schedule")
     stay.add_argument("duration", nargs="?", help="e.g. 30m, 2h, 1d, 1w")
+    stay.add_argument("--until", metavar="HH:MM", help="stay online until this time today, e.g. 17:00")
     stay.add_argument("--cancel", action="store_true", help="cancel an active stay window")
     stay.set_defaults(func=cmd_stay)
 

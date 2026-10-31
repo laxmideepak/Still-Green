@@ -293,6 +293,32 @@ def now_plus(duration: str) -> datetime:
     return datetime.now(timezone.utc) + parse_duration(duration)
 
 
+def parse_until(value: str) -> datetime:
+    """A future moment, given as an ISO time with offset or as HH:MM today.
+
+    HH:MM uses this machine's clock, so callers in another timezone (the
+    dashboard talking to a cloud server) should send a full ISO time.
+    """
+    text = (value or "").strip()
+    clock = re.fullmatch(r"([01]?\d|2[0-3]):([0-5]\d)", text)
+    try:
+        if clock:
+            now = datetime.now().astimezone()
+            moment = now.replace(hour=int(clock.group(1)), minute=int(clock.group(2)), second=0, microsecond=0)
+        else:
+            moment = datetime.fromisoformat(text)
+    except ValueError:
+        raise ConfigError("Use a time like 17:00 or 2026-10-31T17:00:00-04:00") from None
+    if moment.tzinfo is None:
+        raise ConfigError("Include the timezone offset, for example 2026-10-31T17:00:00-04:00")
+    now_utc = datetime.now(timezone.utc)
+    if moment <= now_utc:
+        raise ConfigError("That time has already passed today")
+    if moment - now_utc > MAX_DURATION:
+        raise ConfigError("Pick a time within the next year")
+    return moment.astimezone(timezone.utc)
+
+
 def _read_timestamped(path: Path) -> dict[str, Any] | None:
     if not path.exists():
         return None

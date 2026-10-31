@@ -458,9 +458,13 @@ def set_stay(payload: dict[str, Any]) -> dict[str, Any]:
     if payload.get("cancel"):
         config.clear_stay()
         return build_state()
+    until = str(payload.get("until") or "").strip()
+    if until:
+        config.write_stay(config.parse_until(until))
+        return build_state()
     duration = str(payload.get("duration") or "").strip()
     if not duration:
-        raise config.ConfigError("duration is required")
+        raise config.ConfigError("send a duration (like 2h) or an until time")
     config.write_stay(config.now_plus(duration))
     return build_state()
 
@@ -607,7 +611,10 @@ class Handler(BaseHTTPRequestHandler):
         return False
 
     def _guard(self) -> bool:
-        if not origin_allowed(self.headers.get("Origin")):
+        # The control page calls its own server, and browsers send its Origin
+        # on POST and DELETE. That is always allowed: the Host check has
+        # already confirmed this is our own name.
+        if not self._same_origin() and not origin_allowed(self.headers.get("Origin")):
             # Readable by that origin so the dashboard can explain the fix;
             # the response carries no data.
             self._json(
