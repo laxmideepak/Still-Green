@@ -24,10 +24,16 @@ export type WorkspaceState = {
 };
 
 export type ActivityEntry = {
+  /** The daemon's local date and time ("2026-11-02", "03:48"). */
   date: string;
   time: string;
+  /** The same moment with its UTC offset. Sent by newer daemons. */
+  at?: string | null;
   workspace: string;
+  /** The raw log line. */
   text: string;
+  /** The line in plain words. Sent by newer daemons. */
+  summary?: string;
   tone: "green" | "amber" | "muted";
   level: string;
 };
@@ -37,6 +43,8 @@ export type DaemonState = {
   app: string;
   version: string;
   server_time: string;
+  /** The name of the daemon machine's time zone, e.g. "UTC". Sent by newer daemons. */
+  server_timezone?: string;
   daemon: {
     running: boolean;
     pid: number | null;
@@ -124,15 +132,15 @@ export function clearBridge(): void {
 
 function friendlyError(error: unknown, url: string): string {
   if (error instanceof DOMException && error.name === "AbortError") {
-    return `The daemon at ${url} did not answer in time. Check that it is running and that the URL is reachable.`;
+    return `Stillgreen at ${url} did not answer in time. Check that it is running and that the address is right.`;
   }
   if (error instanceof TypeError) {
     const origin = typeof window === "undefined" ? "" : window.location.origin;
     const originHint =
       origin && !DEFAULT_ALLOWED_ORIGIN.test(origin)
-        ? ` The daemon only accepts this page's origin (${origin}) if you start it with SG_LOCAL_WEB_ORIGIN=${origin}.`
+        ? ` Stillgreen only accepts this page's address (${origin}) if you start it with SG_LOCAL_WEB_ORIGIN=${origin}.`
         : "";
-    return `Could not reach ${url}. Check that the daemon is running (./sg-local start), that the URL and port are right, and that the browser allowed the local-network request.${originHint}`;
+    return `Could not reach ${url}. Check that Stillgreen is running (./sg-local start), that the address and port are right, and that the browser allowed the local-network request.${originHint}`;
   }
   return error instanceof Error ? error.message : "Something went wrong.";
 }
@@ -146,7 +154,7 @@ function errorText(payload: unknown): string {
 function asState(payload: unknown): DaemonState {
   const state = payload as Partial<DaemonState> | null;
   if (!state || state.app !== "stillgreen" || !Array.isArray(state.workspaces)) {
-    throw new Error("That URL did not answer like a Stillgreen daemon.");
+    throw new Error("That address did not answer like Stillgreen.");
   }
   return state as DaemonState;
 }
@@ -176,16 +184,16 @@ async function request<T>(
       // The daemon always returns JSON; keep the status message otherwise.
     }
     if (response.status === 401) {
-      throw new Error("The access code was not accepted. Copy it from the daemon's control page.");
+      throw new Error("The access code was not accepted. Copy it from your Stillgreen control page.");
     }
     if (response.status === 403 && /origin is not allowed/i.test(errorText(payload))) {
       const origin = typeof window === "undefined" ? "this page" : window.location.origin;
       throw new Error(
-        `The daemon refused requests from ${origin}. Restart it with SG_LOCAL_WEB_ORIGIN=${origin} to allow this dashboard.`,
+        `Stillgreen refused requests from ${origin}. Restart it with SG_LOCAL_WEB_ORIGIN=${origin} to allow this dashboard.`,
       );
     }
     if (!response.ok) {
-      throw new Error(errorText(payload) || `Daemon returned HTTP ${response.status}.`);
+      throw new Error(errorText(payload) || `Stillgreen returned HTTP ${response.status}.`);
     }
     return payload as T;
   } catch (error) {
@@ -198,7 +206,7 @@ async function request<T>(
 export async function connectBridge(url: string, code: string): Promise<DaemonState> {
   const config = { url: normalizeUrl(url), code: normalizeCode(code) };
   if (!config.url || !config.code) {
-    throw new Error("Enter the daemon URL and access code.");
+    throw new Error("Enter your Stillgreen address and access code.");
   }
   return fetchState(config);
 }
@@ -307,15 +315,15 @@ export function statusLabel(status: string): string {
     connected: "Connected",
     away: "Away",
     auto_away: "Away",
-    manual_away: "Manual away",
+    manual_away: "Away (set by you)",
     paused: "Paused",
-    scheduled_off: "Outside schedule",
-    daemon_stopped: "Daemon stopped",
+    scheduled_off: "Off schedule",
+    daemon_stopped: "Stopped",
     starting: "Starting",
     reconnecting: "Reconnecting",
     restarting: "Restarting",
     stopped: "Stopped",
-    invalid_token: "Tokens rejected",
+    invalid_token: "Signed out",
     invalid_config: "Check config",
     error: "Error",
   };

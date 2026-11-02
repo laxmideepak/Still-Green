@@ -12,7 +12,6 @@
     "test:e2e": "next build && node --test tests/e2e/dashboard.e2e.mjs tests/e2e/extension.e2e.mjs tests/e2e/control-page.e2e.mjs"
   },
   "dependencies": {
-    "motion": "^12.23.24",
     "next": "16.4.3",
     "react": "19.3.1",
     "react-dom": "19.3.1"

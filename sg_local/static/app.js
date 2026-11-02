@@ -1,5 +1,6 @@
 // Stillgreen control page. Vanilla JS, no dependencies, CSP-safe (no inline
 // code, no eval). Every server-provided string is written with textContent.
+// Look and class names: docs/design-system.md (tokens.css + ui.css).
 (() => {
   "use strict";
 
@@ -15,23 +16,43 @@
   const WEEKDAYS = DAY_KEYS.slice(0, 5);
   const DASHES = /[‐-―−﹘﹣－]/g;
   const LOOPBACK = new Set(["127.0.0.1", "localhost", "[::1]", "::1"]);
+  const STAY_LABELS = { "30m": ["30 min", 30], "1h": ["1 h", 60], "2h": ["2 h", 120], "3h": ["3 h", 180] };
+  const ACTIVITY_SHORT = 6;
 
+  // Workspace status -> [label, badge tone]. Same words as the web dashboard
+  // (lib/dashboard.ts workspaceBadge).
   const STATUS = {
-    active: ["Active", "green"],
-    connected: ["Connected", "green"],
-    away: ["Away", "amber"],
-    auto_away: ["Away", "amber"],
-    manual_away: ["Manual away", "blue"],
-    paused: ["Paused", "muted"],
-    scheduled_off: ["Outside schedule", "muted"],
-    daemon_stopped: ["Daemon stopped", "muted"],
-    starting: ["Starting", "blue"],
-    reconnecting: ["Reconnecting", "amber"],
-    restarting: ["Restarting", "amber"],
-    stopped: ["Stopped", "muted"],
-    invalid_token: ["Tokens rejected", "red"],
-    invalid_config: ["Check config", "red"],
-    error: ["Error", "red"],
+    active: ["Active", "success"],
+    connected: ["Connected", "info"],
+    away: ["Away", "neutral"],
+    auto_away: ["Away", "neutral"],
+    manual_away: ["Away (set by you)", "violet"],
+    paused: ["Paused", "warning"],
+    scheduled_off: ["Off schedule", "neutral"],
+    daemon_stopped: ["Stopped", "neutral"],
+    starting: ["Starting", "info"],
+    reconnecting: ["Reconnecting", "info"],
+    restarting: ["Reconnecting", "info"],
+    stopped: ["Stopped", "neutral"],
+    invalid_token: ["Signed out", "danger"],
+    invalid_config: ["Check settings", "danger"],
+    error: ["Error", "danger"],
+  };
+
+  // Line icons on a 24px grid (same paths as components/icons.tsx).
+  const ICONS = {
+    check: [["path", { d: "m4 12.5 5 5L20 6.5" }]],
+    x: [["path", { d: "M6 6l12 12M18 6 6 18" }]],
+    plus: [["path", { d: "M12 5v14M5 12h14" }]],
+    pause: [["rect", { x: 6, y: 4.5, width: 4, height: 15, rx: 1, fill: "currentColor", stroke: "none" }], ["rect", { x: 14, y: 4.5, width: 4, height: 15, rx: 1, fill: "currentColor", stroke: "none" }]],
+    play: [["path", { d: "M8 5.5 19 12 8 18.5v-13Z", fill: "currentColor" }]],
+    trash: [["path", { d: "M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3" }]],
+    refresh: [["path", { d: "M20 11a8 8 0 0 0-14.5-4.5L4 8" }], ["path", { d: "M4 4v4h4" }], ["path", { d: "M4 13a8 8 0 0 0 14.5 4.5L20 16" }], ["path", { d: "M20 20v-4h-4" }]],
+    info: [["circle", { cx: 12, cy: 12, r: 9 }], ["path", { d: "M12 11v5M12 8h.01" }]],
+    alert: [["circle", { cx: 12, cy: 12, r: 9 }], ["path", { d: "M12 7.5v5M12 16h.01" }]],
+    warn: [["path", { d: "M10.3 4.2 2.6 17.5A2 2 0 0 0 4.3 20.5h15.4a2 2 0 0 0 1.7-3L13.7 4.2a2 2 0 0 0-3.4 0Z" }], ["path", { d: "M12 9.5v4M12 17h.01" }]],
+    grid: [["rect", { x: 4, y: 4, width: 6.5, height: 6.5, rx: 1.5 }], ["rect", { x: 13.5, y: 4, width: 6.5, height: 6.5, rx: 1.5 }], ["rect", { x: 4, y: 13.5, width: 6.5, height: 6.5, rx: 1.5 }], ["rect", { x: 13.5, y: 13.5, width: 6.5, height: 6.5, rx: 1.5 }]],
+    clock: [["circle", { cx: 12, cy: 12, r: 9 }], ["path", { d: "M12 7v5l3.2 2" }]],
   };
 
   // ------------------------------------------------------------------ state
@@ -51,6 +72,9 @@
     revealCode: false,
     rotated: false,
     sigs: {},
+    stay: { kind: "duration", value: "1h" },
+    stayWasActive: null,
+    activityExpanded: false,
     sched: { base: null, draft: null, serverLocal: false, touched: false },
   };
 
@@ -83,6 +107,19 @@
     return el;
   }
 
+  function icon(name, strokeWidth = 1.7) {
+    const NS = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(NS, "svg");
+    const base = { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "stroke-width": strokeWidth, "stroke-linecap": "round", "stroke-linejoin": "round", "aria-hidden": "true", focusable: "false" };
+    for (const [k, v] of Object.entries(base)) svg.setAttribute(k, String(v));
+    for (const [tag, attrs] of ICONS[name] || []) {
+      const node = document.createElementNS(NS, tag);
+      for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, String(v));
+      svg.append(node);
+    }
+    return svg;
+  }
+
   function normalizeCode(value) {
     return String(value || "").replace(DASHES, "-").replace(/\s+/g, "").toUpperCase();
   }
@@ -100,26 +137,77 @@
 
   function plural(n, one, many) { return `${n} ${n === 1 ? one : many}`; }
 
-  const clockFmt = safeFormat({ hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+  // Same clock as the web dashboard (lib/dashboard.ts clock): the browser's
+  // own locale, so it matches the native time inputs next to it.
+  const clockFmt = safeFormat({ hour: "numeric", minute: "2-digit" });
   const weekdayFmt = safeFormat({ weekday: "short" });
   const dateFmt = safeFormat({ month: "short", day: "numeric" });
+  const longDateFmt = safeFormat({ weekday: "long", month: "short", day: "numeric" });
   function safeFormat(opts) {
     try { return new Intl.DateTimeFormat(undefined, opts); } catch { return new Intl.DateTimeFormat("en-GB", opts); }
   }
   function startOfDay(d) { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; }
   function dayDiff(d) { return Math.round((startOfDay(d) - startOfDay(new Date())) / 86400000); }
 
-  // "17:00", "tomorrow 09:00", "Mon 09:00", "Nov 12 09:00"
+  // "9:00 AM" from "09:00".
+  function clockHHMM(hhmm) {
+    const m = minutesOf(hhmm);
+    if (m === null) return hhmm || "";
+    const d = new Date();
+    d.setHours(Math.floor(m / 60), m % 60, 0, 0);
+    return clockFmt.format(d);
+  }
+
+  // "just now", "12 s ago", "4 min ago", or a clock time.
+  function ago(ms) {
+    if (!ms) return "";
+    const seconds = Math.max(0, Math.round((Date.now() - ms) / 1000));
+    if (seconds < 5) return "just now";
+    if (seconds < 60) return `${seconds} s ago`;
+    const minutes = Math.round(seconds / 60);
+    if (minutes < 60) return `${minutes} min ago`;
+    return clockFmt.format(new Date(ms));
+  }
+
+  // "HH:MM" for the Until picker. Same rule as lib/dashboard.ts defaultUntil:
+  // 17:00, or two hours ahead once 17:00 is close or past, at most 23:59.
+  function defaultUntil(now = new Date()) {
+    const fivePm = new Date(now);
+    fivePm.setHours(17, 0, 0, 0);
+    if (fivePm.getTime() - now.getTime() > 15 * 60000) return "17:00";
+    const next = now.getHours() + 2;
+    if (next >= 24) return "23:59";
+    return `${String(next).padStart(2, "0")}:00`;
+  }
+
+  // "5:00 PM", "tomorrow 9:00 AM", "Mon 9:00 AM", "Nov 12, 9:00 AM"
   function fmtWhen(iso) {
     if (!iso) return "";
-    const d = new Date(iso);
+    const d = iso instanceof Date ? iso : new Date(iso);
     if (Number.isNaN(d.getTime())) return "";
     const t = clockFmt.format(d);
     const diff = dayDiff(d);
     if (diff === 0) return t;
     if (diff === 1) return `tomorrow ${t}`;
     if (diff > 1 && diff < 7) return `${weekdayFmt.format(d)} ${t}`;
-    return `${dateFmt.format(d)} ${t}`;
+    return `${dateFmt.format(d)}, ${t}`;
+  }
+
+  // "at 17:00" today, otherwise "tomorrow 09:00" / "Mon 09:00"
+  function atWhen(iso) {
+    const when = fmtWhen(iso);
+    return when && /^\d/.test(when) ? `at ${when}` : when;
+  }
+
+  // "2 h 14 min", "5 min", "3 days 4 h"
+  function fmtSpan(ms) {
+    const minutes = Math.max(0, Math.round(ms / 60000));
+    if (minutes < 1) return "less than a minute";
+    if (minutes < 60) return `${minutes} min`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return minutes % 60 ? `${hours} h ${minutes % 60} min` : `${hours} h`;
+    const days = Math.floor(hours / 24);
+    return hours % 24 ? `${plural(days, "day", "days")} ${hours % 24} h` : plural(days, "day", "days");
   }
 
   function browserZone() {
@@ -137,6 +225,11 @@
     if (set.length === 5 && WEEKDAYS.every((k) => set.includes(k))) return "Weekdays";
     if (set.length === 2 && set.includes("saturday") && set.includes("sunday")) return "Weekends";
     return set.map((k) => DAYS[DAY_KEYS.indexOf(k)][1]).join(", ") || "No days";
+  }
+
+  function minutesOf(hhmm) {
+    const m = /^(\d{1,2}):(\d{2})/.exec(hhmm || "");
+    return m ? Number(m[1]) * 60 + Number(m[2]) : null;
   }
 
   // ------------------------------------------------------------------- api
@@ -160,12 +253,12 @@
         credentials: "omit",
       });
     } catch {
-      throw new ApiError("Can't reach the Stillgreen server.", 0, "network");
+      throw new ApiError("Can't reach Stillgreen.", 0, "network");
     }
     let payload = {};
     try { payload = await response.json(); } catch { /* empty or non-JSON body */ }
     if (response.status === 401) throw new ApiError("The access code was not accepted.", 401, "auth");
-    if (response.status === 429) throw new ApiError("Too many wrong access codes from this network. Wait a minute, then try again.", 429, "throttle");
+    if (response.status === 429) throw new ApiError("Too many wrong codes from this network. Wait a minute, then try again.", 429, "throttle");
     if (!response.ok || payload.ok === false) {
       const kind = response.status >= 500 || response.status === 0 ? "server" : "request";
       throw new ApiError(sentence(payload.error) || `Request failed (${response.status}).`, response.status, kind);
@@ -180,12 +273,21 @@
     if (busy) {
       button.dataset.wasFocused = document.activeElement === button ? "1" : "";
       button.disabled = true;
+      button.classList.add("is-loading");
       button.setAttribute("aria-busy", "true");
-      if (!button.querySelector(".spinner")) button.append(h("span", { className: "spinner", attrs: { "aria-hidden": "true" } }));
+      if (!button.querySelector(".spinner")) {
+        const spinner = h("span", { className: "spinner", attrs: { "aria-hidden": "true" } });
+        const svg = button.querySelector(":scope > svg");
+        if (svg) svg.hidden = true;
+        button.prepend(spinner);
+      }
     } else {
       button.disabled = false;
+      button.classList.remove("is-loading");
       button.removeAttribute("aria-busy");
       button.querySelector(".spinner")?.remove();
+      const svg = button.querySelector(":scope > svg");
+      if (svg) svg.hidden = false;
       const lost = !document.activeElement || document.activeElement === document.body;
       if (button.dataset.wasFocused && lost) {
         // The row may have been re-rendered; focus its replacement.
@@ -199,21 +301,26 @@
 
   function isBusy(button) { return Boolean(button && button.getAttribute("aria-busy") === "true"); }
 
-  function toast(message, tone = "success", timeout) {
+  // toast("Staying online", "success", { description: "Until 17:00 today" })
+  function toast(title, tone = "success", { description = "", timeout } = {}) {
     const region = $("#toasts");
     while (region.children.length >= 3) region.firstElementChild.remove();
-    const close = h("button", { className: "toast-close", type: "button", attrs: { "aria-label": "Dismiss" }, text: "×" });
-    const node = h("div", { className: "toast", dataset: { tone } },
-      h("span", { className: "toast-dot", attrs: { "aria-hidden": "true" } }),
-      h("span", { className: "toast-text", text: message }),
+    const glyph = { success: "check", danger: "alert", warning: "alert", info: "info" }[tone] || "info";
+    const close = h("button", { className: "toast-close", type: "button", attrs: { "aria-label": "Dismiss" } }, icon("x"));
+    const node = h("div", { className: `toast toast-${tone}`, attrs: { role: tone === "danger" ? "alert" : "status" } },
+      h("span", { className: "toast-icon", attrs: { "aria-hidden": "true" } }, icon(glyph, 2.4)),
+      h("div", { className: "toast-text" },
+        h("span", { className: "toast-title", text: title }),
+        description ? h("span", { className: "toast-description", text: description }) : null),
       close);
     let timer = 0;
     const dismiss = () => { clearTimeout(timer); node.remove(); };
     close.addEventListener("click", dismiss);
-    const arm = () => { timer = setTimeout(dismiss, timeout || (tone === "error" ? 8000 : 4000)); };
+    const arm = () => { clearTimeout(timer); timer = setTimeout(dismiss, timeout || (tone === "danger" ? 8000 : 5000)); };
     node.addEventListener("mouseenter", () => clearTimeout(timer));
     node.addEventListener("mouseleave", arm);
     node.addEventListener("focusin", () => clearTimeout(timer));
+    node.addEventListener("focusout", arm);
     region.append(node);
     arm();
   }
@@ -221,19 +328,22 @@
   function handleError(error) {
     if (error && error.kind === "auth") { sessionExpired(); return; }
     if (error && error.kind === "network") { markOffline(error.message); }
-    toast(error && error.message ? error.message : "Something went wrong.", "error");
+    toast(error && error.message ? error.message : "Something went wrong.", "danger");
   }
 
   // Run a mutation with a busy button; apply the returned state.
+  // `success` returns a toast title, or [title, description].
   async function mutate(button, request, success) {
     if (isBusy(button)) return null;
     setBusy(button, true);
     try {
       const result = await request();
       S.mutationSeq += 1;
+      clearStaleStayError();
       applyState(result && result.state ? result.state : result);
       const message = typeof success === "function" ? success(result) : success;
-      if (message) toast(message);
+      if (Array.isArray(message)) toast(message[0], "success", { description: message[1] });
+      else if (message) toast(message);
       return result;
     } catch (error) {
       handleError(error);
@@ -274,6 +384,7 @@
       dialog.removeEventListener("cancel", cancel);
       dialog.removeEventListener("click", backdrop);
       dialog.removeEventListener("close", cleanup);
+      document.documentElement.classList.remove("has-dialog");
       if (opener && opener.isConnected && typeof opener.focus === "function") opener.focus();
       if (onClosed) onClosed();
     };
@@ -285,6 +396,7 @@
     dialog.addEventListener("cancel", cancel);
     dialog.addEventListener("click", backdrop);
     dialog.addEventListener("close", cleanup);
+    document.documentElement.classList.add("has-dialog");
     if (typeof dialog.showModal === "function") dialog.showModal(); else dialog.setAttribute("open", "");
     (initialFocus || $(FOCUSABLE, dialog))?.focus();
     return close;
@@ -292,16 +404,16 @@
 
   // In-page replacement for window.confirm. `action` runs while the dialog
   // shows a busy button; errors stay in the dialog.
-  function confirmAction({ title, body, confirmLabel, danger = true, action }) {
+  function confirmAction({ title, body, confirmLabel, glyph = "trash", action }) {
     const dialog = $("#confirmDialog");
     const ok = $("#confirmOk");
     const cancelBtn = $("#confirmCancel");
     const error = $("#confirmError");
     $("#confirmTitle").textContent = title;
     $("#confirmBody").replaceChildren(...(Array.isArray(body) ? body : [body]));
+    $("#confirmIcon").replaceChildren(icon(glyph));
     $(".btn-label", ok).textContent = confirmLabel;
-    ok.className = `btn ${danger ? "btn-danger" : "btn-primary"}`;
-    error.textContent = "";
+    error.replaceChildren();
     return new Promise((resolve) => {
       let busy = false;
       let done = false;
@@ -319,7 +431,7 @@
         event.preventDefault();
         if (busy) return;
         busy = true;
-        error.textContent = "";
+        error.replaceChildren();
         setBusy(ok, true);
         cancelBtn.disabled = true;
         try {
@@ -333,7 +445,10 @@
           setBusy(ok, false);
           cancelBtn.disabled = false;
           if (err && err.kind === "auth") { finish(null); sessionExpired(); return; }
-          error.textContent = err && err.message ? err.message : "Something went wrong.";
+          const message = err && err.message ? err.message : "Something went wrong.";
+          error.replaceChildren(icon("alert"), h("span", { text: /SG_LOCAL_BRIDGE_CODE/.test(message)
+            ? "This code is fixed by the SG_LOCAL_BRIDGE_CODE setting on this server. Change it there, then restart Stillgreen."
+            : message }));
           ok.focus();
         }
       };
@@ -345,24 +460,26 @@
 
   // ------------------------------------------------------------------- views
 
-  function showLogin(message = "", tone = "error") {
+  function showLogin(message = "") {
     stopPolling();
     closeOpenDialogs();
     $("#app").hidden = true;
     $("#login").hidden = false;
     $("#loginHost").textContent = location.host || "this server";
-    const err = $("#loginError");
-    err.textContent = message;
-    err.dataset.tone = tone;
-    $("#accessCode").setAttribute("aria-invalid", message && tone === "error" ? "true" : "false");
+    $("#loginError").replaceChildren(...(message ? [icon("alert"), h("span", { text: message })] : []));
+    $("#accessCode").setAttribute("aria-invalid", message ? "true" : "false");
     document.title = "Stillgreen · Locked";
     setTimeout(() => $("#accessCode").focus(), 30);
+  }
+
+  function loginError(message) {
+    $("#loginError").replaceChildren(...(message ? [icon("alert"), h("span", { text: message })] : []));
   }
 
   function showApp() {
     $("#login").hidden = true;
     $("#app").hidden = false;
-    document.title = "Stillgreen control";
+    document.title = "Stillgreen";
     if (!S.data) $("#app").classList.add("is-loading");
   }
 
@@ -370,33 +487,29 @@
     $$("dialog[open]").forEach((d) => d.close());
   }
 
-  function sessionExpired() {
-    if (!S.embed) storageClear();
+  function forget() {
     S.code = "";
     S.data = null;
     S.sigs = {};
     S.revealCode = false;
     S.rotated = false;
+  }
+
+  function sessionExpired() {
+    if (!S.embed) storageClear();
+    forget();
     showLogin(S.embed
       ? "The access code changed. Reload this page, or enter the new code."
-      : "Your session ended because the access code changed or was revoked. Enter the current code.");
+      : "You were signed out because the access code changed. Enter the current code.");
   }
 
   function lock() {
     storageClear();
-    S.code = "";
-    S.data = null;
-    S.sigs = {};
-    S.revealCode = false;
-    S.rotated = false;
-    resetSkeleton();
+    forget();
+    $("#app").classList.add("is-loading");
     showLogin("");
     $("#accessCode").value = "";
-    toast("Page locked. The access code was removed from this browser.", "info");
-  }
-
-  function resetSkeleton() {
-    $("#app").classList.add("is-loading");
+    toast("Page locked", "info", { description: "The access code was removed from this browser." });
   }
 
   function markOffline(reason) {
@@ -404,6 +517,7 @@
     S.offlineReason = reason || "";
     renderTop();
     renderBanners();
+    if (S.data) renderUpdated();
   }
 
   // ----------------------------------------------------------------- render
@@ -428,7 +542,13 @@
     renderSchedule();
     renderActivity();
     renderCode();
+    renderDaemon();
     $("#version").textContent = S.data.version ? `v${S.data.version}` : "";
+  }
+
+  function setBadge(el, tone, text, textEl) {
+    el.className = `badge badge-${tone}`;
+    (textEl || el).textContent = text;
   }
 
   function renderTop() {
@@ -439,26 +559,26 @@
     const pill = $("#statusPill");
     const text = $("#statusText");
     const d = S.data;
-    if (S.offline) { pill.dataset.tone = "amber"; text.textContent = "Offline · retrying"; return; }
-    if (!d) { pill.dataset.tone = "muted"; text.textContent = "Connecting…"; return; }
-    if (!d.daemon || !d.daemon.running) { pill.dataset.tone = "red"; text.textContent = "Daemon stopped"; return; }
-    pill.dataset.tone = d.connected_count ? "green" : "muted";
-    text.textContent = `Daemon running · ${d.connected_count} online`;
+    let tone = "neutral";
+    let label = "Connecting";
+    if (S.offline) { tone = "warning"; label = "Offline, retrying"; }
+    else if (d && (!d.daemon || !d.daemon.running)) { tone = "danger"; label = "Stopped"; }
+    else if (d) { const n = onlineCount(d); tone = n ? "success" : "neutral"; label = n ? `${n} online` : "Running"; }
+    setBadge(pill, tone, label, text);
+    $("#hostDot").dataset.tone = tone;
   }
 
-  function banner(tone, icon, title, bodyNodes, action) {
-    return h("div", { className: "banner", dataset: { tone }, attrs: { role: tone === "red" ? "alert" : "status" } },
-      h("span", { className: "banner-icon", attrs: { "aria-hidden": "true" }, text: icon }),
-      h("div", { className: "banner-body" }, h("strong", { text: title }), h("p", {}, bodyNodes)),
-      action || null);
+  function banner(tone, glyph, title, bodyNodes, action) {
+    return h("div", { className: `banner banner-${tone}`, attrs: { role: tone === "danger" ? "alert" : "status" } },
+      icon(glyph),
+      h("div", { className: "banner-text" }, h("p", { className: "banner-title", text: title }), h("p", { className: "banner-description" }, bodyNodes)),
+      action ? h("div", { className: "banner-actions" }, action) : null);
   }
 
   function renderBanners() {
     const d = S.data;
     const items = [];
-    if (S.offline) {
-      items.push(["offline", S.lastOk, S.offlineReason]);
-    }
+    if (S.offline) items.push(["offline", S.lastOk, S.offlineReason]);
     if (d && d.config_error) items.push(["config", d.config_error]);
     if (d && d.daemon && !d.daemon.running) items.push(["stopped"]);
     const sig = JSON.stringify(items);
@@ -469,105 +589,297 @@
         const since = extra ? ` from ${clockFmt.format(new Date(extra))}` : "";
         const retry = h("button", { className: "btn btn-secondary btn-sm", type: "button", dataset: { key: "retry" } }, h("span", { className: "btn-label", text: "Retry now" }));
         retry.addEventListener("click", async () => { setBusy(retry, true); await refresh(); setBusy(retry, false); schedulePoll(); });
-        const why = reason && reason !== "Can't reach the Stillgreen server." ? `${reason} ` : "";
-        return banner("amber", "!", "Can't reach Stillgreen",
-          d ? `${why}Showing the last known state${since}. Retrying automatically.` : `${why}Retrying automatically.`, retry);
+        const why = reason && reason !== "Can't reach Stillgreen." ? `${reason} ` : "";
+        return banner("warning", "warn", "Can't reach Stillgreen",
+          d ? `${why}Showing what we last saw${since}. Trying again by itself.` : `${why}Trying again by itself.`, retry);
       }
       if (kind === "config") {
-        return banner("red", "!", "Config file problem", [sentence(extra), " Changes are blocked until the file is fixed."]);
+        return banner("danger", "alert", "There's a problem with the settings file", [sentence(extra), " Changes are blocked until the file is fixed."]);
       }
-      return banner("amber", "!", "The presence daemon is not running",
-        ["No workspace is kept online until it starts. On your computer run ", h("code", { text: "./sg-local start" }),
-          "; on a server run ", h("code", { text: "sudo docker compose up -d" }), "."]);
+      return banner("warning", "warn", "Stillgreen isn't running",
+        ["Nothing is kept green until it starts. On a computer, run ", h("code", { text: "./sg-local start" }),
+          ". On a server, run ", h("code", { text: "sudo docker compose up -d" }), "."]);
     });
     $("#banners").replaceChildren(...nodes);
+  }
+
+  // Workspaces that are green right now. A workspace paused a moment ago can
+  // still be reported as connected until the daemon drops it. Same rule as
+  // lib/dashboard.ts onlineCount.
+  function onlineCount(d) {
+    if (d.paused && !d.stay_active) return 0;
+    return d.workspaces.filter((w) => w.connected && w.status === "active" && !w.paused).length;
+  }
+
+  // The end of "You'll stay online until 5:00 PM, …" (lib/dashboard.ts afterStay).
+  function afterStay(d) {
+    if (d.paused) return "then your pause carries on";
+    if (d.schedule && d.schedule.mode === "scheduled") return "then your schedule takes over";
+    return "then Stillgreen goes back to always on";
+  }
+
+  function modeLabel(d) {
+    if (d.stay_active) return "Keep me online";
+    if (d.paused) return "Paused";
+    return d.schedule && d.schedule.mode === "scheduled" ? "Scheduled" : "Always on";
+  }
+
+  function nextChangeText(d) {
+    const sched = d.schedule || {};
+    if (d.stay_active && d.stay_until) return `Ends ${atWhen(d.stay_until)}`;
+    if (d.paused && !d.stay_active) return d.pause_until ? `Resumes ${atWhen(d.pause_until)}` : "When you resume";
+    if (sched.mode === "scheduled" && sched.next_change) return `Turns ${sched.active ? "off" : "on"} ${atWhen(sched.next_change)}`;
+    return "Nothing planned";
+  }
+
+  // The big line at the top, in plain words (lib/dashboard.ts presenceSummary).
+  // Tones: green, amber, blue (off schedule), red, muted.
+  function presenceSummary(d) {
+    const total = d.workspaces.length;
+    const online = onlineCount(d);
+    const sched = d.schedule || {};
+    const greenIn = `Your Slack status is green in ${online} of ${plural(total, "workspace", "workspaces")}.`;
+    if (d.config_error) return { tone: "red", title: "Settings file problem", description: "Stillgreen can't read its settings file, so it isn't keeping anyone green." };
+    if (!d.daemon || !d.daemon.running) return { tone: "amber", title: "Stopped", description: "Stillgreen isn't running, so it isn't keeping you green." };
+    if (!total) return { tone: "muted", title: "Ready", detail: "Add a workspace to start", description: "Stillgreen starts keeping your Slack status green as soon as you add a workspace." };
+    if (d.stay_active) {
+      return {
+        tone: online ? "green" : "amber",
+        title: online ? "Active" : "Connecting",
+        detail: d.stay_until ? `Staying online until ${fmtWhen(d.stay_until)}` : "Staying online",
+        description: `${online ? greenIn : "Stillgreen is connecting to Slack."} When it ends, ${afterStay(d).replace(/^then /, "")}.`,
+      };
+    }
+    if (d.paused) {
+      return {
+        tone: "amber",
+        title: "Paused",
+        detail: d.pause_until ? `Until ${fmtWhen(d.pause_until)}` : "Until you resume",
+        description: "Stillgreen isn't keeping you green right now. Slack will set you away as usual.",
+      };
+    }
+    if (d.workspaces.every((w) => w.paused)) {
+      return {
+        tone: "amber",
+        title: "Paused",
+        detail: total === 1 ? "Your workspace is paused" : "Every workspace is paused",
+        description: "Resume a workspace below to turn it back on.",
+      };
+    }
+    if (sched.mode === "scheduled" && !sched.active) {
+      const next = sched.next_change ? fmtWhen(sched.next_change) : "";
+      return {
+        tone: "blue",
+        title: "Off schedule",
+        detail: next ? `Back ${/^\d/.test(next) ? `at ${next}` : next.startsWith("tomorrow") ? next : `on ${next}`}` : "",
+        description: "You're outside your schedule, so Slack shows your normal status.",
+      };
+    }
+    if (!online) {
+      return {
+        tone: "amber",
+        title: "Not green yet",
+        detail: "Connecting to Slack",
+        description: "No workspace is active right now. This usually takes a few seconds. Check the workspaces below.",
+      };
+    }
+    const next = sched.mode === "scheduled" && sched.next_change ? fmtWhen(sched.next_change) : "";
+    return {
+      tone: "green",
+      title: "Active",
+      detail: sched.mode === "always" || !sched.mode ? "Always on" : next ? `Until ${next}` : "On schedule",
+      description: greenIn + (sched.mode === "scheduled" ? " Your schedule ends it on its own." : " You stay green until you pause."),
+    };
   }
 
   function renderOverview() {
     const d = S.data;
     const total = d.workspaces.length;
-    const online = d.connected_count || 0;
-    const running = Boolean(d.daemon && d.daemon.running);
-    const sched = d.schedule || {};
-    let tone = "green";
-    let title;
-    let detail;
-    if (d.paused) {
-      tone = "amber";
-      title = d.pause_until ? `Paused until ${fmtWhen(d.pause_until)}` : "Paused until resumed";
-      detail = "Presence is off for every workspace. Resume to go green again.";
-    } else if (d.stay_active) {
-      title = d.stay_until ? `Staying online until ${fmtWhen(d.stay_until)}` : "Staying online";
-      detail = "A temporary override keeps you green regardless of the schedule.";
-    } else if (sched.mode === "scheduled") {
-      const when = fmtWhen(sched.next_change);
-      if (sched.active) {
-        title = when ? `Scheduled · on until ${when}` : "Scheduled · on";
-      } else {
-        tone = "blue";
-        title = when ? `Scheduled · off until ${when}` : "Scheduled · off";
-      }
-      detail = `${daysLabel(sched.active_days)}, ${sched.start_time || "09:00"}–${sched.end_time || "17:00"}${isLocalZone(sched.timezone) ? " (server time)" : ` (${sched.timezone})`}.`;
-    } else {
-      title = "Always on";
-      detail = total ? `Keeping ${online} of ${plural(total, "workspace", "workspaces")} green around the clock.` : "Add a workspace to start keeping it green.";
-    }
-    if (!running) {
-      tone = "muted";
-      detail = "The daemon is stopped, so nothing is kept online right now.";
-    } else if (!total && !d.paused) {
-      tone = "muted";
-      detail = "No workspaces yet. Add one to start keeping it green.";
-    }
-    $("#beacon").dataset.tone = tone;
-    $("#overviewTitle").textContent = title;
-    $("#overviewDetail").textContent = detail;
-    $("#factOnline").textContent = total ? `${online} of ${total}` : "None yet";
-    $("#factNext").textContent = d.paused && d.pause_until ? `Resumes ${fmtWhen(d.pause_until)}`
-      : d.stay_active && d.stay_until ? `Override ends ${fmtWhen(d.stay_until)}`
-        : sched.mode === "scheduled" && sched.next_change ? `${sched.active ? "Off" : "On"} ${fmtWhen(sched.next_change)}`
-          : "No change planned";
-    $("#factDaemon").textContent = running ? `Running${d.daemon.pid ? ` · PID ${d.daemon.pid}` : ""}` : "Stopped";
+    const summary = presenceSummary(d);
+    $("#overview").dataset.tone = summary.tone;
+    $("#overviewTitle").replaceChildren(
+      h("span", { className: "hero-state", text: summary.title }),
+      summary.detail ? h("span", { className: "hero-sep", text: " · " }) : null,
+      summary.detail ? h("span", { className: "hero-rest", text: summary.detail }) : null);
+    $("#overviewDetail").textContent = summary.description;
+    $("#factOnline").textContent = total ? `${onlineCount(d)} of ${total}` : "None yet";
+    $("#factMode").textContent = modeLabel(d);
+    $("#factNext").textContent = nextChangeText(d);
+    renderUpdated();
 
-    const pause1 = $('[data-pause="1h"]');
-    const pauseForever = $('[data-pause="forever"]');
-    const resume = $("[data-resume]");
+    $("#pageSub").textContent = `${longDateFmt.format(new Date())} · Times shown in ${browserZone() || "your time zone"}`;
+
     const canPause = !d.paused && total > 0;
-    pause1.hidden = !canPause;
-    pauseForever.hidden = !canPause;
-    resume.hidden = !d.paused;
+    $('[data-pause="1h"]').hidden = !canPause;
+    $('[data-pause="forever"]').hidden = !canPause;
+    $("[data-resume]").hidden = !d.paused;
+  }
+
+  function renderUpdated() {
+    $("#factUpdated").textContent = S.offline ? "Can't reach" : ago(S.lastOk) || "Just now";
+  }
+
+  // ---------------------------------------------------------- keep me online
+
+  function stayTarget() {
+    if (S.stay.kind === "duration") {
+      const [, minutes] = STAY_LABELS[S.stay.value] || STAY_LABELS["1h"];
+      return new Date(Date.now() + minutes * 60000);
+    }
+    if (S.stay.kind !== "until") return null;
+    const m = minutesOf($("#stayUntil").value);
+    if (m === null) return null;
+    const until = new Date();
+    until.setHours(Math.floor(m / 60), m % 60, 0, 0);
+    return until;
+  }
+
+  // Same words and layout as the web dashboard's Keep me online card.
+  function paintStayPicker() {
+    const d = S.data;
+    const active = Boolean(d && d.stay_active);
+    $$("[data-stay]").forEach((b) => b.setAttribute("aria-pressed", String(S.stay.kind === "duration" && b.dataset.stay === S.stay.value)));
+    $("#stayUntilBox").classList.toggle("is-active", S.stay.kind === "until");
+    $("#stayOn").hidden = !active;
+    $("#stayCancel").hidden = !active;
+    const button = $("#stayUntilSubmit");
+    button.hidden = active && !S.stay.kind;
+    const value = $("#stayUntil").value;
+    const label = S.stay.kind === "duration" ? `Keep on for ${STAY_LABELS[S.stay.value][0]}`
+      : S.stay.kind === "until" ? `Keep on until ${value ? clockHHMM(value) : "…"}` : "Keep on";
+    if (!isBusy(button)) $(".btn-label", button).textContent = label;
+    const preview = $("#stayPreview");
+    if (active && d.stay_until) {
+      const left = new Date(d.stay_until).getTime() - Date.now();
+      preview.replaceChildren("You're staying online until ", h("strong", { className: "tnum", text: fmtWhen(d.stay_until) }),
+        left > 0 ? ` · ${fmtSpan(left)} left.` : ".");
+      return;
+    }
+    if (active) { preview.replaceChildren("Keep me online is on."); return; }
+    const target = stayTarget();
+    if (!target) { preview.replaceChildren("Pick how long to stay online."); return; }
+    if (S.stay.kind === "until" && target.getTime() <= Date.now()) {
+      preview.replaceChildren("Pick a time later today.");
+      return;
+    }
+    preview.replaceChildren("You'll stay online until ", h("strong", { className: "tnum", text: clockFmt.format(target) }),
+      `, ${d ? afterStay(d) : "then it ends on its own"}.`);
   }
 
   function renderStay() {
-    const d = S.data;
-    const active = Boolean(d.stay_active);
-    $("#stayActive").hidden = !active;
-    if (active) $("#stayActiveText").textContent = d.stay_until ? `Online until ${fmtWhen(d.stay_until)}` : "Staying online";
+    const active = Boolean(S.data.stay_active);
+    // After Keep me online starts or ends, reset the picker for the next time.
+    if (S.stayWasActive !== null && S.stayWasActive !== active) {
+      S.stay = active ? { kind: null } : { kind: "duration", value: "1h" };
+      setStayError("");
+    } else if (S.stayWasActive === null && active) {
+      S.stay = { kind: null };
+    }
+    S.stayWasActive = active;
+    paintStayPicker();
   }
 
+  function submitStay(event) {
+    event.preventDefault();
+    const button = $("#stayUntilSubmit");
+    const input = $("#stayUntil");
+    if (S.stay.kind === "duration") {
+      const value = S.stay.value;
+      mutate(button, () => post("/api/stay", { duration: value }),
+        (r) => ["Staying online", `Until ${fmtWhen(r.stay_until) || "later"}`]);
+      return;
+    }
+    if (S.stay.kind !== "until") return;
+    const m = minutesOf(input.value);
+    if (m === null) { setStayError("Pick a time."); input.focus(); return; }
+    const hours = Math.floor(m / 60);
+    const minutes = m % 60;
+    const until = new Date();
+    until.setHours(hours, minutes, 0, 0);
+    if (until.getTime() <= Date.now()) {
+      setStayError("That time has already passed today. Pick a later time.");
+      input.focus();
+      return;
+    }
+    setStayError("");
+    // Send this browser's offset so a server on UTC stops at the right moment.
+    const pad = (n) => String(Math.abs(n)).padStart(2, "0");
+    const offset = -until.getTimezoneOffset();
+    const iso = `${until.getFullYear()}-${pad(until.getMonth() + 1)}-${pad(until.getDate())}T${pad(hours)}:${pad(minutes)}:00${offset >= 0 ? "+" : "-"}${pad(Math.trunc(offset / 60))}:${pad(offset % 60)}`;
+    mutate(button, () => post("/api/stay", { until: iso }), (r) => ["Staying online", `Until ${fmtWhen(r.stay_until) || clockHHMM(input.value)} today`]);
+  }
+
+  // After any other change, an old "Pick a time" error goes away and an
+  // emptied Until field goes back to a sensible pick.
+  function clearStaleStayError() {
+    if (!$("#stayUntilError").childNodes.length) return;
+    setStayError("");
+    if (!$("#stayUntil").value) {
+      $("#stayUntil").value = defaultUntil();
+      if (S.stay.kind === "until") S.stay = S.data && S.data.stay_active ? { kind: null } : { kind: "duration", value: "1h" };
+    }
+  }
+
+  function setStayError(message) {
+    const input = $("#stayUntil");
+    $("#stayUntilError").replaceChildren(...(message ? [icon("alert"), h("span", { text: message })] : []));
+    if (message) input.setAttribute("aria-invalid", "true"); else input.removeAttribute("aria-invalid");
+  }
+
+  // -------------------------------------------------------------- workspaces
+
   function wsTone(item) {
-    if (item.paused) return ["Paused", "muted"];
-    return STATUS[item.status] || [sentence(String(item.status || "Unknown").replace(/_/g, " ")).replace(/\.$/, ""), "muted"];
+    if (item.paused) return ["Paused", "warning"];
+    if (S.data && S.data.paused && !S.data.stay_active) return ["Paused", "warning"];
+    return STATUS[item.status] || [sentence(String(item.status || "Unknown").replace(/_/g, " ")).replace(/\.$/, ""), "neutral"];
+  }
+
+  // One plain line under a workspace name (lib/dashboard.ts workspaceNote).
+  function workspaceNote(item) {
+    if (item.status === "invalid_token") return "Slack signed this session out. Capture it again with the extension.";
+    if (item.status === "manual_away") return "You set yourself away, so Stillgreen leaves it alone.";
+    if (item.paused) return "Paused until you resume it";
+    if (item.connected) return "Live connection to Slack";
+    if (item.status === "scheduled_off") return "Waiting for your schedule";
+    if (item.status === "daemon_stopped") return "Stillgreen isn't running";
+    if (item.reason) return sentence(item.reason).replace(/\.$/, "");
+    return "Not connected";
+  }
+
+  // Same palette and hash as lib/dashboard.ts avatarTone, so a workspace has
+  // the same color on both pages.
+  const AVATAR_TONES = ["info", "violet", "neutral"];
+  function avatarTone(key) {
+    let n = 0;
+    for (const ch of String(key)) n = (n * 31 + ch.charCodeAt(0)) >>> 0;
+    return AVATAR_TONES[n % AVATAR_TONES.length];
   }
 
   function renderWorkspaces() {
     const d = S.data;
     const list = $("#workspaceList");
-    const sig = JSON.stringify(d.workspaces.map((w) => [w.team_id, w.name, w.user_id, w.paused, w.status, w.reason, w.last_error]));
-    $("#workspaceCount").textContent = d.workspaces.length ? String(d.workspaces.length) : "";
+    const total = d.workspaces.length;
+    const sig = JSON.stringify([d.paused && !d.stay_active, d.workspaces.map((w) => [w.team_id, w.name, w.connected, w.paused, w.status, w.reason, w.last_error])]);
+    const count = $("#workspaceCount");
+    count.hidden = !total;
+    count.textContent = String(total);
+    count.setAttribute("aria-label", plural(total, "workspace", "workspaces"));
+    $("#workspacesSub").textContent = total
+      ? `${onlineCount(d)} of ${total} online. Your Slack login stays on this ${LOOPBACK.has(location.hostname) ? "computer" : "server"}.`
+      : "Slack workspaces Stillgreen keeps green.";
     if (S.sigs.ws === sig) return;
     S.sigs.ws = sig;
     const focusKey = list.contains(document.activeElement) ? document.activeElement.dataset.key : "";
-    list.setAttribute("role", d.workspaces.length ? "list" : "presentation");
+    list.setAttribute("role", total ? "list" : "presentation");
 
-    if (!d.workspaces.length) {
-      const add = h("button", { className: "btn btn-primary", type: "button", dataset: { key: "empty-add" } }, h("span", { className: "btn-label", text: "Add workspace" }));
+    if (!total) {
+      const add = h("button", { className: "btn btn-primary", type: "button", dataset: { key: "empty-add" } }, icon("plus"), h("span", { className: "btn-label", text: "Add workspace" }));
       add.addEventListener("click", () => openAdd());
       list.replaceChildren(h("div", { className: "empty" },
-        h("span", { className: "empty-art", attrs: { "aria-hidden": "true" } }, h("i")),
-        h("h3", { text: "No workspaces yet" }),
-        h("p", { text: "Capture a Slack session with the Stillgreen browser extension, or paste the two tokens by hand." }),
-        add));
+        h("span", { className: "empty-icon", attrs: { "aria-hidden": "true" } }, icon("grid")),
+        h("h3", { className: "empty-title", text: "No workspaces yet" }),
+        h("p", { className: "empty-description", text: "Open Slack in Chrome and click Capture from Slack in the Stillgreen extension." }),
+        h("div", { className: "empty-actions" }, add)));
     } else {
       list.replaceChildren(...d.workspaces.map(workspaceRow));
     }
@@ -585,49 +897,43 @@
       className: "btn btn-secondary btn-sm", type: "button",
       dataset: { key: `ws-toggle-${item.team_id}` },
       attrs: { "aria-label": `${item.paused ? "Resume" : "Pause"} ${name}` },
-    }, h("span", { className: "btn-label", text: item.paused ? "Resume" : "Pause" }));
+    }, icon(item.paused ? "play" : "pause"), h("span", { className: "btn-label", text: item.paused ? "Resume" : "Pause" }));
     toggle.addEventListener("click", () => {
       const resume = item.paused;
       mutate(toggle, () => post(resume ? "/api/resume" : "/api/pause", { workspace: item.team_id }),
-        resume ? `Resumed ${name}.` : `Paused ${name}. It stays off until you resume it.`);
+        resume ? [`${name} resumed`, "It reconnects in a few seconds."] : [`${name} paused`, "It stays paused until you resume it."]);
     });
     const remove = h("button", {
-      className: "btn btn-ghost btn-sm btn-danger-text", type: "button",
+      className: "btn btn-destructive-ghost btn-sm", type: "button",
       dataset: { key: `ws-remove-${item.team_id}` },
       attrs: { "aria-label": `Remove ${name}` },
-    }, h("span", { className: "btn-label", text: "Remove" }));
+    }, icon("trash"), h("span", { className: "btn-label", text: "Remove" }));
     remove.addEventListener("click", () => removeWorkspace(item, name));
 
-    const meta = [h("span", { className: "mono", text: item.team_id })];
-    if (item.user_id) meta.push(" · ", h("span", { className: "mono", text: item.user_id }));
-
-    let note = "";
-    if (!item.last_error && item.reason && !["active", "connected", "daemon_stopped"].includes(item.status) && !item.paused) {
-      note = sentence(item.reason);
-    }
-    return h("div", { className: "ws", dataset: { tone }, attrs: { role: "listitem" } },
-      h("span", { className: "avatar", attrs: { "aria-hidden": "true" }, text: initial }),
+    return h("div", { className: "ws", attrs: { role: "listitem" } },
+      h("span", { className: "avatar", dataset: { tone: avatarTone(item.team_id || name) }, attrs: { "aria-hidden": "true" }, text: initial }),
       h("div", { className: "ws-who" },
-        h("div", { className: "ws-name", text: name, attrs: { title: name } }),
-        h("div", { className: "ws-meta" }, meta)),
-      h("span", { className: "badge", dataset: { tone } }, h("i", { attrs: { "aria-hidden": "true" } }), label),
-      h("div", { className: "ws-actions" }, toggle, remove),
-      note ? h("p", { className: "ws-note", text: note }) : null,
-      item.last_error ? h("p", { className: "ws-error" }, h("b", { text: "Last error: " }), String(item.last_error)) : null);
+        h("div", { className: "ws-line" },
+          h("span", { className: "ws-name", text: name, attrs: { title: name } }),
+          h("span", { className: `badge badge-${tone}` }, h("span", { className: "dot", attrs: { "aria-hidden": "true" } }), label)),
+        h("div", { className: "ws-meta" }, h("span", { text: workspaceNote(item) })),
+        item.last_error && item.status !== "active" ? h("p", { className: "ws-error" }, icon("alert"), h("span", { text: sentence(item.last_error).replace(/\.$/, "") })) : null),
+      h("div", { className: "ws-actions" }, toggle, remove));
   }
 
   async function removeWorkspace(item, name) {
     const result = await confirmAction({
       title: `Remove ${name}?`,
-      body: ["Stillgreen stops keeping ", h("strong", { text: name }), " online and deletes its tokens from this daemon. You can add it again later."],
+      body: "Stillgreen will stop keeping you green there and delete its saved Slack login. You can add it again any time.",
       confirmLabel: "Remove workspace",
+      glyph: "trash",
       action: () => api(`/api/workspaces/${encodeURIComponent(item.team_id)}`, { method: "DELETE" }),
     });
     if (!result) return;
     S.mutationSeq += 1;
     applyState(result.state);
-    toast(`Removed ${result.removed || name}.`);
-    $("#addOpen").focus();
+    toast(`${result.removed || name} removed`, "success", { description: "Its saved Slack login was deleted from your Stillgreen." });
+    ($('[data-key="empty-add"]') || $("#workspacesCard .card-header")).focus();
   }
 
   // --------------------------------------------------------------- schedule
@@ -655,13 +961,21 @@
   function scheduleDirty() { return !sameSchedule(S.sched.draft, S.sched.base); }
 
   function scheduleProblem(draft) {
-    if (draft.mode !== "scheduled") return validZone(draft.timezone) ? "" : "Unknown timezone. Use a name like America/New_York.";
+    if (draft.mode !== "scheduled") return validZone(draft.timezone) ? "" : "Unknown time zone. Use a name like America/New_York.";
     if (!draft.days.length) return "Pick at least one day.";
     if (!draft.start || !draft.end) return "Enter a start and an end time.";
     if (draft.start === draft.end) return "Start and end can't be the same time.";
-    if (!draft.timezone.trim()) return "Enter a timezone, like America/New_York.";
-    if (!validZone(draft.timezone.trim())) return "Unknown timezone. Use a name like America/New_York.";
+    if (!draft.timezone.trim()) return "Enter a time zone, like America/New_York.";
+    if (!validZone(draft.timezone.trim())) return "Unknown time zone. Use a name like America/New_York.";
     return "";
+  }
+
+  function weeklyHours(draft) {
+    const a = minutesOf(draft.start);
+    const b = minutesOf(draft.end);
+    if (a === null || b === null || a === b) return 0;
+    const per = b > a ? b - a : 24 * 60 - a + b;
+    return (per * draft.days.length) / 60;
   }
 
   function renderSchedule() {
@@ -675,10 +989,7 @@
       S.sched.touched = false;
       paintScheduleFields();
     }
-    const s = d.schedule || {};
-    $("#scheduleSummary").textContent = s.mode === "scheduled"
-      ? `${daysLabel(s.active_days)} · ${s.start_time}–${s.end_time} · ${isLocalZone(s.timezone) ? "server time" : s.timezone} · ${s.active ? "on now" : "off now"}`
-      : "Always on, around the clock.";
+    $("#scheduleSummary").textContent = "All changes saved";
     updateScheduleState();
   }
 
@@ -690,13 +1001,22 @@
     const picker = $("#dayPicker");
     if (!picker.children.length) {
       picker.replaceChildren(...DAYS.map(([key, short, full]) => h("button", {
-        type: "button", dataset: { day: key }, attrs: { "aria-pressed": "false", "aria-label": full }, text: short,
+        className: "chip day", type: "button", dataset: { day: key }, attrs: { "aria-pressed": "false", "aria-label": full }, text: short,
       })));
     }
     $$("[data-day]", picker).forEach((b) => b.setAttribute("aria-pressed", String(draft.days.includes(b.dataset.day))));
     if ($("#startTime").value !== draft.start) $("#startTime").value = draft.start;
     if ($("#endTime").value !== draft.end) $("#endTime").value = draft.end;
     if ($("#timezone").value !== draft.timezone) $("#timezone").value = draft.timezone;
+    // Same line as the web dashboard: "Weekdays, 9:00 AM to 5:00 PM · 40 hours a week".
+    const hours = weeklyHours(draft);
+    const hoursText = ` · ${Number.isInteger(hours) ? hours : hours.toFixed(1)} hours a week`;
+    const a = minutesOf(draft.start);
+    const b = minutesOf(draft.end);
+    const overnight = a !== null && b !== null && b < a ? " (ends the next day)" : "";
+    $("#scheduleSummaryText").textContent = draft.days.length
+      ? `${daysLabel(draft.days)}, ${clockHHMM(draft.start)} to ${clockHHMM(draft.end)}${overnight}${hoursText}`
+      : "No days picked yet";
   }
 
   function updateScheduleState() {
@@ -705,13 +1025,17 @@
     const problem = dirty ? scheduleProblem(draft) : "";
     $("#scheduleDirty").hidden = !dirty;
     $("#scheduleDiscard").hidden = !dirty;
-    if (!isBusy($("#scheduleSave"))) $("#scheduleSave").disabled = !dirty || Boolean(problem);
-    $("#scheduleError").textContent = problem;
-    $("#timezone").setAttribute("aria-invalid", String(Boolean(problem) && /timezone/i.test(problem)));
-    const tzHint = S.sched.serverLocal
-      ? "The server uses its own clock right now. Saving uses this zone instead. An end before the start runs overnight."
-      : "An end time earlier than the start runs overnight.";
-    $("#tzHint").textContent = tzHint;
+    $("#scheduleSummary").hidden = dirty;
+    const save = $("#scheduleSave");
+    if (!isBusy(save)) save.disabled = !dirty || Boolean(problem);
+    save.classList.toggle("btn-primary", dirty);
+    save.classList.toggle("btn-secondary", !dirty);
+    $("#scheduleError").replaceChildren(...(problem ? [icon("alert"), h("span", { text: problem })] : []));
+    $("#timezone").setAttribute("aria-invalid", String(Boolean(problem) && /time zone/i.test(problem)));
+    const zone = browserZone();
+    $("#tzHint").textContent = zone && draft.timezone.trim() !== zone
+      ? `This browser is in ${zone}. An end before the start runs overnight.`
+      : "Start and end follow this time zone. An end before the start runs overnight.";
   }
 
   function editSchedule(change) {
@@ -724,7 +1048,7 @@
   async function saveSchedule() {
     const draft = S.sched.draft;
     const problem = scheduleProblem(draft);
-    if (problem) { $("#scheduleError").textContent = problem; return; }
+    if (problem) { updateScheduleState(); return; }
     const timezone = draft.timezone.trim() || browserZone() || "local";
     const saved = await mutate($("#scheduleSave"), () => post("/api/schedule", {
       mode: draft.mode,
@@ -732,7 +1056,7 @@
       start_time: draft.start,
       end_time: draft.end,
       timezone,
-    }), () => (draft.mode === "always" ? "Schedule saved: always on." : "Schedule saved."));
+    }), ["Schedule saved", "Stillgreen uses it within a few seconds."]);
     if (saved) {
       S.sched.touched = false;
       S.sched.draft = null;
@@ -744,46 +1068,58 @@
 
   // --------------------------------------------------------------- activity
 
+  // When an entry happened, in this browser's time zone. Older daemons send
+  // only their own local date and time.
+  function activityDate(entry) {
+    const d = new Date(entry.at || `${entry.date}T${entry.time}`);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+
   function renderActivity() {
-    const events = S.data.activity || [];
-    $("#activityCount").textContent = events.length ? plural(events.length, "event", "events") : "";
-    $("#activitySub").textContent = LOOPBACK.has(location.hostname)
-      ? "Recent daemon events, newest first."
-      : "Recent daemon events, newest first. Times use the server's clock.";
-    const sig = JSON.stringify(events);
+    const all = S.data.activity || [];
+    const events = S.activityExpanded ? all : all.slice(0, ACTIVITY_SHORT);
+    const foot = $("#activityFoot");
+    foot.hidden = all.length <= ACTIVITY_SHORT;
+    $("#activityShown").textContent = `Showing ${events.length} of ${all.length}`;
+    const toggle = $("#activityToggle");
+    toggle.textContent = S.activityExpanded ? "Show less" : "Show all";
+    toggle.setAttribute("aria-expanded", String(S.activityExpanded));
+    const sig = JSON.stringify([S.activityExpanded, new Date().toDateString(), events]);
     if (S.sigs.log === sig) return;
     S.sigs.log = sig;
     const list = $("#activity");
     if (!events.length) {
-      list.replaceChildren(h("li", { className: "log-empty", text: "No activity yet. Events show up here once the daemon starts." }));
+      list.replaceChildren(h("li", { className: "log-empty", text: "Nothing yet. Events show up here when Stillgreen connects to Slack or checks your status." }));
       return;
     }
-    const today = new Date();
-    const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
-    const multipleDays = events.some((e) => e.date !== todayKey);
+    const dated = events.map((entry) => [entry, activityDate(entry)]);
+    const days = new Set(dated.map(([, at]) => (at ? dayLabel(at) : "")));
+    const withDays = days.size > 1 || (days.size === 1 && !days.has("Today"));
     const nodes = [];
-    let lastDate = "";
-    for (const entry of events) {
-      if (multipleDays && entry.date !== lastDate) {
-        lastDate = entry.date;
-        const label = entry.date === todayKey ? "Today" : dayLabel(entry.date);
-        nodes.push(h("li", { className: "day-sep", text: label }));
+    let lastDay = "";
+    for (const [entry, at] of dated) {
+      const day = at ? dayLabel(at) : "";
+      if (withDays && day && day !== lastDay) {
+        lastDay = day;
+        nodes.push(h("li", { className: "day-sep", text: day }));
       }
       const tone = ["green", "amber"].includes(entry.tone) ? entry.tone : "muted";
-      nodes.push(h("li", {},
-        h("time", { attrs: { datetime: `${entry.date}T${entry.time}` }, text: entry.time }),
-        h("span", { className: "dot", dataset: { tone }, attrs: { "aria-hidden": "true" } }),
-        h("span", { className: "msg" },
-          entry.workspace ? h("span", { className: "ws-tag", text: entry.workspace }) : null,
-          sentence(entry.text).replace(/\.$/, ""))));
+      const glyph = tone === "green" ? icon("check", 2.4) : tone === "amber" ? icon("warn", 2.4) : h("i");
+      nodes.push(h("li", { className: "log-item" },
+        h("span", { className: "log-icon", dataset: { tone }, attrs: { "aria-hidden": "true" } }, glyph),
+        h("span", { className: "log-msg" },
+          h("span", { className: "log-text", text: entry.summary || sentence(entry.text).replace(/\.$/, ""), attrs: { title: entry.text } }),
+          entry.workspace ? h("span", { className: "log-ws", text: entry.workspace }) : null),
+        h("time", { className: "log-time mono", attrs: { datetime: entry.at || `${entry.date}T${entry.time}` }, text: at ? clockFmt.format(at) : entry.time })));
     }
     list.replaceChildren(...nodes);
   }
 
-  function dayLabel(date) {
-    const d = new Date(`${date}T12:00:00`);
-    if (Number.isNaN(d.getTime())) return date;
-    if (dayDiff(d) === -1) return "Yesterday";
+  // "Today", "Yesterday" or "Sun, Nov 1" (lib/dashboard.ts dayHeading).
+  function dayLabel(d) {
+    const diff = dayDiff(d);
+    if (diff === 0) return "Today";
+    if (diff === -1) return "Yesterday";
     return `${weekdayFmt.format(d)}, ${dateFmt.format(d)}`;
   }
 
@@ -799,7 +1135,9 @@
     $("#codeValue").textContent = S.revealCode ? code : maskCode(code || "SG-XXXX-XXXX-XXXX");
     const show = $("#codeShow");
     show.setAttribute("aria-pressed", String(S.revealCode));
-    $(".btn-label", show).textContent = S.revealCode ? "Hide" : "Show";
+    show.setAttribute("aria-label", S.revealCode ? "Hide access code" : "Show access code");
+    show.title = S.revealCode ? "Hide" : "Show";
+    show.classList.toggle("is-revealed", S.revealCode);
     $("#codeRotated").hidden = !S.rotated;
   }
 
@@ -817,6 +1155,20 @@
     area.remove();
     if (active && typeof active.focus === "function") active.focus();
     return ok;
+  }
+
+  // ----------------------------------------------------------------- daemon
+
+  function renderDaemon() {
+    const d = S.data;
+    const running = Boolean(d.daemon && d.daemon.running);
+    setBadge($("#daemonBadge"), running ? "success" : "danger", running ? "Running" : "Stopped", $("#daemonBadgeText"));
+    $("#factHost").textContent = location.host;
+    $("#factVersion").textContent = d.version || "—";
+    const started = running && d.daemon.started_at ? new Date(d.daemon.started_at).getTime() : NaN;
+    $("#factUptime").textContent = running ? (Number.isNaN(started) ? "Running" : fmtSpan(Date.now() - started)) : "Not running";
+    const tz = d.schedule && d.schedule.timezone;
+    $("#factZone").textContent = isLocalZone(tz) ? (d.server_timezone || "This server's clock") : String(tz);
   }
 
   // ---------------------------------------------------------------- polling
@@ -859,11 +1211,11 @@
   let closeAdd = null;
   function openAdd({ manual = false } = {}) {
     if (!S.code || $("#addDialog").open) return;
-    $("#addError").textContent = "";
+    $("#addError").replaceChildren();
     $("#addOrigin").textContent = location.origin;
     $$("#addForm .input").forEach((i) => i.removeAttribute("aria-invalid"));
     closeAdd = openDialog($("#addDialog"), {
-      initialFocus: manual ? $("#xoxc") : $("#addClose"),
+      initialFocus: manual ? $("#xoxc") : $("#addCancel"),
       onCancel: dismissAdd,
       onClosed: () => {
         closeAdd = null;
@@ -878,6 +1230,14 @@
     if (closeAdd) closeAdd();
   }
 
+  // The error sits right under the two fields and is scrolled into view, so
+  // it is seen on a phone too.
+  function addError(message) {
+    const box = $("#addError");
+    box.replaceChildren(...(message ? [icon("alert"), h("span", { text: message })] : []));
+    if (message) box.scrollIntoView({ block: "nearest" });
+  }
+
   async function submitAdd(event) {
     event.preventDefault();
     const submit = $("#addSubmit");
@@ -885,32 +1245,38 @@
     const xoxc = $("#xoxc").value.trim();
     const xoxd = $("#xoxd").value.trim();
     const name = $("#wsName").value.trim();
-    const error = $("#addError");
     $("#xoxc").setAttribute("aria-invalid", String(!xoxc));
     $("#xoxd").setAttribute("aria-invalid", String(!xoxd));
     if (!xoxc || !xoxd) {
-      error.textContent = "Paste both the xoxc token and the xoxd cookie.";
+      addError(!xoxc && !xoxd ? "Paste both values." : !xoxc ? "Paste the xoxc token too." : "Paste the xoxd cookie too.");
       (!xoxc ? $("#xoxc") : $("#xoxd")).focus();
       return;
     }
-    error.textContent = "";
+    addError("");
     setBusy(submit, true);
+    $(".btn-label", submit).textContent = "Checking with Slack";
     $("#addCancel").disabled = true;
     try {
       const result = await post("/api/workspaces", { xoxc, xoxd, name });
       S.mutationSeq += 1;
       setBusy(submit, false);
+      $(".btn-label", submit).textContent = "Verify & add";
       $("#addCancel").disabled = false;
       dismissAdd();
       applyState(result.state);
-      toast(`Added ${result.name || "the workspace"}. Connecting to Slack…`);
+      toast(`${result.name || "Workspace"} added`, "success", { description: "Connecting to Slack now." });
     } catch (err) {
       setBusy(submit, false);
+      $(".btn-label", submit).textContent = "Verify & add";
       $("#addCancel").disabled = false;
       if (err.kind === "auth") { dismissAdd(); sessionExpired(); return; }
-      error.textContent = err.message;
-      if (/xoxc|token/i.test(err.message) && !/cookie|xoxd/i.test(err.message)) $("#xoxc").setAttribute("aria-invalid", "true");
-      if (/xoxd|cookie/i.test(err.message)) $("#xoxd").setAttribute("aria-invalid", "true");
+      // Slack checks the two values together, so a refusal marks both.
+      const refused = err.kind === "request" && /reject|invalid|token|cookie|xox/i.test(err.message);
+      addError(refused ? "Slack didn't accept these values. Copy both again from the same signed-in tab." : err.message);
+      if (refused) {
+        $("#xoxc").setAttribute("aria-invalid", "true");
+        $("#xoxd").setAttribute("aria-invalid", "true");
+      }
       submit.focus();
     }
   }
@@ -946,16 +1312,14 @@
       if (isBusy(submit)) return;
       const input = $("#accessCode");
       const code = normalizeCode(input.value);
-      const err = $("#loginError");
-      err.dataset.tone = "error";
       if (!code) {
-        err.textContent = "Enter the access code.";
+        loginError("Enter the access code.");
         input.setAttribute("aria-invalid", "true");
         input.focus();
         return;
       }
       input.value = code;
-      err.textContent = "";
+      loginError("");
       setBusy(submit, true);
       try {
         const data = await api("/api/state", { code });
@@ -971,10 +1335,10 @@
         if (location.hash === "#add") openAdd({ manual: true });
       } catch (error) {
         input.setAttribute("aria-invalid", "true");
-        err.textContent = error.kind === "auth" ? "That code wasn't accepted. Check it and try again."
+        loginError(error.kind === "auth" ? "That code wasn't accepted. Check it and try again."
           : error.kind === "throttle" ? "Too many wrong codes. Wait a minute, then try again."
-            : error.kind === "network" ? "Can't reach the Stillgreen server. Check your connection and try again."
-              : error.message;
+            : error.kind === "network" ? "Can't reach Stillgreen. Check your connection and try again."
+              : error.message);
         input.focus();
         input.select();
       } finally {
@@ -983,7 +1347,7 @@
     });
     $("#accessCode").addEventListener("input", () => {
       $("#accessCode").setAttribute("aria-invalid", "false");
-      $("#loginError").textContent = "";
+      loginError("");
     });
 
     // Menu
@@ -993,7 +1357,7 @@
     });
     $("#menuList").addEventListener("keydown", onMenuKey);
     document.addEventListener("click", (event) => {
-      if (!$("#menuList").hidden && !event.target.closest(".menu")) setMenu(false);
+      if (!$("#menuList").hidden && !event.target.closest(".menu-wrap")) setMenu(false);
     });
     $("#menuList").addEventListener("click", async (event) => {
       const item = event.target.closest("[data-menu]");
@@ -1004,7 +1368,7 @@
         $("#menuButton").focus();
         const ok = await refresh();
         schedulePoll();
-        if (ok) toast("Up to date.", "info", 2000);
+        if (ok) toast("Up to date", "info", { timeout: 2000 });
       } else if (action === "add") {
         $("#menuButton").focus();
         openAdd();
@@ -1017,53 +1381,37 @@
     $$("[data-pause]").forEach((button) => button.addEventListener("click", () => {
       const forever = button.dataset.pause === "forever";
       mutate(button, () => post("/api/pause", forever ? {} : { duration: button.dataset.pause }),
-        (r) => (forever ? "Paused until you resume." : `Paused until ${fmtWhen(r.pause_until) || "later"}.`))
+        (r) => (forever
+          ? ["Paused until you resume", r.stay_active ? "Keep me online is still on. The pause starts when it ends." : "Slack will set you away as usual."]
+          : ["Paused for 1 hour", r.stay_active && r.stay_until
+            ? `Keep me online is on until ${fmtWhen(r.stay_until)}, so the pause starts after that.`
+            : `Stillgreen starts again ${atWhen(r.pause_until) || "later"}.`]))
         .then((r) => { if (r) $("[data-resume]").focus(); });
     }));
     $("[data-resume]").addEventListener("click", (event) => {
       const button = event.currentTarget;
-      mutate(button, () => post("/api/resume", {}), "Resumed. Workspaces reconnect in a few seconds.")
+      mutate(button, () => post("/api/resume", {}), ["Resumed", "Stillgreen is keeping you green again."])
         .then((r) => { if (r) $('[data-pause="1h"]').focus(); });
     });
 
     // Keep me online
     $$("[data-stay]").forEach((button) => button.addEventListener("click", () => {
-      mutate(button, () => post("/api/stay", { duration: button.dataset.stay }),
-        (r) => `Staying online until ${fmtWhen(r.stay_until) || "later"}.`);
+      S.stay = { kind: "duration", value: button.dataset.stay };
+      setStayError("");
+      paintStayPicker();
     }));
     $("#stayCancel").addEventListener("click", (event) => {
-      mutate(event.currentTarget, () => post("/api/stay", { cancel: true }), "Stay-online override cancelled.")
-        .then((r) => { if (r) $('[data-stay="1h"]').focus(); });
+      mutate(event.currentTarget, () => post("/api/stay", { cancel: true }), ["Keep me online is off", "Your normal settings apply again."])
+        .then((r) => { if (r) $("#stayUntilSubmit").focus(); });
     });
-    $("#stayUntil").addEventListener("input", () => { $("#stayUntilError").textContent = ""; $("#stayUntil").removeAttribute("aria-invalid"); });
-    $("#stayUntilForm").addEventListener("submit", (event) => {
-      event.preventDefault();
-      const input = $("#stayUntil");
-      const error = $("#stayUntilError");
-      const match = /^(\d{1,2}):(\d{2})/.exec(input.value || "");
-      if (!match) { error.textContent = "Enter a time, like 17:00."; input.setAttribute("aria-invalid", "true"); input.focus(); return; }
-      const hours = Number(match[1]);
-      const minutes = Number(match[2]);
-      const until = new Date();
-      until.setHours(hours, minutes, 0, 0);
-      if (until.getTime() <= Date.now()) {
-        error.textContent = `${input.value} has already passed today. Pick a later time.`;
-        input.setAttribute("aria-invalid", "true");
-        input.focus();
-        return;
-      }
-      error.textContent = "";
-      input.removeAttribute("aria-invalid");
-      // Send this browser's offset so a server on UTC stops at the right moment.
-      const pad = (n) => String(Math.abs(n)).padStart(2, "0");
-      const offset = -until.getTimezoneOffset();
-      const iso = `${until.getFullYear()}-${pad(until.getMonth() + 1)}-${pad(until.getDate())}T${pad(hours)}:${pad(minutes)}:00${offset >= 0 ? "+" : "-"}${pad(Math.trunc(offset / 60))}:${pad(offset % 60)}`;
-      mutate($("#stayUntilSubmit"), () => post("/api/stay", { until: iso }), (r) => `Staying online until ${fmtWhen(r.stay_until) || input.value}.`);
-    });
+    const pickUntil = () => { S.stay = { kind: "until" }; setStayError(""); paintStayPicker(); };
+    $("#stayUntil").addEventListener("input", pickUntil);
+    $("#stayUntil").addEventListener("focus", () => { if (S.stay.kind !== "until") pickUntil(); });
+
+    $("#stayUntilForm").addEventListener("submit", submitStay);
 
     // Workspaces
     $("#addOpen").addEventListener("click", () => openAdd());
-    $("#addClose").addEventListener("click", dismissAdd);
     $("#addCancel").addEventListener("click", dismissAdd);
     $("#addForm").addEventListener("submit", submitAdd);
     $$("#addForm .input").forEach((input) => input.addEventListener("input", () => input.removeAttribute("aria-invalid")));
@@ -1102,9 +1450,9 @@
     $("#codeCopy").addEventListener("click", async (event) => {
       const button = event.currentTarget;
       if (await copyText(S.code)) {
-        $(".btn-label", button).textContent = "Copied";
-        setTimeout(() => { $(".btn-label", button).textContent = "Copy"; }, 1600);
-        toast("Access code copied.");
+        button.classList.add("is-copied");
+        setTimeout(() => button.classList.remove("is-copied"), 1600);
+        toast("Access code copied");
       } else {
         S.revealCode = true;
         renderCode();
@@ -1113,14 +1461,15 @@
         const sel = window.getSelection();
         sel.removeAllRanges();
         sel.addRange(range);
-        toast("Copying is blocked here. The code is selected; press Ctrl+C or ⌘C.", "info", 6000);
+        toast("Copy it by hand", "info", { description: "This browser blocked copying. The code is selected; press Ctrl+C or ⌘C.", timeout: 7000 });
       }
     });
     $("#codeRotate").addEventListener("click", async () => {
       const result = await confirmAction({
-        title: "Rotate the access code?",
-        body: "A new code replaces the current one immediately. The hosted dashboard and the browser extension stop working until you paste the new code into them.",
-        confirmLabel: "Rotate code",
+        title: "Change the access code?",
+        body: "You get a new code right away and the old one stops working. The web dashboard and the browser extension stay disconnected until you paste the new code into them.",
+        confirmLabel: "Change code",
+        glyph: "refresh",
         action: () => post("/api/code/rotate", {}),
       });
       if (!result || !result.code) return;
@@ -1129,9 +1478,18 @@
       S.revealCode = true;
       S.rotated = true;
       renderCode();
-      toast("New access code is active. Update the dashboard and the extension.", "success", 7000);
+      toast("New access code is active", "success", { description: "Paste it into the web dashboard and the extension.", timeout: 8000 });
       $("#codeCopy").focus();
     });
+
+    // Activity: show the newest few, or all.
+    $("#activityToggle").addEventListener("click", () => {
+      S.activityExpanded = !S.activityExpanded;
+      renderActivity();
+    });
+
+    // Keep relative times fresh between polls.
+    setInterval(() => { if (S.data && !$("#app").hidden) { renderStay(); renderDaemon(); renderUpdated(); } }, 10000);
 
     // Polling follows tab visibility.
     document.addEventListener("visibilitychange", () => {
@@ -1151,8 +1509,10 @@
   // ------------------------------------------------------------------- init
 
   function init() {
+    $("#stayUntil").value = defaultUntil();
     bind();
     paintEmptySchedule();
+    paintStayPicker();
     if (S.embed) S.code = normalizeCode(boot.code);
     else S.code = normalizeCode(storageGet());
     if (!S.code) { showLogin(""); return; }

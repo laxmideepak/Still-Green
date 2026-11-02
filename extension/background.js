@@ -19,13 +19,13 @@ function daemonUrlProblem(value) {
   try {
     url = new URL(value);
   } catch {
-    return "The daemon URL is not a valid URL.";
+    return "The Stillgreen address is not a valid web address.";
   }
   if (url.username || url.password) {
-    return "The daemon URL must not contain a username or password.";
+    return "The Stillgreen address must not contain a username or password.";
   }
   if (url.protocol !== "http:" && url.protocol !== "https:") {
-    return "The daemon URL must start with http:// or https://.";
+    return "The Stillgreen address must start with http:// or https://.";
   }
   if (url.protocol === "https:") return null;
   if (url.protocol === "http:" && LOOPBACK_HOSTS.has(url.hostname)) return null;
@@ -142,7 +142,7 @@ async function postWorkspace(daemonUrl, bridgeCode, team) {
     return {
       ok: false,
       team: team.name,
-      error: `Could not reach ${daemonUrl}. Start the daemon with ./sg-local start.`,
+      error: `Can't reach ${daemonUrl}. Start Stillgreen with ./sg-local web --daemon --open, or check the address.`,
     };
   }
 
@@ -153,7 +153,7 @@ async function postWorkspace(daemonUrl, bridgeCode, team) {
     return {
       ok: false,
       team: team.name,
-      error: "The daemon refuses this extension origin. Start it with SG_LOCAL_ALLOW_EXTENSIONS=1.",
+      error: "Stillgreen refuses this extension. Start it with SG_LOCAL_ALLOW_EXTENSIONS=1.",
     };
   }
 
@@ -168,7 +168,7 @@ async function postWorkspace(daemonUrl, bridgeCode, team) {
     return {
       ok: false,
       team: team.name,
-      error: payload.error || `The daemon returned ${response.status}.`,
+      error: payload.error || `Stillgreen returned ${response.status}.`,
     };
   }
 
@@ -181,7 +181,7 @@ async function capture() {
     return { ok: false, error: urlProblem };
   }
   if (!bridgeCode) {
-    return { ok: false, error: "Add your daemon access code first." };
+    return { ok: false, error: "Paste your access code first." };
   }
 
   const tab = await findSlackTab();

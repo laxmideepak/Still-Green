@@ -1,0 +1,1155 @@
+/*
+ * Stillgreen UI: the plain-CSS component layer for pages without React
+ * (the daemon control page and the Chrome extension popup).
+ * Load order: tokens.css, then ui.css, then the page's own CSS.
+ * The same file lives at sg_local/static/ui.css and extension/ui.css.
+ * Class names and examples: docs/design-system.md
+ */
+
+/* ---------- Base ---------- */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-base);
+  line-height: var(--line-height-base);
+  font-feature-settings: "cv11", "ss01", "ss03";
+}
+
+h1, h2, h3, h4, p, dl, dd, figure {
+  margin: 0;
+}
+
+button, input, select, textarea {
+  font: inherit;
+  color: inherit;
+}
+
+svg {
+  flex-shrink: 0;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus-color);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.mono,
+code,
+kbd,
+samp {
+  font-family: var(--font-mono);
+  font-feature-settings: normal;
+}
+
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.divider {
+  height: 1px;
+  border: 0;
+  margin: 0;
+  background: var(--border);
+}
+
+/* ---------- Button ----------
+   <button class="btn btn-primary">Keep on</button>
+   Variants: btn-primary, btn-secondary, btn-ghost, btn-destructive, btn-link
+   Sizes: btn-sm (32px), default (36px), btn-lg (40px). Extras: btn-icon, btn-block
+   Loading: add .is-loading and aria-busy="true", put <span class="spinner"></span> first. */
+.btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  height: var(--control-md);
+  padding: 0 14px;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-medium);
+  line-height: 1;
+  letter-spacing: var(--tracking-normal);
+  white-space: nowrap;
+  text-decoration: none;
+  cursor: pointer;
+  user-select: none;
+  transition:
+    background-color var(--duration-fast) var(--ease),
+    border-color var(--duration-fast) var(--ease),
+    color var(--duration-fast) var(--ease),
+    box-shadow var(--duration-fast) var(--ease);
+}
+
+.btn svg {
+  width: var(--icon-md);
+  height: var(--icon-md);
+}
+
+.btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.btn-sm {
+  height: var(--control-sm);
+  padding: 0 12px;
+  gap: 6px;
+  font-size: var(--font-size-sm);
+}
+
+.btn-sm svg {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+}
+
+.btn-lg {
+  height: var(--control-lg);
+  padding: 0 18px;
+}
+
+.btn-block {
+  display: flex;
+  width: 100%;
+}
+
+.btn-icon {
+  width: var(--control-md);
+  padding: 0;
+}
+
+.btn-icon.btn-sm {
+  width: var(--control-sm);
+}
+
+.btn-icon.btn-lg {
+  width: var(--control-lg);
+}
+
+.btn-primary {
+  background: var(--primary-bg);
+  color: var(--primary-text);
+  box-shadow: var(--primary-shadow);
+}
+
+.btn-primary:hover {
+  background: var(--primary-bg-hover);
+}
+
+.btn-secondary {
+  border-color: var(--control-border);
+  background: var(--control-bg);
+  color: var(--text);
+  box-shadow: var(--shadow-xs);
+}
+
+.btn-secondary:hover {
+  border-color: var(--control-border-hover);
+  background: var(--control-bg-hover);
+}
+
+.btn-ghost {
+  color: var(--text-muted);
+}
+
+.btn-ghost:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.btn-destructive,
+.btn-danger {
+  background: var(--destructive-bg);
+  color: var(--destructive-text);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.btn-destructive:hover,
+.btn-danger:hover {
+  background: var(--destructive-bg-hover);
+}
+
+/* A quiet red text button for "Remove" in lists (opens a confirm dialog). */
+.btn-destructive-ghost {
+  color: var(--danger-text);
+}
+
+.btn-destructive-ghost:hover {
+  background: var(--danger-soft);
+}
+
+.btn-link {
+  height: auto;
+  padding: 0;
+  border-radius: var(--radius-xs);
+  color: var(--accent-text);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  text-decoration-color: color-mix(in srgb, currentColor 40%, transparent);
+}
+
+.btn-link:hover {
+  text-decoration-color: currentColor;
+}
+
+.btn:disabled,
+.btn[aria-disabled="true"] {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
+  pointer-events: none;
+}
+
+/* Loading buttons are disabled for clicks but keep full color. */
+.btn.is-loading {
+  opacity: 1;
+  cursor: progress;
+  pointer-events: none;
+}
+
+/* ---------- Spinner ---------- */
+.spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  border: 2px solid color-mix(in srgb, currentColor 30%, transparent);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: sg-spin 0.8s linear infinite;
+}
+
+@keyframes sg-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ---------- Badge ----------
+   <span class="badge badge-success"><span class="dot"></span>Active</span>
+   Tones: badge-success, badge-neutral, badge-warning, badge-danger, badge-info, badge-violet */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.badge svg {
+  width: 12px;
+  height: 12px;
+}
+
+.badge .dot {
+  width: 6px;
+  height: 6px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.badge-neutral .dot {
+  background: var(--text-subtle);
+}
+
+.badge-success {
+  border-color: var(--success-border);
+  background: var(--success-soft);
+  color: var(--success-text);
+}
+
+.badge-success .dot {
+  background: var(--success);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--success) 18%, transparent);
+}
+
+.badge-warning {
+  border-color: var(--warning-border);
+  background: var(--warning-soft);
+  color: var(--warning-text);
+}
+
+.badge-warning .dot {
+  background: var(--warning);
+}
+
+.badge-danger {
+  border-color: var(--danger-border);
+  background: var(--danger-soft);
+  color: var(--danger-text);
+}
+
+.badge-danger .dot {
+  background: var(--danger);
+}
+
+.badge-info {
+  border-color: var(--info-border);
+  background: var(--info-soft);
+  color: var(--info-text);
+}
+
+.badge-info .dot {
+  background: var(--info);
+}
+
+.badge-violet {
+  border-color: var(--violet-border);
+  background: var(--violet-soft);
+  color: var(--violet-text);
+}
+
+.badge-violet .dot {
+  background: var(--violet);
+}
+
+/* ---------- Card ----------
+   <section class="card"><header class="card-header"><div><h2 class="card-title">…</h2>
+   <p class="card-description">…</p></div></header><div class="card-body">…</div>
+   <footer class="card-footer">…</footer></section> */
+.card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--border);
+}
+
+.card-title {
+  color: var(--text);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--line-height-base);
+  letter-spacing: -0.01em;
+}
+
+.card-description {
+  margin-top: 2px;
+  color: var(--text-subtle);
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-sm);
+}
+
+.card-body {
+  padding: var(--space-5);
+}
+
+.card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-5);
+  border-top: 1px solid var(--border);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+  background: var(--surface-2);
+  color: var(--text-subtle);
+  font-size: var(--font-size-sm);
+}
+
+/* ---------- Field and input ----------
+   <div class="field"><label class="label" for="url">Daemon URL</label>
+   <input class="input mono" id="url" aria-describedby="url-hint">
+   <p class="hint" id="url-hint">…</p></div>
+   Error: aria-invalid="true" on the input, and <p class="field-error" role="alert">. */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.label {
+  color: var(--text);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--line-height-sm);
+}
+
+.hint {
+  color: var(--text-subtle);
+  font-size: var(--font-size-xs);
+  line-height: var(--line-height-xs);
+}
+
+.field-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  color: var(--danger-text);
+  font-size: var(--font-size-xs);
+  line-height: var(--line-height-xs);
+}
+
+.field-error:empty {
+  display: none;
+}
+
+.field-error svg {
+  width: 14px;
+  height: 14px;
+  margin-top: 1px;
+}
+
+.input {
+  width: 100%;
+  min-width: 0;
+  height: var(--control-md);
+  padding: 0 12px;
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius);
+  outline: none;
+  background: var(--input-bg);
+  color: var(--text);
+  font-size: var(--font-size-base);
+  box-shadow: var(--shadow-xs);
+  transition:
+    border-color var(--duration-fast) var(--ease),
+    box-shadow var(--duration-fast) var(--ease);
+}
+
+.input::placeholder {
+  color: var(--text-placeholder);
+  opacity: 1;
+}
+
+.input:hover {
+  border-color: var(--control-border-hover);
+}
+
+.input:focus,
+.input:focus-visible {
+  border-color: var(--accent);
+  outline: none;
+  box-shadow: var(--focus-ring-input);
+}
+
+.input[aria-invalid="true"] {
+  border-color: var(--danger);
+}
+
+.input[aria-invalid="true"]:focus {
+  box-shadow: 0 0 0 3px var(--danger-ring);
+}
+
+.input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.input.mono {
+  font-size: var(--font-size-sm);
+  letter-spacing: 0.02em;
+}
+
+.input-sm {
+  height: var(--control-sm);
+  padding: 0 10px;
+  font-size: var(--font-size-sm);
+}
+
+textarea.input {
+  height: auto;
+  min-height: 80px;
+  padding: 8px 12px;
+  line-height: var(--line-height-base);
+  resize: vertical;
+}
+
+/* An input with a leading icon: <div class="input-group"><svg …/><input class="input"></div> */
+.input-group {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.input-group > svg {
+  position: absolute;
+  z-index: 1;
+  left: 12px;
+  width: 14px;
+  height: 14px;
+  color: var(--text-subtle);
+  pointer-events: none;
+}
+
+.input-group > .input {
+  padding-left: 34px;
+}
+
+/* <input type="time" class="input time-input"> */
+.time-input {
+  width: auto;
+  min-width: 120px;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Inside an .input-group with a clock icon, the icon opens Chrome's picker. */
+.input-group > .time-input {
+  position: relative;
+}
+
+.input-group > .time-input::-webkit-calendar-picker-indicator {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 34px;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+/* ---------- Segmented control ----------
+   <div class="segmented" role="group" aria-label="Schedule mode">
+     <button type="button" aria-pressed="true">Scheduled</button>
+     <button type="button" aria-pressed="false">Always on</button></div> */
+.segmented {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius);
+  background: var(--surface-3);
+}
+
+.segmented > button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition:
+    background-color var(--duration-fast) var(--ease),
+    color var(--duration-fast) var(--ease);
+}
+
+.segmented > button svg {
+  width: 14px;
+  height: 14px;
+}
+
+.segmented > button:hover {
+  color: var(--text);
+}
+
+.segmented > button[aria-pressed="true"],
+.segmented > button[aria-checked="true"],
+.segmented > button.is-active {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-sm), 0 0 0 1px var(--border);
+}
+
+.segmented > button:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* ---------- Chip (toggle) ----------
+   <div class="chip-group" role="group" aria-label="Keep me online for">
+     <button type="button" class="chip" aria-pressed="false">30 min</button> … </div> */
+.chip-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: var(--control-sm);
+  padding: 0 12px;
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius);
+  background: var(--control-bg);
+  color: var(--text);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition:
+    background-color var(--duration-fast) var(--ease),
+    border-color var(--duration-fast) var(--ease),
+    color var(--duration-fast) var(--ease);
+}
+
+.chip:hover {
+  border-color: var(--control-border-hover);
+  background: var(--control-bg-hover);
+}
+
+.chip[aria-pressed="true"],
+.chip[aria-checked="true"],
+.chip.is-active {
+  border-color: var(--selected-border);
+  background: var(--selected-bg);
+  color: var(--selected-text);
+  box-shadow: inset 0 0 0 1px var(--selected-border);
+}
+
+.chip:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.chip:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ---------- Dialog ----------
+   Native <dialog class="dialog" aria-labelledby="t" aria-describedby="d">.
+   Open with dialog.showModal(); Escape closes it. Destructive actions confirm here,
+   never with window.confirm(). */
+.dialog {
+  width: min(400px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-lg);
+}
+
+.dialog-lg {
+  width: min(520px, calc(100vw - 32px));
+}
+
+.dialog::backdrop {
+  background: var(--overlay);
+}
+
+.dialog[open] {
+  animation: sg-dialog-in var(--duration) var(--ease);
+}
+
+@keyframes sg-dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
+}
+
+.dialog-body {
+  display: flex;
+  gap: var(--space-4);
+  padding: var(--space-5) var(--space-5) 0;
+}
+
+.dialog-icon {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--surface-2);
+  color: var(--text-muted);
+}
+
+.dialog-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.dialog-icon-danger {
+  border-color: var(--danger-border);
+  background: var(--danger-soft);
+  color: var(--danger-text);
+}
+
+.dialog-title {
+  color: var(--text);
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--line-height-md);
+  letter-spacing: var(--tracking-tight);
+}
+
+.dialog-description {
+  margin-top: var(--space-1);
+  color: var(--text-muted);
+  font-size: var(--font-size-base);
+  line-height: var(--line-height-base);
+}
+
+.dialog-content {
+  padding: var(--space-4) var(--space-5) 0;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  padding: var(--space-5);
+}
+
+/* On a phone the buttons stack, full width, with the main action on top.
+   Same as components/ui/dialog.module.css. */
+@media (max-width: 480px) {
+  .dialog-actions {
+    flex-direction: column-reverse;
+  }
+
+  .dialog-actions > .btn {
+    width: 100%;
+  }
+}
+
+/* ---------- Toast ----------
+   <div class="toast-region" aria-live="polite"> holds the toasts, bottom-right. */
+.toast-region {
+  position: fixed;
+  right: var(--space-4);
+  bottom: var(--space-4);
+  z-index: var(--z-toast);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-2);
+  width: min(360px, calc(100vw - 32px));
+  pointer-events: none;
+}
+
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  width: 100%;
+  padding: 14px var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-md);
+  pointer-events: auto;
+  animation: sg-toast-in var(--duration) var(--ease);
+}
+
+@keyframes sg-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+.toast-icon {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--text-subtle);
+  color: var(--surface);
+}
+
+.toast-icon svg {
+  width: 12px;
+  height: 12px;
+}
+
+.toast-success .toast-icon {
+  background: var(--success);
+}
+
+.toast-danger .toast-icon {
+  background: var(--danger);
+}
+
+.toast-warning .toast-icon {
+  background: var(--warning);
+}
+
+.toast-info .toast-icon {
+  background: var(--info);
+}
+
+.toast-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.toast-title {
+  display: block;
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--line-height-base);
+}
+
+.toast-description {
+  display: block;
+  color: var(--text-subtle);
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-sm);
+}
+
+.toast-action {
+  align-self: center;
+  height: 28px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+}
+
+.toast-action:hover,
+.toast-close:hover {
+  background: var(--hover);
+}
+
+.toast-close {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-subtle);
+  cursor: pointer;
+}
+
+.toast-close svg {
+  width: 14px;
+  height: 14px;
+}
+
+.toast-action:focus-visible,
+.toast-close:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* ---------- Banner / alert ----------
+   <div class="banner banner-warning" role="status"><svg …/><div><p class="banner-title">…</p>
+   <p class="banner-description">…</p></div></div> */
+.banner {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-sm);
+}
+
+.banner > svg {
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  color: var(--text-subtle);
+}
+
+.banner-title {
+  font-weight: var(--font-weight-medium);
+}
+
+.banner-description {
+  color: var(--text-muted);
+}
+
+.banner-actions {
+  display: flex;
+  gap: var(--space-2);
+  margin-left: auto;
+  align-self: center;
+}
+
+.banner-info {
+  border-color: var(--info-border);
+  background: var(--info-soft);
+}
+
+.banner-info > svg {
+  color: var(--info-text);
+}
+
+.banner-success {
+  border-color: var(--success-border);
+  background: var(--success-soft);
+}
+
+.banner-success > svg {
+  color: var(--success-text);
+}
+
+.banner-warning {
+  border-color: var(--warning-border);
+  background: var(--warning-soft);
+}
+
+.banner-warning > svg {
+  color: var(--warning-text);
+}
+
+.banner-danger {
+  border-color: var(--danger-border);
+  background: var(--danger-soft);
+}
+
+.banner-danger > svg,
+.banner-danger .banner-title {
+  color: var(--danger-text);
+}
+
+/* ---------- Empty state ---------- */
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-10) var(--space-6);
+  text-align: center;
+}
+
+.empty-icon {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  margin-bottom: var(--space-2);
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  color: var(--text-muted);
+}
+
+.empty-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.empty-title {
+  color: var(--text);
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--line-height-md);
+  letter-spacing: var(--tracking-tight);
+}
+
+.empty-description {
+  max-width: 360px;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-sm);
+}
+
+.empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+/* ---------- Skeleton ---------- */
+.skeleton {
+  display: block;
+  height: 12px;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(90deg, var(--skeleton) 0%, var(--skeleton-shine) 50%, var(--skeleton) 100%);
+  background-size: 200% 100%;
+  animation: sg-shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes sg-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+
+  to {
+    background-position: -100% 0;
+  }
+}
+
+/* ---------- Kbd ---------- */
+.kbd {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  min-width: 20px;
+  justify-content: center;
+  padding: 0 5px;
+  border: 1px solid var(--border-strong);
+  border-bottom-width: 2px;
+  border-radius: var(--radius-xs);
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1;
+}
+
+/* ---------- Code block ----------
+   <div class="code-block"><code>npx stillgreen start</code>
+   <button class="btn btn-ghost btn-sm btn-icon code-block-copy" aria-label="Copy command">…</button></div> */
+.code-block {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--control-lg);
+  padding: 4px 4px 4px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-sm);
+}
+
+.code-block code,
+.code-block pre {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.code-block .prompt {
+  color: var(--accent-text);
+  user-select: none;
+}
+
+.code-block-multiline {
+  align-items: flex-start;
+  padding: 12px 6px 12px 14px;
+}
+
+/* ---------- Menu (popover list) ---------- */
+.menu {
+  min-width: 200px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-md);
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  height: var(--control-sm);
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font-size: var(--font-size-sm);
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.menu-item svg {
+  width: 14px;
+  height: 14px;
+  color: var(--text-subtle);
+}
+
+.menu-item:hover,
+.menu-item:focus-visible {
+  background: var(--hover);
+  outline: none;
+}
+
+.menu-item-danger {
+  color: var(--danger-text);
+}
+
+.menu-item-danger svg {
+  color: currentColor;
+}
+
+/* ---------- Reduced motion ---------- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

@@ -195,10 +195,18 @@ describe("daemon control page (cloud mode)", () => {
     // Pause everything for an hour, then resume.
     const overview = page.locator("#overview");
     await overview.getByRole("button", { name: "Pause 1 h" }).click();
-    await overview.getByRole("heading", { name: /^Paused until \d\d:\d\d/ }).waitFor();
+    await overview.getByRole("heading", { name: /^Paused · Until \d{1,2}:\d\d/ }).waitFor();
     assert.equal((await daemonState()).paused, true);
-    await overview.getByRole("button", { name: "Resume", exact: true }).click();
+    await overview.getByRole("button", { name: "Resume all", exact: true }).click();
     await overview.getByRole("button", { name: "Pause 1 h" }).waitFor();
+    assert.equal((await daemonState()).paused, false);
+
+    // Pause with no end time, then resume.
+    await overview.getByRole("button", { name: "Pause until I resume" }).click();
+    await overview.getByRole("heading", { name: "Paused · Until you resume" }).waitFor();
+    assert.equal((await daemonState()).pause_until ?? null, null);
+    await overview.getByRole("button", { name: "Resume all", exact: true }).click();
+    await overview.getByRole("button", { name: "Pause until I resume" }).waitFor();
     assert.equal((await daemonState()).paused, false);
 
     assert.deepEqual(problems, []);
@@ -218,9 +226,16 @@ describe("daemon control page (cloud mode)", () => {
     assert.equal((await daemonState()).stay_active, false);
 
     const target = `${String(localHour + 2).padStart(2, "0")}:30`;
+    // The page shows times in the browser's own format, e.g. "11:30 AM".
+    const shown = await page.evaluate((value) => {
+      const [hours, minutes] = value.split(":").map(Number);
+      const date = new Date();
+      date.setHours(hours, minutes, 0, 0);
+      return new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(date);
+    }, target);
     await card.getByLabel("Until").fill(target);
     await card.getByRole("button", { name: "Keep on" }).click();
-    await card.getByText(`Online until ${target}`).waitFor();
+    await card.getByText(`staying online until ${shown}`).waitFor();
     const state = await daemonState();
     assert.equal(state.stay_active, true);
     const local = new Intl.DateTimeFormat("en-GB", {
@@ -229,8 +244,19 @@ describe("daemon control page (cloud mode)", () => {
     assert.equal(local, target);
 
     await card.getByRole("button", { name: "Cancel" }).click();
-    await card.getByText(/Online until/).waitFor({ state: "hidden" });
+    await card.getByText(/staying online until/).waitFor({ state: "hidden" });
     await waitFor(async () => !(await daemonState()).stay_active, "override cleared");
+
+    // A duration chip only picks; "Keep on" applies it.
+    await card.getByRole("button", { name: "2 h", exact: true }).click();
+    assert.equal(await card.getByRole("button", { name: "2 h", exact: true }).getAttribute("aria-pressed"), "true");
+    assert.equal((await daemonState()).stay_active, false);
+    await card.getByRole("button", { name: "Keep on for 2 h" }).click();
+    await card.getByText(/staying online until/).waitFor();
+    const minutes = (new Date((await daemonState()).stay_until) - Date.now()) / 60000;
+    assert.ok(minutes > 115 && minutes <= 121, `stay lasts about 2 hours, got ${minutes} min`);
+    await card.getByRole("button", { name: "Cancel" }).click();
+    await waitFor(async () => !(await daemonState()).stay_active, "override cleared again");
 
     assert.deepEqual(problems, []);
     await context.close();
@@ -263,6 +289,46 @@ describe("daemon control page (cloud mode)", () => {
     await confirm.waitFor({ state: "hidden" });
     await page.getByRole("heading", { name: "No workspaces yet" }).waitFor();
     assert.equal((await daemonState()).workspaces.length, 0);
+
+    assert.deepEqual(problems, []);
+    await context.close();
+  });
+
+  test("rotates the access code only after the in-page confirmation", async () => {
+    const { context, page, problems } = await openPage();
+    await unlock(page);
+    const card = page.locator("#codeCard");
+    await card.getByText("SG-••••-••••-••••").waitFor();
+    await card.getByRole("button", { name: "Show access code" }).click();
+    await card.getByText(daemon.code).waitFor();
+    await card.getByRole("button", { name: "Hide access code" }).click();
+
+    const confirm = page.getByRole("dialog", { name: "Change the access code?" });
+    await card.getByRole("button", { name: "Change code" }).click();
+    await confirm.waitFor();
+    await confirm.getByRole("button", { name: "Cancel" }).click();
+    await confirm.waitFor({ state: "hidden" });
+
+    // The harness pins the code with SG_LOCAL_BRIDGE_CODE, so the daemon
+    // refuses; the reason shows inside the dialog and nothing changes.
+    await card.getByRole("button", { name: "Change code" }).click();
+    await confirm.getByRole("button", { name: "Change code" }).click();
+    await confirm.getByRole("alert").getByText("fixed by the SG_LOCAL_BRIDGE_CODE setting").waitFor();
+    await page.keyboard.press("Escape");
+    await confirm.waitFor({ state: "hidden" });
+    assert.equal((await api("GET", "/api/state")).status, 200);
+    assert.equal(await page.evaluate(() => localStorage.getItem("stillgreen.bridge")), daemon.code);
+
+    // When the daemon does rotate, the page shows the new code and a reminder.
+    const fresh = "SG-NEW2-CODE-ABCD";
+    await page.route("**/api/code/rotate", (route) =>
+      route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, code: fresh }) }));
+    await card.getByRole("button", { name: "Change code" }).click();
+    await confirm.getByRole("button", { name: "Change code" }).click();
+    await confirm.waitFor({ state: "hidden" });
+    await card.getByText("The new code is active").waitFor();
+    await card.getByText(fresh).waitFor();
+    assert.equal(await page.evaluate(() => localStorage.getItem("stillgreen.bridge")), fresh);
 
     assert.deepEqual(problems, []);
     await context.close();

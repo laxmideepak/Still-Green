@@ -3,53 +3,82 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
     <title>Stillgreen</title>
+    <link rel="stylesheet" href="tokens.css" />
+    <link rel="stylesheet" href="ui.css" />
     <link rel="stylesheet" href="popup.css" />
   </head>
   <body>
-    <header class="head">
-      <span class="mark" aria-hidden="true"><i></i></span>
-      <div class="headText">
-        <strong>stillgreen</strong>
-        <span id="status" class="status statusIdle">Not checked</span>
-      </div>
-    </header>
+    <div class="app">
+      <header class="head">
+        <span class="logo">
+          <span class="logo-mark" aria-hidden="true"><span class="logo-dot"></span></span>
+          <span class="logo-word">Stillgreen</span>
+        </span>
+        <span id="status" class="badge badge-neutral" role="status" aria-live="polite"><span class="dot" aria-hidden="true"></span><span id="statusText">Not connected yet</span></span>
+      </header>
 
-    <main>
-      <p class="lede">
-        Reads the Slack session already open in this browser and sends it only to the
-        daemon URL you set below, normally your own machine.
-      </p>
+      <main class="body">
+        <div class="intro">
+          <h1 class="title">Add your Slack</h1>
+          <p class="lede">Adds every Slack workspace this browser is signed in to, in one click.</p>
+        </div>
 
-      <label class="field">
-        <span>Daemon URL</span>
-        <input id="daemonUrl" type="text" inputmode="url" spellcheck="false" autocomplete="off" placeholder="http://127.0.0.1:8765" />
-      </label>
+        <div id="statusNote" class="banner status-note" hidden>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5M12 16h.01"/></svg>
+          <div>
+            <p id="statusNoteTitle" class="banner-title"></p>
+            <p id="statusNoteText" class="banner-description"></p>
+          </div>
+        </div>
 
-      <label class="field">
-        <span>Access code</span>
-        <input id="bridgeCode" type="password" spellcheck="false" autocomplete="off" placeholder="SG-…" />
-      </label>
+        <div class="field">
+          <label class="label" for="daemonUrl">Stillgreen address</label>
+          <input id="daemonUrl" class="input mono" type="text" inputmode="url" spellcheck="false" autocomplete="off" placeholder="http://127.0.0.1:8765" aria-describedby="daemonUrlHint" />
+          <p id="daemonUrlHint" class="hint">Use an https:// address if Stillgreen runs on a server.</p>
+        </div>
 
-      <button id="capture" class="primary" type="button">
-        Capture from Slack
-        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M2 8h11M9 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      </button>
+        <div class="field">
+          <label class="label" for="bridgeCode">Access code</label>
+          <div class="secret">
+            <input id="bridgeCode" class="input mono" type="password" spellcheck="false" autocomplete="off" placeholder="SG-…" aria-describedby="bridgeCodeHint" />
+            <button id="toggleCode" class="btn btn-ghost btn-sm btn-icon secret-toggle" type="button" aria-label="Show code" aria-pressed="false" title="Show code">
+              <svg class="icon-show" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="3"/></svg>
+              <svg class="icon-hide" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 5.6A10 10 0 0 1 12 5.5c6 0 9.5 6.5 9.5 6.5a17 17 0 0 1-2.7 3.4M6.6 6.6C4 8.3 2.5 12 2.5 12S6 18.5 12 18.5a9 9 0 0 0 4.4-1.1"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>
+            </button>
+          </div>
+          <p id="bridgeCodeHint" class="hint">To see it, run <code>./sg-local web --show-code</code></p>
+        </div>
 
-      <p id="target" class="target"></p>
+        <div class="action">
+          <button id="capture" class="btn btn-primary btn-lg btn-block capture" type="button">
+            <span id="captureLabel">Capture from Slack</span>
+          </button>
+          <p id="target" class="target"></p>
+        </div>
 
-      <div id="results" class="results" hidden></div>
+        <div id="results" class="results" aria-live="polite" hidden></div>
 
-      <p id="hint" class="hint">
-        Sign in at <a href="https://app.slack.com" target="_blank" rel="noreferrer">app.slack.com</a>
-        first, then run a capture.
-      </p>
-    </main>
+        <p id="hint" class="next">
+          First open <a href="https://app.slack.com" target="_blank" rel="noreferrer">app.slack.com</a>
+          in this browser and sign in.
+        </p>
+      </main>
 
-    <footer class="foot">
-      <a href="https://stillgreen.vercel.app/dashboard" target="_blank" rel="noreferrer">Open dashboard ↗</a>
-      <span>v1.0.0</span>
-    </footer>
+      <footer class="foot">
+        <nav class="foot-links" aria-label="More">
+          <a href="https://stillgreen.vercel.app/dashboard" target="_blank" rel="noreferrer">
+            Open dashboard
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7"/><path d="M7 7h10v10"/></svg>
+          </a>
+          <a href="https://stillgreen.vercel.app/setup#add-slack" target="_blank" rel="noreferrer">
+            Help
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7"/><path d="M7 7h10v10"/></svg>
+          </a>
+        </nav>
+      </footer>
+    </div>
 
     <script src="popup.js"></script>
   </body>
