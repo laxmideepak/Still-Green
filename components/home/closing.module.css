@@ -17,20 +17,31 @@
   line-height: 0.85;
   white-space: nowrap;
   transform-origin: 50% 100%;
+  will-change: transform;
 }
 
-.fill {
-  --fill: 100%;
+.words {
+  position: relative;
+  display: inline-block;
   padding-bottom: 0.14em;
   margin-bottom: -0.14em;
-  color: transparent;
-  background: linear-gradient(
-    90deg,
-    var(--acid) calc(100% - var(--fill)),
-    color-mix(in srgb, var(--ink) 12%, transparent) calc(100% - var(--fill))
-  );
-  -webkit-background-clip: text;
-  background-clip: text;
+}
+
+.base {
+  color: color-mix(in srgb, var(--ink) 12%, transparent);
+}
+
+.clip {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  will-change: transform;
+}
+
+.lit {
+  display: block;
+  color: var(--acid);
+  will-change: transform;
 }
 
 .dot {

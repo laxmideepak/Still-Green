@@ -6,6 +6,7 @@ import { ConnectDialog } from "./connect-dialog";
 import { DashboardLive } from "./dashboard-live";
 import { DashboardPreview } from "./dashboard-preview";
 import { ArrowRight, Signal } from "./icons";
+import { Magnetic } from "./motion/magnetic";
 import {
   fetchState,
   loadBridge,
@@ -23,9 +24,10 @@ type PreviewBannerProps = {
 function PreviewBanner({ error, connecting, onConnect }: PreviewBannerProps) {
   return (
     <div className={`container ${styles.bannerWrap}`}>
-      <div className={styles.banner}>
+      <div className={`${styles.banner} riseIn`} data-error={Boolean(error)}>
         <span className={styles.bannerIcon} aria-hidden="true">
           <Signal width={16} height={16} />
+          <i />
         </span>
         <div className={styles.bannerCopy}>
           <strong>{connecting ? "Checking your daemon…" : "Preview mode · sample data"}</strong>
@@ -35,10 +37,12 @@ function PreviewBanner({ error, connecting, onConnect }: PreviewBannerProps) {
           </span>
         </div>
         <div className={styles.bannerActions}>
-          <button type="button" className="button buttonPrimary buttonSmall" onClick={onConnect}>
-            Connect daemon
-            <ArrowRight width={14} height={14} />
-          </button>
+          <Magnetic>
+            <button type="button" className="button buttonPrimary buttonSmall" onClick={onConnect}>
+              Connect daemon
+              <ArrowRight width={14} height={14} />
+            </button>
+          </Magnetic>
           <Link href="/start" className="button buttonQuiet buttonSmall">
             Set it up
           </Link>

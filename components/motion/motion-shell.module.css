@@ -1,5 +1,5 @@
 .hideNativeCursor,
-.hideNativeCursor * {
+.hideNativeCursor *:not(input, textarea, select) {
   cursor: none !important;
 }
 
@@ -29,6 +29,7 @@
   display: grid;
   width: 36px;
   height: 36px;
+  will-change: transform;
   place-items: center;
   border: 1px solid color-mix(in srgb, var(--acid) 55%, transparent);
   border-radius: 50%;
@@ -48,18 +49,18 @@
   height: 64px;
   border-color: transparent;
   background: color-mix(in srgb, var(--acid) 16%, transparent);
-  backdrop-filter: blur(2px);
+}
+
+.ring[data-hot="text"] span {
+  opacity: 0;
 }
 
 .ring[data-down="true"] span {
   transform: scale(0.82);
 }
 
-.ring[data-label]:not([data-label=""]) span::after {
-  content: attr(data-text);
-}
-
 .ring span::after {
+  content: attr(data-text);
   color: var(--acid);
   font-family: var(--mono);
   font-size: 0.6rem;
@@ -69,25 +70,10 @@
 
 .grain {
   position: fixed;
-  inset: -50%;
+  inset: 0;
   z-index: 150;
   pointer-events: none;
-  opacity: 0.07;
+  opacity: 0.06;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-  animation: grain 900ms steps(6) infinite;
-}
-
-@keyframes grain {
-  0% { transform: translate(0, 0); }
-  20% { transform: translate(-4%, 3%); }
-  40% { transform: translate(3%, -5%); }
-  60% { transform: translate(-2%, 6%); }
-  80% { transform: translate(5%, 2%); }
-  100% { transform: translate(0, 0); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .grain {
-    animation: none;
-  }
+  transform: translateZ(0);
 }

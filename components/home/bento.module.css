@@ -155,15 +155,28 @@
   transform-origin: 0 50%;
 }
 
+/* The "now" line spans the track and moves with a transform, which the
+   browser can animate without re-laying out the card. */
 .now {
   position: absolute;
   top: 22px;
   bottom: 22px;
-  left: calc(50px + (100% - 50px) * 0.3);
+  left: 50px;
+  right: 0;
+  pointer-events: none;
+  animation: sweepNow 9s ease-in-out infinite alternate;
+  will-change: transform;
+}
+
+.now::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
   width: 1px;
   background: var(--ink);
   opacity: 0.6;
-  animation: sweepNow 9s ease-in-out infinite alternate;
 }
 
 .now::before {
@@ -178,10 +191,10 @@
 
 @keyframes sweepNow {
   from {
-    left: calc(50px + (100% - 50px) * 0.3);
+    transform: translateX(30%);
   }
   to {
-    left: calc(50px + (100% - 50px) * 0.78);
+    transform: translateX(78%);
   }
 }
 
@@ -415,6 +428,7 @@
   border: 1px dashed var(--line-strong);
   border-radius: 50%;
   animation: spin var(--d) linear infinite;
+  will-change: transform;
 }
 
 .ring b {

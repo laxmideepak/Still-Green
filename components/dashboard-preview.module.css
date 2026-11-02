@@ -1,983 +1,694 @@
-/* ── Page frame ─────────────────────────────────────────────────── */
+/* Preview dashboard layout. Shared pieces live in dashboard-shared.module.css. */
 
-.main {
-  composes: main from "./dashboard-shared.module.css";
-}
-
-.masthead {
-  composes: masthead from "./dashboard-shared.module.css";
-  padding-block: clamp(48px, 6vw, 78px) clamp(30px, 4vw, 46px);
-}
-
-.mastheadInner {
-  composes: mastheadInner from "./dashboard-shared.module.css";
-  align-items: flex-end;
-  gap: 32px;
-}
-
-.eyebrow {
-  composes: eyebrow from "./dashboard-shared.module.css";
-  font-size: 0.76rem;
-}
-
-.eyebrow span {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--green-bright);
-  box-shadow: 0 0 0 4px rgba(34, 189, 119, 0.14);
-}
-
-.masthead h1 {
-  margin-top: 14px;
-  font-size: clamp(2.6rem, 5.4vw, 4.2rem);
-  line-height: 0.98;
-}
-
-.lede {
-  composes: lede from "./dashboard-shared.module.css";
-  max-width: 38rem;
-  margin-top: 16px;
-  font-size: 1rem;
-}
-
-.mastheadMeta {
-  composes: mastheadMeta from "./dashboard-shared.module.css";
-  gap: 9px;
-  padding-bottom: 4px;
-  font-size: 0.8rem;
-}
-
-.metaRow {
-  composes: metaRow from "./dashboard-shared.module.css";
-  gap: 8px;
-}
-
-.metaLink {
-  composes: metaLink from "./dashboard-shared.module.css";
-  gap: 6px;
-  margin-top: 5px;
-  font-size: 0.84rem;
-  font-weight: 600;
-}
-
-.workspace {
+.grid {
   display: grid;
   grid-template-columns: repeat(12, minmax(0, 1fr));
-  grid-template-areas:
-    "presence presence presence presence presence presence presence presence session session session session"
-    "schedule schedule schedule schedule schedule schedule schedule schedule quick quick quick quick"
-    "activity activity activity activity activity activity activity activity activity activity activity activity"
-    "honesty honesty honesty honesty honesty honesty honesty honesty honesty honesty honesty honesty";
-  gap: clamp(14px, 1.6vw, 20px);
-  padding-top: clamp(26px, 3vw, 38px);
+  gap: 14px;
 }
 
-.workspace h2 {
-  font-family: var(--display);
-  font-weight: 600;
-  letter-spacing: -0.04em;
+.presence {
+  grid-column: span 8;
 }
 
-/* ── Presence card ──────────────────────────────────────────────── */
+.session {
+  grid-column: span 4;
+}
 
-.presenceCard {
-  composes: presenceCard from "./dashboard-shared.module.css";
-  grid-area: presence;
-  padding: clamp(24px, 3.2vw, 38px);
+.schedule {
+  grid-column: span 8;
+}
+
+.quick {
+  grid-column: span 4;
+}
+
+.activity {
+  grid-column: span 7;
+}
+
+.honesty {
+  grid-column: span 5;
+}
+
+/* ── Presence ─────────────────────────────────────────────────────── */
+
+.presence {
+  justify-content: center;
+  min-height: 460px;
   background:
-    radial-gradient(circle at 82% 22%, rgba(34, 189, 119, 0.16), transparent 48%),
-    var(--ink);
+    radial-gradient(ellipse 60% 80% at 22% 50%, color-mix(in srgb, var(--acid) 6%, transparent), transparent 70%),
+    var(--night-2);
 }
 
 .presenceBody {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
-  gap: clamp(24px, 3.4vw, 46px);
+  gap: clamp(28px, 4vw, 56px);
 }
 
-.seal {
-  --ring: var(--green-bright);
-  position: relative;
-  flex: 0 0 auto;
-  width: clamp(164px, 17vw, 204px);
-  aspect-ratio: 1;
-  border-radius: 50%;
-  background: conic-gradient(from -90deg, var(--ring) var(--progress), rgba(241, 246, 237, 0.14) 0);
-  transition: background 300ms ease;
-}
-
-.seal[data-mode="paused"] {
-  --ring: #c49a4f;
-}
-
-.seal::before {
-  content: "";
-  position: absolute;
-  inset: -9px;
-  border: 1px dashed rgba(241, 246, 237, 0.18);
-  border-radius: 50%;
-}
-
-.sealFace {
-  position: absolute;
-  inset: 12px;
+.orbCol {
+  --orb-size: clamp(220px, 22vw, 290px);
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  background: #101e15;
-  text-align: center;
 }
 
-.sealFace span {
-  color: rgba(241, 246, 237, 0.56);
-  font-size: 0.7rem;
+.readoutValue {
+  color: var(--acid);
 }
 
-.sealFace strong {
-  margin-top: 3px;
-  color: var(--ring);
-  font-family: var(--display);
-  font-size: clamp(1.85rem, 3.2vw, 2.5rem);
-  font-weight: 650;
-  letter-spacing: -0.055em;
-  line-height: 1;
-}
-
-.sealFace small {
-  max-width: 12ch;
-  margin-top: 7px;
-  color: rgba(241, 246, 237, 0.62);
-  font-size: 0.7rem;
-  line-height: 1.35;
+.readoutValue[data-tone="amber"] {
+  color: var(--amber-hot);
 }
 
 .presenceCopy {
-  composes: presenceCopy from "./dashboard-shared.module.css";
-  max-width: 30rem;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
 }
 
-.cardLabel {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  color: rgba(241, 246, 237, 0.62);
-  font-size: 0.74rem;
-  font-weight: 550;
+.presenceTitle {
+  margin-top: 18px;
+  overflow: hidden;
+  font-family: var(--display);
+  font-size: clamp(3rem, 6vw, 5.4rem);
+  font-weight: 700;
+  font-variation-settings: "wdth" 82;
+  letter-spacing: -0.045em;
+  line-height: 0.95;
+  padding-bottom: 0.05em;
 }
 
-.liveDot {
-  composes: liveDot from "./dashboard-shared.module.css";
-  box-shadow: 0 0 0 4px rgba(34, 189, 119, 0.16);
+.presenceTitle span {
+  display: inline-block;
 }
 
-.liveDot[data-mode="paused"] {
-  background: #c49a4f;
-  box-shadow: 0 0 0 4px rgba(196, 154, 79, 0.16);
+.presenceTitle[data-tone="green"] {
+  color: var(--ink);
 }
 
-.presenceCopy h2 {
-  margin-top: 10px;
-  font-size: clamp(1.8rem, 3.2vw, 2.5rem);
-  line-height: 1;
-}
-
-.presenceCopy > p {
-  max-width: 28rem;
-  color: rgba(241, 246, 237, 0.64);
-  font-size: 0.88rem;
-  line-height: 1.6;
+.presenceTitle[data-tone="amber"] {
+  color: var(--amber-hot);
 }
 
 .changeRow {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
   margin-top: 18px;
-  color: rgba(241, 246, 237, 0.58);
-  font-size: 0.78rem;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 0.76rem;
+}
+
+.changeRow svg {
+  color: var(--acid);
 }
 
 .changeRow strong {
-  color: var(--paper);
+  color: var(--ink);
   font-weight: 600;
 }
 
 .modeBar {
-  composes: modeBar from "./dashboard-shared.module.css";
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 3px;
-  border-radius: 12px;
-  background: rgba(241, 246, 237, 0.08);
+  align-self: flex-start;
+  margin-top: 26px;
 }
 
-.modeButton {
-  min-height: 42px;
-  padding: 0 10px;
-  border: 0;
-  border-radius: 9px;
-  background: transparent;
-  color: rgba(241, 246, 237, 0.6);
-  font-size: 0.8rem;
-  font-weight: 600;
-  transition:
-    background-color 160ms ease,
-    color 160ms ease;
-}
-
-.modeButton:hover {
-  color: var(--paper);
-}
-
-.modeButton[aria-pressed="true"] {
-  background: var(--paper);
-  color: var(--ink);
-}
-
-/* ── Right column ───────────────────────────────────────────────── */
-
-.column {
-  display: contents;
-}
-
-.sessionCard,
-.quickCard,
-.scheduleCard,
-.activityCard {
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  background: var(--paper-raised);
-}
-
-.sessionCard {
-  composes: sessionCard from "./dashboard-shared.module.css";
-  grid-area: session;
-  padding: clamp(22px, 2.6vw, 28px);
-}
-
-.cardHead {
-  composes: cardHead from "./dashboard-shared.module.css";
-  align-items: center;
-  gap: 12px;
-  padding-bottom: 16px;
-  border-bottom: 1px solid var(--line);
-}
-
-.cardHead h2 {
-  font-size: 1.12rem;
-}
-
-.statusPill {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 8px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  color: var(--muted);
-  font-size: 0.64rem;
-  font-weight: 550;
-  white-space: nowrap;
-}
-
-.statusPill span {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--green-bright);
-}
+/* ── Session ──────────────────────────────────────────────────────── */
 
 .sessionList {
   display: grid;
-  margin-bottom: 16px;
+  margin-top: 18px;
 }
 
 .sessionList > div {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  padding-block: 10px;
-  border-bottom: 1px solid var(--line);
+  gap: 14px;
+  min-height: 46px;
+  border-top: 1px solid var(--line);
 }
 
 .sessionList dt {
   color: var(--muted);
-  font-size: 0.76rem;
+  font-size: 0.86rem;
 }
 
 .sessionList dd {
-  color: var(--ink-soft);
-  font-size: 0.78rem;
-  font-variant-numeric: tabular-nums;
-  font-weight: 550;
+  font-family: var(--mono);
+  font-size: 0.8rem;
   text-align: right;
 }
 
-.zoneCell {
-  max-width: 62%;
-}
-
-.zoneCell select {
-  max-width: 100%;
-  padding: 4px 6px;
-  border: 1px solid var(--line);
-  border-radius: 7px;
-  background: var(--paper);
-  font-size: 0.72rem;
-}
-
-.weekSummary {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-  margin-top: auto;
-}
-
-.weekSummary > div {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 12px;
-  border-radius: 10px;
-  background: var(--sage);
-}
-
-.weekSummary span {
-  color: var(--muted);
-  font-size: 0.66rem;
-}
-
-.weekSummary strong {
-  font-family: var(--display);
-  font-size: 1.28rem;
-  font-weight: 600;
-  letter-spacing: -0.04em;
-  line-height: 1.1;
-}
-
-.quickCard {
-  grid-area: quick;
-  display: flex;
-  flex-direction: column;
-  padding: clamp(22px, 2.6vw, 28px);
-}
-
-.quickGrid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  margin-top: 16px;
-}
-
-.quickButton {
-  display: inline-flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 8px;
-  min-height: 44px;
-  padding: 0 11px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--paper);
-  color: var(--ink-soft);
-  font-size: 0.78rem;
-  font-weight: 600;
-  transition:
-    border-color 150ms ease,
-    background-color 150ms ease,
-    color 150ms ease;
-}
-
-.quickButton svg {
-  color: var(--muted);
-  flex: 0 0 auto;
-}
-
-.quickButton:hover {
-  border-color: var(--line-strong);
-  background: var(--sage);
-  color: var(--ink);
-}
-
-.quickButton:hover svg {
-  color: var(--green);
-}
-
-.quickToday {
-  margin-top: 20px;
-  padding-top: 16px;
-  border-top: 1px solid var(--line);
-}
-
-.quickTodayHead {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.quickTodayHead span {
-  color: var(--muted);
-  font-size: 0.68rem;
-}
-
-.quickTodayHead strong {
-  color: var(--ink);
-  font-size: 0.72rem;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-
-.todayTrack {
-  position: relative;
-  height: 26px;
-  margin-top: 11px;
-  border: 1px solid var(--line);
-  border-radius: 7px;
-  background:
-    repeating-linear-gradient(
-      90deg,
-      var(--line) 0 1px,
-      transparent 1px 12.5%
-    ),
-    var(--paper);
-  overflow: hidden;
-}
-
-.todayWindow {
-  position: absolute;
-  top: 4px;
-  bottom: 4px;
-  border-radius: 4px;
-  background: linear-gradient(90deg, var(--green), var(--green-bright));
-  opacity: 0.72;
-}
-
-.todayNow {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 2px;
-  background: var(--ink);
-}
-
-.todayAxis {
-  display: flex;
-  justify-content: space-between;
-  margin-top: 5px;
-  color: var(--muted);
-  font-size: 0.6rem;
-  font-variant-numeric: tabular-nums;
-}
-
-.quickNext {
-  margin-top: 18px;
-  padding-top: 14px;
-  border-top: 1px solid var(--line);
-}
-
-.quickNextLabel {
-  color: var(--muted);
-  font-size: 0.66rem;
-}
-
-.quickNext ul {
-  display: grid;
-  margin-top: 7px;
-}
-
-.quickNext li {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding-block: 5px;
-  color: var(--ink-soft);
+.zoneSelect {
+  min-height: 36px;
+  max-width: 190px;
+  padding: 0 10px;
   font-size: 0.74rem;
 }
 
-.quickNext li em {
-  color: var(--muted);
-  font-size: 0.68rem;
-  font-style: normal;
-  font-variant-numeric: tabular-nums;
-}
-
-.quickNote {
+.statRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
   margin-top: auto;
-  padding-top: 16px;
-  color: var(--muted);
-  font-size: 0.68rem;
-  line-height: 1.5;
+  padding-top: 18px;
 }
 
-.quickNote code {
-  color: var(--ink-soft);
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
-}
-
-/* ── Schedule ───────────────────────────────────────────────────── */
-
-.scheduleCard {
-  grid-area: schedule;
-  padding: clamp(24px, 3vw, 34px);
-}
+/* ── Schedule ─────────────────────────────────────────────────────── */
 
 .scheduleHead {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-start;
+  align-items: flex-end;
   justify-content: space-between;
-  gap: 18px;
-  padding-bottom: 18px;
-  border-bottom: 1px solid var(--line);
+  gap: 18px 24px;
 }
 
-.scheduleHead h2 {
-  font-size: clamp(1.35rem, 2.2vw, 1.65rem);
-}
-
-.scheduleHead p {
-  margin-top: 5px;
-  color: var(--muted);
-  font-size: 0.8rem;
-  line-height: 1.5;
-}
-
-.presets {
-  composes: presets from "./dashboard-shared.module.css";
+.scheduleHead > div:first-child {
   display: flex;
-  gap: 4px;
-  padding: 3px;
-  border-radius: 9px;
-  background: var(--sage);
+  flex-direction: column;
+  max-width: 30rem;
 }
 
-.presets button {
-  min-height: 32px;
-  padding: 0 10px;
-  border: 0;
-  border-radius: 7px;
-  background: transparent;
+.windowRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  margin-top: 22px;
   color: var(--muted);
-  font-size: 0.72rem;
-  font-weight: 600;
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
-.presets button:hover {
-  background: var(--paper-raised);
+.windowRow input {
+  width: auto;
+  min-width: 118px;
 }
 
-.dayList {
+.overnightTag {
+  padding: 4px 9px;
+  border: 1px solid color-mix(in srgb, var(--amber-hot) 40%, transparent);
+  border-radius: 999px;
+  color: var(--amber-hot);
+  font-size: 0.64rem;
+}
+
+.week {
   display: grid;
-  margin-top: 6px;
+  gap: 4px;
+  margin-top: 20px;
 }
 
 .dayRow {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto 52px 64px;
+  grid-template-columns: 196px minmax(0, 1fr) 104px 44px;
   align-items: center;
-  gap: 12px;
-  padding-block: 7px;
-  border-bottom: 1px solid var(--line);
-}
-
-.dayRow:last-child {
-  border-bottom: 0;
+  gap: 14px;
+  min-height: 46px;
 }
 
 .dayToggle {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 10px;
   min-height: 40px;
-  padding: 0;
+  padding: 0 10px 0 4px;
   border: 0;
+  border-radius: 12px;
   background: transparent;
   color: var(--muted);
-  font-size: 0.84rem;
   text-align: left;
+  transition: color 200ms ease;
+}
+
+.dayToggle:hover {
+  color: var(--ink);
 }
 
 .dayRow[data-enabled="true"] .dayToggle {
   color: var(--ink);
 }
 
-.check {
-  display: grid;
-  width: 20px;
-  height: 20px;
-  place-items: center;
+.switch {
+  position: relative;
+  flex: 0 0 auto;
+  width: 38px;
+  height: 22px;
+  padding: 2px;
   border: 1px solid var(--line-strong);
-  border-radius: 6px;
-  color: var(--paper-raised);
-  transition:
-    background-color 150ms ease,
-    border-color 150ms ease;
+  border-radius: 999px;
+  background: var(--night);
+  transition: border-color 250ms ease, background-color 250ms ease;
 }
 
-.dayRow[data-enabled="true"] .check {
-  border-color: var(--green);
-  background: var(--green);
+.dayRow[data-enabled="true"] .switch {
+  border-color: color-mix(in srgb, var(--acid) 50%, transparent);
+  background: color-mix(in srgb, var(--acid) 16%, transparent);
+}
+
+.knob {
+  display: grid;
+  width: 16px;
+  height: 16px;
+  place-items: center;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--ink) 40%, transparent);
+  color: var(--night);
+}
+
+.dayRow[data-enabled="true"] .knob {
+  background: var(--acid);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--acid) 70%, transparent);
 }
 
 .dayName {
+  font-family: var(--mono);
+  font-size: 0.78rem;
   font-weight: 600;
-  font-variant-numeric: tabular-nums;
 }
 
 .dayLong {
   color: var(--muted);
+  font-size: 0.84rem;
+  white-space: nowrap;
+}
+
+.dayRow[data-today="true"] .dayLong::after {
+  content: " · today";
+  color: var(--acid);
+  font-family: var(--mono);
+  font-size: 0.68rem;
+}
+
+.track {
+  position: relative;
+  height: 12px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+}
+
+.track i {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--acid) 55%, transparent), var(--acid));
+  box-shadow: 0 0 18px color-mix(in srgb, var(--acid) 40%, transparent);
+  transform-origin: 0 50%;
+}
+
+.trackNow {
+  position: absolute;
+  top: -5px;
+  bottom: -5px;
+  width: 2px;
+  margin-left: -1px;
+  border-radius: 2px;
+  background: var(--ink);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--ink) 60%, transparent);
+}
+
+.dayRange,
+.dayHours {
+  color: var(--muted);
+  font-family: var(--mono);
   font-size: 0.74rem;
-}
-
-.timeRange {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--muted);
-  font-size: 0.72rem;
-}
-
-.timeRange input {
-  width: 108px;
-  padding: 7px 7px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--paper);
-  color: var(--ink);
-  font-size: 0.76rem;
   font-variant-numeric: tabular-nums;
-  font-weight: 550;
-}
-
-.timeRange input:disabled {
-  color: var(--muted);
-  opacity: 0.45;
-}
-
-.windowRow {
-  flex-wrap: wrap;
-  padding-block: 12px;
-  border-bottom: 1px solid var(--line);
-}
-
-.windowRow label {
-  font-weight: 600;
-}
-
-.timeRange input::-webkit-calendar-picker-indicator {
-  opacity: 0.5;
+  white-space: nowrap;
 }
 
 .dayHours {
-  color: var(--ink-soft);
-  font-size: 0.74rem;
-  font-variant-numeric: tabular-nums;
-  font-weight: 550;
   text-align: right;
 }
 
-.night {
-  color: var(--amber);
+.dayRow[data-enabled="true"] .dayRange,
+.dayRow[data-enabled="true"] .dayHours {
+  color: var(--ink-soft);
+}
+
+.axis {
+  display: flex;
+  justify-content: space-between;
+  margin-left: calc(196px + 14px);
+  margin-right: calc(104px + 44px + 28px);
+  color: var(--muted);
+  font-family: var(--mono);
   font-size: 0.62rem;
-  font-weight: 600;
-  text-align: right;
 }
 
 .scheduleFoot {
-  composes: scheduleFoot from "./dashboard-shared.module.css";
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  padding-top: 14px;
-  font-size: 0.74rem;
+  gap: 10px 20px;
+  margin-top: auto;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.week + .scheduleFoot {
+  margin-top: 20px;
 }
 
 .scheduleFoot span {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
+}
+
+.scheduleFoot svg {
+  color: var(--acid);
 }
 
 .scheduleFoot strong {
   color: var(--ink);
+  font-family: var(--display);
+  font-size: 1.15rem;
+  letter-spacing: -0.03em;
+}
+
+/* ── Quick actions ────────────────────────────────────────────────── */
+
+.quickGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.quickButton {
+  --tone: var(--acid);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 18px;
+  min-height: 84px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--night);
+  color: var(--ink);
+  font-size: 0.86rem;
+  font-weight: 650;
+  text-align: left;
+  transition: border-color 200ms ease, transform 300ms var(--ease-out);
+}
+
+.quickButton[data-tone="amber"] {
+  --tone: var(--amber-hot);
+}
+
+.quickButton svg {
+  color: var(--tone);
+  transition: transform 300ms var(--ease-out);
+}
+
+.quickButton:hover {
+  border-color: color-mix(in srgb, var(--tone) 55%, transparent);
+  transform: translateY(-2px);
+}
+
+.quickButton:hover svg {
+  transform: scale(1.15);
+}
+
+.quickButton:active {
+  transform: scale(0.97);
+}
+
+.today {
+  margin-top: 22px;
+}
+
+.todayHead {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 0.7rem;
+}
+
+.todayHead strong {
+  color: var(--ink);
   font-weight: 600;
 }
 
-/* ── Activity ───────────────────────────────────────────────────── */
-
-.activityCard {
-  grid-area: activity;
-  padding: clamp(24px, 3vw, 34px);
+.todayTrack {
+  position: relative;
+  height: 30px;
+  margin-top: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--night);
+  overflow: hidden;
 }
 
-.activityHead {
+.todayTrack i {
+  position: absolute;
+  top: 5px;
+  bottom: 5px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--acid) 22%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--acid) 50%, transparent);
+}
+
+.todayNow {
+  --tone: var(--acid);
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--tone);
+  box-shadow: 0 0 10px var(--tone);
+}
+
+.todayNow[data-tone="amber"] {
+  --tone: var(--amber-hot);
+}
+
+.todayAxis {
   display: flex;
-  align-items: flex-start;
   justify-content: space-between;
-  gap: 18px;
-  padding-bottom: 16px;
-  border-bottom: 1px solid var(--line);
-}
-
-.activityHead h2 {
-  font-size: 1.3rem;
-}
-
-.activityHead p {
-  margin-top: 4px;
+  margin-top: 6px;
   color: var(--muted);
-  font-size: 0.8rem;
+  font-family: var(--mono);
+  font-size: 0.6rem;
 }
 
-.activityCount {
-  composes: activityCount from "./dashboard-shared.module.css";
-  font-size: 0.72rem;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
+.next {
+  margin-top: 20px;
 }
 
-.log {
-  composes: log from "./dashboard-shared.module.css";
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  column-gap: clamp(20px, 4vw, 48px);
+.nextLabel {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 0.64rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
 }
 
-.log li {
-  grid-template-columns: 48px 10px minmax(0, 1fr);
-  align-items: center;
-  gap: 11px;
-  padding-block: 11px;
-  border-bottom: 1px solid var(--line);
+.next ul {
+  margin-top: 6px;
 }
 
-.log li:nth-last-child(-n + 2) {
-  border-bottom: 0;
-}
-
-.log time {
-  font-size: 0.72rem;
-  text-align: right;
-}
-
-.log i {
-  width: 7px;
-  height: 7px;
-  background: var(--green-bright);
-}
-
-.log i[data-tone="muted"] {
-  background: var(--sage-deep);
-}
-
-.log i[data-tone="amber"] {
-  background: #d3a24f;
-}
-
-.log li span {
-  color: var(--ink-soft);
-  font-size: 0.82rem;
-  line-height: 1.4;
-}
-
-/* ── Honesty panel ──────────────────────────────────────────────── */
-
-.honestyCard {
-  grid-area: honesty;
+.next li {
   display: flex;
-  align-items: center;
-  gap: clamp(18px, 3vw, 30px);
-  padding: clamp(24px, 3vw, 32px);
-  border: 1px solid var(--sage-deep);
-  border-radius: var(--radius-md);
-  background: var(--sage);
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+  font-size: 0.86rem;
+}
+
+.next li:first-child {
+  border-top: 0;
+}
+
+.next em {
+  color: var(--acid);
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  font-style: normal;
+}
+
+.quickNote {
+  margin-top: auto;
+  padding-top: 16px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+/* ── Activity + honesty ───────────────────────────────────────────── */
+
+.activity {
+  min-height: 380px;
+}
+
+.honesty {
+  justify-content: flex-start;
+  background:
+    radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--acid) 10%, transparent), transparent 55%),
+    var(--night-2);
 }
 
 .honestyIcon {
   display: grid;
-  width: 42px;
-  height: 42px;
-  flex: 0 0 auto;
+  width: 48px;
+  height: 48px;
   place-items: center;
-  border: 1px solid var(--line-strong);
-  border-radius: 50%;
-  color: var(--green);
+  border: 1px solid color-mix(in srgb, var(--acid) 40%, transparent);
+  border-radius: 14px;
+  color: var(--acid);
+  box-shadow: 0 0 30px -6px color-mix(in srgb, var(--acid) 50%, transparent);
 }
 
-.honestyCopy {
-  flex: 1 1 auto;
-  max-width: 56rem;
-}
-
-.honestyCopy h2 {
-  font-size: 1.08rem;
-}
-
-.honestyCopy p {
-  margin-top: 5px;
-  color: var(--muted);
-  font-size: 0.84rem;
-  line-height: 1.6;
+.honestyTitle {
+  margin-top: 22px;
+  font-family: var(--display);
+  font-size: clamp(1.8rem, 3vw, 2.6rem);
+  font-weight: 700;
+  font-variation-settings: "wdth" 85;
+  letter-spacing: -0.045em;
+  word-spacing: 0.05em;
+  line-height: 0.98;
 }
 
 .honestyActions {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 9px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  margin-top: auto;
+  padding-top: 24px;
 }
 
-.honestyActions code {
-  color: var(--muted);
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  font-size: 0.72rem;
-}
+/* ── Responsive ───────────────────────────────────────────────────── */
 
-.liveRegion {
-  composes: liveRegion from "./dashboard-shared.module.css";
-}
-
-/* ── Responsive ─────────────────────────────────────────────────── */
-
-@media (max-width: 1100px) {
-  .workspace {
-    grid-template-areas:
-      "presence presence presence presence presence presence presence presence presence presence presence presence"
-      "session session session session session session quick quick quick quick quick quick"
-      "schedule schedule schedule schedule schedule schedule schedule schedule schedule schedule schedule schedule"
-      "activity activity activity activity activity activity activity activity activity activity activity activity"
-      "honesty honesty honesty honesty honesty honesty honesty honesty honesty honesty honesty honesty";
-  }
-}
-
-@media (max-width: 860px) {
-  .log {
-    grid-template-columns: minmax(0, 1fr);
+@media (max-width: 1080px) {
+  .presence,
+  .schedule,
+  .activity,
+  .honesty {
+    grid-column: span 12;
   }
 
-  .log li:nth-last-child(-n + 2) {
-    border-bottom: 1px solid var(--line);
+  .session,
+  .quick {
+    grid-column: span 6;
   }
 
-  .log li:last-child {
-    border-bottom: 0;
+  .quick {
+    grid-row: 2;
   }
 
-  .honestyCard {
-    flex-wrap: wrap;
-    align-items: flex-start;
-  }
-
-  .honestyCopy {
-    flex-basis: calc(100% - 80px);
-  }
-
-  .honestyActions {
-    flex-direction: row;
-    align-items: center;
-    gap: 16px;
-    padding-left: 60px;
+  .session {
+    grid-row: 2;
   }
 }
 
-@media (max-width: 700px) {
-  .workspace {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-areas:
-      "presence"
-      "session"
-      "quick"
-      "schedule"
-      "activity"
-      "honesty";
+@media (max-width: 760px) {
+  .presence,
+  .session,
+  .schedule,
+  .quick,
+  .activity,
+  .honesty {
+    grid-column: span 12;
+    grid-row: auto;
+  }
+
+  .presence {
+    min-height: 0;
   }
 
   .presenceBody {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 26px;
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: center;
   }
 
-  .seal {
-    align-self: center;
+  .orbCol {
+    --orb-size: min(68vw, 260px);
   }
 
   .presenceCopy {
+    align-items: center;
+    width: 100%;
+    text-align: center;
+  }
+
+  .presenceCopy .changeRow {
+    justify-content: center;
+  }
+
+  .modeBar {
+    align-self: center;
+  }
+
+  .presenceCopy > span:first-child {
+    align-self: center;
+  }
+
+  .windowRow {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .windowRow > span[aria-hidden] {
+    display: none;
+  }
+
+  .windowRow input {
     width: 100%;
   }
 
-  .dayRow {
-    grid-template-columns: minmax(0, 1fr) auto 44px;
-    row-gap: 0;
-  }
-
-  .dayLong {
-    display: none;
-  }
-
-  .night {
-    display: none;
-  }
-
-  .timeRange input {
-    width: 108px;
-  }
-
-  .scheduleHead {
-    flex-direction: column;
-  }
-}
-
-@media (max-width: 520px) {
-  .mastheadInner {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 22px;
-  }
-
-  .modeButton {
-    font-size: 0.72rem;
-  }
-
-  .presenceBody {
-    gap: 22px;
-  }
-
-  .seal {
-    width: 170px;
+  .overnightTag {
+    grid-column: 1 / -1;
+    justify-self: start;
   }
 
   .dayRow {
     grid-template-columns: minmax(0, 1fr) auto;
-    padding-block: 9px;
+    grid-template-areas:
+      "toggle hours"
+      "track track";
+    gap: 4px 12px;
+    padding-block: 6px;
   }
 
-  .dayHours {
+  .dayToggle {
+    grid-area: toggle;
+  }
+
+  .track {
+    grid-area: track;
+    margin-left: 52px;
+  }
+
+  .dayRange {
     display: none;
   }
 
-  .timeRange {
-    grid-column: 1 / -1;
-    justify-content: flex-end;
-    padding-bottom: 4px;
+  .dayHours {
+    grid-area: hours;
   }
 
-  .timeRange input {
-    width: 108px;
-  }
-
-  .honestyActions {
-    flex-direction: column;
-    align-items: flex-start;
-    padding-left: 0;
-  }
-
-  .honestyCopy {
-    flex-basis: 100%;
+  .axis {
+    margin-left: 52px;
+    margin-right: 0;
   }
 }

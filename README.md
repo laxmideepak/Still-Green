@@ -4,6 +4,8 @@
 
 # Stillgreen
 
+[![Tests](https://github.com/laxmideepak/Still-Green/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/laxmideepak/Still-Green/actions/workflows/tests.yml)
+
 Stillgreen keeps your Slack status **green (active)** while your computer is on,
 even when the Slack tab is closed. You choose when: all the time, or only in
 the hours you set (for example, weekdays 9:00–17:00).

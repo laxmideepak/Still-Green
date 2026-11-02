@@ -26,15 +26,30 @@
   inset: 4px;
   border: 1px solid currentColor;
   border-radius: 50%;
+  border-style: dashed;
   opacity: 0.24;
+  transition: transform 700ms var(--ease-out), opacity 300ms ease;
 }
 
 .dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--green-bright);
-  box-shadow: 0 0 0 3px rgba(34, 189, 119, 0.14);
+  background: var(--acid);
+  box-shadow: 0 0 10px var(--acid);
+  animation: brandPulse 2.4s ease-in-out infinite;
+  will-change: transform;
+}
+
+@keyframes brandPulse {
+  50% {
+    transform: scale(0.7);
+  }
+}
+
+.brand:hover .orbit {
+  opacity: 0.6;
+  transform: rotate(180deg) scale(1.1);
 }
 
 .word {

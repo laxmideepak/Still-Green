@@ -39,14 +39,14 @@ export function SplitText({
           {Array.from(word).map((char, c) => {
             const i = index++;
             const anim = {
-              initial: calm ? false : { y: "110%", rotate: 8, filter: "blur(6px)" },
+              initial: calm ? false : { y: "110%", rotate: 8 },
               transition: {
                 delay: delay + i * stagger,
                 duration: 0.9,
                 ease: [0.16, 1, 0.3, 1] as const,
               },
             };
-            const target = { y: "0%", rotate: 0, filter: "blur(0px)" };
+            const target = { y: "0%", rotate: 0 };
             return (
               <motion.span
                 key={c}

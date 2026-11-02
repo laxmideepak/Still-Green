@@ -3,7 +3,7 @@
 import { AnimatePresence, motion, useInView, useMotionValue, useSpring } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { Lock } from "../icons";
-import { SplitText } from "./split-text";
+import { SplitText } from "../motion/split-text";
 import styles from "./bento.module.css";
 
 const week = [
@@ -221,8 +221,8 @@ function LiveLog() {
             layout
             className={styles.logLine}
             data-tone={line.tone}
-            initial={{ opacity: 0, x: -20, filter: "blur(6px)" }}
-            animate={{ opacity: 1, x: 0, filter: "blur(0px)" }}
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, height: 0 }}
             transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
           >
