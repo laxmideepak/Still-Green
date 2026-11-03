@@ -7,8 +7,8 @@
   z-index: var(--z-header);
   height: 56px;
   border-bottom: 1px solid var(--border);
-  background: color-mix(in srgb, var(--surface) 92%, transparent);
-  backdrop-filter: saturate(1.4) blur(8px);
+  /* Nearly solid rather than blurred; see site-header.module.css. */
+  background: color-mix(in srgb, var(--surface) 97%, transparent);
 }
 
 .topbarInner {
@@ -222,8 +222,19 @@
 }
 
 .pulse[data-tone="success"] i {
+  position: relative;
   background: var(--success);
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--success) 20%, transparent);
+}
+
+/* The breathing ring scales and fades (no repaint), instead of animating
+   box-shadow, which forced a redraw every frame. */
+.pulse[data-tone="success"] i::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--success) 14%, transparent);
   animation: breathe 2.4s var(--ease) infinite;
 }
 
@@ -246,13 +257,19 @@
 }
 
 @keyframes breathe {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0;
+  }
   50% {
-    box-shadow: 0 0 0 7px color-mix(in srgb, var(--success) 8%, transparent);
+    transform: scale(1.6);
+    opacity: 1;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .pulse[data-tone="success"] i {
+  .pulse[data-tone="success"] i::after {
     animation: none;
   }
 }

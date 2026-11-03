@@ -3,9 +3,10 @@
   top: 0;
   z-index: var(--z-header);
   border-bottom: 1px solid var(--border);
-  background: color-mix(in srgb, var(--bg) 85%, transparent);
-  -webkit-backdrop-filter: saturate(180%) blur(12px);
-  backdrop-filter: saturate(180%) blur(12px);
+  /* Nearly solid instead of a blurred see-through bar: re-blurring the page
+     behind the header on every scroll frame is a common cause of laggy
+     scrolling on laptops. */
+  background: color-mix(in srgb, var(--bg) 97%, transparent);
 }
 
 .inner {
