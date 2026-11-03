@@ -1,31 +1,72 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import Link from "next/link";
+import { useEffect, useState, type ReactNode } from "react";
 import { ConnectDialog } from "./connect-dialog";
 import { DashboardLive } from "./dashboard-live";
 import { DashboardPreview } from "./dashboard-preview";
-import { DashboardSkeleton, type DashboardNotice } from "./dashboard-kit";
-import { Button } from "./ui";
-import { fetchState, loadBridge, type BridgeConfig, type DaemonState } from "@/lib/bridge";
+import { ArrowRight, Signal } from "./icons";
+import { Magnetic } from "./motion/magnetic";
+import {
+  fetchState,
+  loadBridge,
+  type BridgeConfig,
+  type DaemonState,
+} from "@/lib/bridge";
+import styles from "./dashboard-route.module.css";
+
+type PreviewBannerProps = {
+  error: string;
+  connecting: boolean;
+  onConnect: () => void;
+};
+
+function PreviewBanner({ error, connecting, onConnect }: PreviewBannerProps) {
+  return (
+    <div className={`container ${styles.bannerWrap}`}>
+      <div className={`${styles.banner} riseIn`} data-error={Boolean(error)}>
+        <span className={styles.bannerIcon} aria-hidden="true">
+          <Signal width={16} height={16} />
+          <i />
+        </span>
+        <div className={styles.bannerCopy}>
+          <strong>{connecting ? "Checking your daemon…" : "Preview mode · sample data"}</strong>
+          <span>
+            {error ||
+              "Connect the daemon to turn this page live. Until then, every control here is a simulation."}
+          </span>
+        </div>
+        <div className={styles.bannerActions}>
+          <Magnetic>
+            <button type="button" className="button buttonPrimary buttonSmall" onClick={onConnect}>
+              Connect Stillgreen
+              <ArrowRight width={14} height={14} />
+            </button>
+          </Magnetic>
+          <Link href="/start" className="button buttonQuiet buttonSmall">
+            Set it up
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export function DashboardRoute() {
   const [config, setConfig] = useState<BridgeConfig | null>(null);
   const [state, setState] = useState<DaemonState | null>(null);
   const [live, setLive] = useState(false);
-  const [dialog, setDialog] = useState<{ open: boolean; reason?: "code" | "url" }>({ open: false });
+  const [dialog, setDialog] = useState(false);
   const [error, setError] = useState("");
   const [connecting, setConnecting] = useState(false);
+
   const [attempt, setAttempt] = useState(0);
-  const [mounted, setMounted] = useState(false);
 
-  useEffect(() => setMounted(true), []);
-
-  // Reconnect to the daemon saved in this browser, if any.
   useEffect(() => {
     const saved = loadBridge();
     if (!saved) return;
     let cancelled = false;
-    // Only show "Checking" on the first try; retries stay quiet.
+    // Only show the "Checking" state on the first try; retries stay quiet.
     if (attempt === 0) setConnecting(true);
     fetchState(saved)
       .then((next) => {
@@ -37,7 +78,11 @@ export function DashboardRoute() {
       })
       .catch((caught) => {
         if (cancelled) return;
-        setError(caught instanceof Error ? caught.message : "Could not reach your saved Stillgreen.");
+        setError(
+          caught instanceof Error
+            ? `${caught.message} Use Connect Stillgreen to update the address or code.`
+            : "Could not reach the saved daemon.",
+        );
       })
       .finally(() => {
         if (!cancelled) setConnecting(false);
@@ -75,52 +120,34 @@ export function DashboardRoute() {
     setLive(false);
     setConfig(null);
     setState(null);
-    setError("");
   }
 
-  const openDialog = (reason?: "code" | "url") => setDialog({ open: true, reason });
-
-  let notice: DashboardNotice | undefined;
-  if (error) {
-    notice = {
-      tone: "warning",
-      title: "Couldn't reach your saved Stillgreen",
-      body: `${error} Sample data is shown for now. This page tries again every 30 seconds.`,
-      actions: (
-        <>
-          <Button variant="primary" size="sm" onClick={() => openDialog("url")}>
-            Connect Stillgreen
-          </Button>
-          <Button size="sm" onClick={() => setAttempt((value) => value + 1)}>
-            Try again
-          </Button>
-        </>
-      ),
-    };
-  }
-
-  // Before the browser takes over, and while the saved daemon is first checked.
-  if (!mounted || connecting) {
-    return <DashboardSkeleton message={connecting ? "Connecting to your Stillgreen…" : undefined} />;
-  }
+  const content: ReactNode = live && config && state ? (
+    <DashboardLive
+      key={`${config.url} ${config.code}`}
+      config={config}
+      initialState={state}
+      onDisconnect={disconnected}
+      onReconnect={() => setDialog(true)}
+    />
+  ) : (
+    <DashboardPreview
+      topSlot={
+        <PreviewBanner
+          error={error}
+          connecting={connecting}
+          onConnect={() => setDialog(true)}
+        />
+      }
+    />
+  );
 
   return (
     <>
-      {live && config && state ? (
-        <DashboardLive
-          key={`${config.url} ${config.code}`}
-          config={config}
-          initialState={state}
-          onDisconnect={disconnected}
-          onReconnect={openDialog}
-        />
-      ) : (
-        <DashboardPreview notice={notice} onConnect={() => openDialog()} />
-      )}
+      {content}
       <ConnectDialog
-        open={dialog.open}
-        reason={dialog.reason}
-        onClose={() => setDialog({ open: false })}
+        open={dialog}
+        onClose={() => setDialog(false)}
         onConnected={connected}
         initialUrl={config?.url}
       />

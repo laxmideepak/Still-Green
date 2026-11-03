@@ -1,13 +1,13 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, JetBrains_Mono } from "next/font/google";
-import { ToastProvider } from "@/components/ui/toast";
+import { Bricolage_Grotesque, Instrument_Sans, JetBrains_Mono } from "next/font/google";
+import { RevealObserver } from "@/components/motion/reveal-observer";
 import "./globals.css";
 
-// The token --font-sans reads --font-inter, and --font-mono reads --font-jetbrains-mono.
-const inter = Inter({
+const display = Bricolage_Grotesque({
   subsets: ["latin"],
-  variable: "--font-inter",
+  variable: "--font-display",
   display: "swap",
+  axes: ["wdth", "opsz"],
 });
 
 const mono = JetBrains_Mono({
@@ -16,47 +16,66 @@ const mono = JetBrains_Mono({
   display: "swap",
 });
 
-const title = "Stillgreen — keep your Slack status green on your schedule";
+const body = Instrument_Sans({
+  subsets: ["latin"],
+  variable: "--font-body",
+  display: "swap",
+});
+
 const description =
-  "Stillgreen keeps your Slack status green during the hours you choose. It is free and runs on your own computer or your own cloud server. Your tokens never go to this website.";
+  "A self-hosted Slack presence daemon. Keep your green dot active during the hours you choose, with no relay and no telemetry.";
 
 export const metadata: Metadata = {
   title: {
-    default: title,
+    default: "Stillgreen — Slack presence on your schedule",
     template: "%s — Stillgreen",
   },
   description,
   applicationName: "Stillgreen",
-  keywords: ["Slack status", "Slack presence", "stay active on Slack", "self-hosted", "open source"],
+  keywords: [
+    "Slack presence",
+    "self-hosted",
+    "presence daemon",
+    "slack green",
+    "local-first",
+  ],
   openGraph: {
-    title,
+    title: "Stillgreen — Slack presence on your schedule",
     description,
     type: "website",
     siteName: "Stillgreen",
   },
   twitter: {
     card: "summary",
-    title,
+    title: "Stillgreen — Slack presence on your schedule",
     description,
   },
 };
 
 export const viewport: Viewport = {
-  themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
-    { media: "(prefers-color-scheme: dark)", color: "#0a0a0b" },
-  ],
-  colorScheme: "light dark",
+  themeColor: "#050806",
+  colorScheme: "dark",
 };
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default function RootLayout({
+  children,
+}: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={`${inter.variable} ${mono.variable}`} suppressHydrationWarning>
+    <html
+      lang="en"
+      className={`${display.variable} ${body.variable} ${mono.variable}`}
+      suppressHydrationWarning
+    >
+      <head>
+        {/* Lets CSS hide not-yet-revealed content only when JavaScript runs. */}
+        <script dangerouslySetInnerHTML={{ __html: "document.documentElement.classList.add('js')" }} />
+      </head>
       <body>
-        <a className="skip-link" href="#main">
+        <a className="skipLink" href="#main">
           Skip to content
         </a>
-        <ToastProvider>{children}</ToastProvider>
+        {children}
+        <RevealObserver />
       </body>
     </html>
   );
