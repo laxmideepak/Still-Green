@@ -9,11 +9,12 @@
 .figure::before {
   content: "";
   position: absolute;
-  inset: 8% -6% -6% 8%;
+  inset: 0% -14% -14% 0%;
   z-index: 0;
   border-radius: 50%;
-  background: radial-gradient(closest-side, color-mix(in srgb, var(--accent) 10%, transparent), transparent);
-  filter: blur(24px);
+  /* The gradient fades out on its own; a blur filter on top only added
+     drawing cost. */
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--accent) 9%, transparent), transparent);
   pointer-events: none;
 }
 
