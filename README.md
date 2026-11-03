@@ -90,7 +90,7 @@ Lost the code? Print it again with:
 3. Click **Load unpacked** and choose the `extension` folder inside the `slack`
    folder you downloaded.
 4. Click the Stillgreen icon in the toolbar (pin it from the puzzle-piece menu).
-5. Leave **Daemon URL** as `http://127.0.0.1:8765` and paste your **access
+5. Leave **Stillgreen address** as `http://127.0.0.1:8765` and paste your **access
    code**. It is saved automatically.
 6. Open <https://app.slack.com> in the same Chrome window and sign in.
 7. Click **Capture from Slack** in the extension.
@@ -122,10 +122,10 @@ password: never paste them into chat, issues, or screenshots.
 
 ### Step 4 — (Optional) Use the online dashboard
 
-Open <https://stillgreen.vercel.app/dashboard>, click **Connect daemon**, and
+Open <https://stillgreen.vercel.app/dashboard>, click **Connect Stillgreen**, and
 enter:
 
-- **Daemon URL:** `http://127.0.0.1:8765`
+- **Stillgreen address:** `http://127.0.0.1:8765`
 - **Access code:** the same code as before
 
 The browser remembers these, so you only do this once. You can also skip this
@@ -196,15 +196,15 @@ The script installs Docker, starts Stillgreen with a free HTTPS address such
 as `https://34-1-2-3.sslip.io` (made from the server's IP address), and prints:
 
 ```text
-  Daemon URL:   https://34-1-2-3.sslip.io
+  Address:      https://34-1-2-3.sslip.io
   Access code:  SG-ABCD-EFGH-JKLM
 ```
 
 Have your own domain? Point it at the server and run
 `sudo sh deploy/setup-vm.sh stillgreen.example.com` instead.
 
-6. Use that **Daemon URL** and **Access code** in the dashboard
-   (**Connect daemon**) and in the extension (instead of
+6. Use that **Stillgreen address** and **Access code** in the dashboard
+   (**Connect Stillgreen**) and in the extension (instead of
    `http://127.0.0.1:8765`), then click **Capture from Slack** as usual.
 
 To update later, run `git pull && sudo docker compose up -d --build` in the
@@ -214,7 +214,7 @@ To update later, run `git pull && sudo docker compose up -d --build` in the
 > The server's IP address (and so the `sslip.io` address) changes if you
 > stop and start the server. Restarting it from inside (`sudo reboot`) keeps
 > it. If it does change, run `sudo sh deploy/setup-vm.sh` again and update
-> the Daemon URL in the dashboard and extension. You can also keep the
+> the Stillgreen address in the dashboard and extension. You can also keep the
 > address with **VPC network → IP addresses → Promote to static**, but check
 > **Billing** afterwards: a static address may cost a little.
 
@@ -239,7 +239,7 @@ fly deploy
 fly ssh console -C "sg-local web --show-code"
 ```
 
-Your Daemon URL is `https://your-stillgreen.fly.dev`.
+Your Stillgreen address is `https://your-stillgreen.fly.dev`.
 
 ### Any other Docker host
 

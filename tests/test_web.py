@@ -325,6 +325,16 @@ class PageTests(unittest.TestCase):
             )
 
 
+class StaticTests(WebTestCase):
+    def test_stylesheets_are_served(self) -> None:
+        for name in ("tokens.css", "ui.css", "app.css"):
+            status, body, headers = self.request(f"/{name}")
+            self.assertEqual(status, 200, name)
+            self.assertTrue(headers["Content-Type"].startswith("text/css"), name)
+            self.assertIsInstance(body, str)
+            self.assertTrue(body.strip(), name)
+
+
 class SecurityTests(WebTestCase):
     """Regression tests for the control server's security checks."""
 
@@ -543,6 +553,25 @@ class DataSafetyTests(WebTestCase):
         events = web._activity()
         self.assertEqual([e["tone"] for e in events], ["green", "muted", "amber"])
         self.assertEqual(events[2]["workspace"], "")
+
+    def test_activity_entries_carry_plain_words_and_a_zoned_time(self) -> None:
+        config.LOG_PATH.write_text(
+            "2026-10-30 10:00:00 INFO daemon started (pid 22492)\n"
+            "2026-10-30 10:00:01 INFO config loaded: 1 workspace(s), schedule: always on\n"
+            "2026-10-30 10:00:02 INFO mode: stay online until 2026-10-30T12:00:00+00:00\n"
+            "2026-10-30 10:00:03 INFO [Acme] connected to Slack WebSocket (initial)\n",
+            encoding="utf-8",
+        )
+        events = web._activity()
+        self.assertEqual(
+            [e["summary"] for e in events],
+            ["Connected to Slack", "Keep me online started", "Settings loaded: 1 workspace", "Stillgreen started"],
+        )
+        # The raw line is still there, and no summary leaks a pid or ISO time.
+        self.assertIn("pid", events[3]["text"])
+        for event in events:
+            self.assertNotRegex(event["summary"], r"pid|\d{4}-\d{2}-\d{2}T")
+            self.assertRegex(event["at"], r"^2026-10-30T10:00:0\d[+-]\d{2}:\d{2}$")
 
 
 if __name__ == "__main__":

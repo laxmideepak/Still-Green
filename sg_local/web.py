@@ -31,6 +31,7 @@ import socket
 import threading
 import time
 from collections import deque
+from datetime import datetime
 from functools import lru_cache
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -256,13 +257,13 @@ def _safe_workspace(
     elif not daemon_running:
         status = "paused" if paused else "daemon_stopped"
         connected = False
-        reason = "daemon not running"
+        reason = "Stillgreen isn't running"
         last_error = None
         stats = {}
     else:
         status = "starting"
         connected = False
-        reason = "waiting for the daemon"
+        reason = "connecting to Slack"
         last_error = None
         stats = {}
     return {
@@ -295,6 +296,89 @@ def _tone(level: str, message: str) -> str:
     return "muted"
 
 
+def _plural(count: str, one: str, many: str) -> str:
+    return f"{count} {one if count == '1' else many}"
+
+
+# The daemon's log lines in plain words, for the activity feeds on the control
+# page and the web dashboard. Times, pids and ISO stamps are left out: each
+# entry carries its own "at" timestamp, which the browser formats. Lines that
+# match nothing are shown as written.
+_SUMMARIES: list[tuple[re.Pattern[str], Any]] = [
+    (re.compile(r"^connected to slack websocket", re.I), "Connected to Slack"),
+    (re.compile(r"^received hello from slack", re.I), "Slack confirmed the connection"),
+    (re.compile(r"^presence is active", re.I), "Slack shows you as active"),
+    (re.compile(r"^presence is manually away", re.I), "You set yourself away, so it was left alone"),
+    (re.compile(r"^presence is (\S+); reconnecting", re.I), "Slack showed you as away, so Stillgreen reconnected"),
+    (re.compile(r"^reconnecting to reset presence", re.I), "Reconnecting to turn you green again"),
+    (re.compile(r"^slack asked the client to reconnect", re.I), "Slack asked for a fresh connection"),
+    (re.compile(r"^websocket closed", re.I), "The connection to Slack closed. Reconnecting"),
+    (re.compile(r"^websocket connection failed", re.I), "Couldn't connect to Slack. Trying again"),
+    (re.compile(r"^connection failed; retrying in (\d+)s", re.I), lambda wait: f"Couldn't connect to Slack. Trying again in {wait} s"),
+    (re.compile(r"^connection lasted \S+; retrying in (\d+)s", re.I), lambda wait: f"Connection dropped. Trying again in {wait} s"),
+    (re.compile(r"^starting presence session", re.I), "Started keeping you green"),
+    (re.compile(r"^presence session stopped \((.+)\)", re.I),
+     lambda why: "Stopped keeping you green" if why.lower() == "stopped" else f"Stopped keeping you green ({why.replace('_', ' ')})"),
+    (re.compile(r"^starting session for (.+)", re.I), lambda name: f"Starting {name}"),
+    (re.compile(r"^stopping session for (.+?) \((.+)\)", re.I), lambda name, why: f"Stopped {name} ({why})"),
+    (re.compile(r"^stopping \d+ session", re.I), "Stopping all workspaces"),
+    (re.compile(r"^session for (.+?) stopped; retrying in (\d+)s", re.I), lambda name, wait: f"{name} stopped. Trying again in {wait} s"),
+    (re.compile(r"^mode: inside schedule", re.I), "Inside your schedule"),
+    (re.compile(r"^mode: outside schedule", re.I), "Outside your schedule"),
+    (re.compile(r"^mode: paused until resumed", re.I), "Paused until you resume"),
+    (re.compile(r"^mode: paused", re.I), "Paused for a while"),
+    (re.compile(r"^mode: stay online", re.I), "Keep me online started"),
+    (re.compile(r"^mode: always on", re.I), "Always on"),
+    (re.compile(r"^config (?:re)?loaded: (\d+) workspace", re.I),
+     lambda count: f"Settings loaded: {_plural(count, 'workspace', 'workspaces')}"),
+    (re.compile(r"^cannot reload config", re.I), "Couldn't read the settings file"),
+    (re.compile(r"^daemon started", re.I), "Stillgreen started"),
+    (re.compile(r"^daemon (?:stopping|shutting down)", re.I), "Stillgreen is stopping"),
+    (re.compile(r"^control page listening", re.I), "Control page started"),
+    (re.compile(r"^control page not started", re.I), "The control page couldn't start yet. Trying again"),
+    (re.compile(r"^tokens for (.+?) were rejected", re.I),
+     lambda name: f"Slack signed {name} out. Capture it again with the extension"),
+    (re.compile(r"^workspace (.+) was removed from config", re.I), lambda name: f"Removed {name}"),
+    (re.compile(r"^presence check failed", re.I), "Couldn't check your status. Trying again"),
+    (re.compile(r"^ping failed", re.I), "A check-in with Slack failed. Reconnecting"),
+]
+
+
+def summarize(message: str) -> str:
+    """One activity line in plain words."""
+    text = message.strip()
+    for pattern, phrase in _SUMMARIES:
+        match = pattern.match(text)
+        if match:
+            return phrase if isinstance(phrase, str) else phrase(*match.groups())
+    return text[:1].upper() + text[1:]
+
+
+def _server_timezone() -> str:
+    """The name of this machine's time zone, e.g. "UTC" or "Europe/Berlin"."""
+    name = os.environ.get("TZ", "").strip().lstrip(":")
+    if name and ("/" in name or name.upper() == "UTC") and not name.startswith("/"):
+        return name
+    try:
+        target = os.path.realpath("/etc/localtime")
+        if "zoneinfo/" in target:
+            zone = target.split("zoneinfo/", 1)[1]
+            return "UTC" if zone in {"Etc/UTC", "Etc/UCT", "Etc/Universal", "Etc/Zulu", "UCT", "Universal", "Zulu"} else zone
+    except OSError:
+        pass
+    return datetime.now().astimezone().tzname() or ""
+
+
+def _log_timestamp(date: str, clock: str) -> str | None:
+    # Log lines use the daemon's local time. Send it with its UTC offset so a
+    # browser in another time zone can show the right local time.
+    try:
+        moment = datetime.strptime(f"{date} {clock}", "%Y-%m-%d %H:%M:%S").astimezone()
+    except ValueError:
+        return None
+    return moment.isoformat(timespec="seconds")
+
+
 def _activity(limit: int = 30) -> list[dict[str, Any]]:
     lines = state.tail_log(500).splitlines()
     events: list[dict[str, Any]] = []
@@ -305,12 +389,15 @@ def _activity(limit: int = 30) -> list[dict[str, Any]]:
         date, clock, level, workspace, message = match.groups()
         if level == "DEBUG":
             continue
+        text = redact(message)
         events.append(
             {
                 "date": date,
                 "time": clock[:5],
+                "at": _log_timestamp(date, clock),
                 "workspace": workspace or "",
-                "text": redact(message),
+                "text": text,
+                "summary": redact(summarize(message)),
                 "tone": _tone(level, message),
                 "level": level,
             }
@@ -353,6 +440,7 @@ def build_state() -> dict[str, Any]:
         "app": "stillgreen",
         "version": __version__,
         "server_time": config.now_iso(),
+        "server_timezone": _server_timezone(),
         "config_error": config_error,
         "daemon": {
             "running": bool(pid),
@@ -662,8 +750,10 @@ class Handler(BaseHTTPRequestHandler):
             embed = self._embed_code()
             self._static("index.html", "text/html; charset=utf-8", page=True,
                          body=render_page(load_code() if embed else "", embed))
-        elif path == "/app.css":
-            self._static("app.css", "text/css; charset=utf-8")
+        elif path in {"/tokens.css", "/ui.css", "/app.css"}:
+            # tokens.css (design tokens) and ui.css (shared components) load
+            # before app.css; see docs/design-system.md.
+            self._static(path[1:], "text/css; charset=utf-8")
         elif path == "/app.js":
             self._static("app.js", "text/javascript; charset=utf-8")
         elif path == "/favicon.svg":

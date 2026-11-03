@@ -65,11 +65,11 @@ cat <<EOF
 
 Stillgreen is running.
 
-  Daemon URL:   https://$DOMAIN
+  Address:      https://$DOMAIN
   Access code:  $CODE
 
 Use these two values in the dashboard (https://stillgreen.vercel.app/dashboard,
-"Connect daemon") and in the browser extension. The HTTPS certificate can take
+"Connect Stillgreen") and in the browser extension. The HTTPS certificate can take
 a minute to appear the first time.
 
 Useful commands (run in $REPO_DIR):

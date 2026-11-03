@@ -153,7 +153,7 @@ async function openPopup() {
 }
 
 async function capture(popup, daemonUrl, code = daemon.code) {
-  await popup.getByLabel("Daemon URL").fill(daemonUrl);
+  await popup.getByLabel("Stillgreen address").fill(daemonUrl);
   await popup.getByLabel("Access code").fill(code);
   await popup.getByRole("button", { name: "Capture from Slack" }).click();
 }
@@ -171,7 +171,7 @@ describe("capture extension", () => {
 
     await page.locator(".result.ok", { hasText: "E2E Workspace" }).waitFor();
     // After a capture the popup checks the daemon at the saved URL.
-    await page.locator("#status", { hasText: "Daemon running" }).waitFor();
+    await page.locator("#status", { hasText: "Stillgreen running" }).waitFor();
     assert.deepEqual(await teamIds(), [TEAM_ID]);
     assert.deepEqual(problems, []);
     await page.close();

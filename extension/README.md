@@ -1,6 +1,6 @@
 # Stillgreen capture extension
 
-A ~300-line Chrome extension that fills in the two values Stillgreen needs by
+A small Chrome extension that fills in the two values Stillgreen needs by
 reading the Slack session already open in your browser:
 
 | Value | Where it comes from | Why it needs an extension |
@@ -26,7 +26,7 @@ and it never sends to a URL that contains a username or password.
 2. Open `chrome://extensions`, enable **Developer mode**, choose **Load
    unpacked**, and select this `extension/` folder.
 3. Pin the extension, open the popup.
-4. Set **Daemon URL** to `http://127.0.0.1:8765` and paste the access code
+4. Set **Stillgreen address** to `http://127.0.0.1:8765` and paste the access code
    (`./sg-local web --show-code`).
 5. Sign in at <https://app.slack.com> in the same browser profile, then press
    **Capture from Slack**.
