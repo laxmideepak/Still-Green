@@ -1,0 +1,189 @@
+.section {
+  padding-block: clamp(100px, 14vw, 200px) clamp(80px, 10vw, 140px);
+  overflow: hidden;
+}
+
+.giant {
+  position: relative;
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  font-family: var(--display);
+  font-size: clamp(4rem, 17vw, 17rem);
+  font-weight: 800;
+  font-variation-settings: "wdth" 75;
+  letter-spacing: -0.042em;
+  word-spacing: 0.08em;
+  line-height: 0.85;
+  white-space: nowrap;
+  transform-origin: 50% 100%;
+  will-change: transform;
+}
+
+.words {
+  position: relative;
+  display: inline-block;
+  padding-bottom: 0.14em;
+  margin-bottom: -0.14em;
+}
+
+.base {
+  color: color-mix(in srgb, var(--ink) 12%, transparent);
+}
+
+.clip {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  will-change: transform;
+}
+
+.lit {
+  display: block;
+  color: var(--acid);
+  will-change: transform;
+}
+
+.dot {
+  display: inline-block;
+  width: 0.2em;
+  height: 0.2em;
+  margin-left: 0.04em;
+  border-radius: 50%;
+  background: var(--acid);
+  box-shadow: 0 0 60px 10px color-mix(in srgb, var(--acid) 45%, transparent);
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 28px;
+  margin-top: clamp(40px, 5vw, 64px);
+}
+
+.row p {
+  max-width: 26rem;
+  color: var(--muted);
+  font-size: 1.08rem;
+  line-height: 1.55;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.primary,
+.secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  height: 60px;
+  padding: 0 30px;
+  border-radius: 999px;
+  font-weight: 650;
+}
+
+.primary {
+  background: var(--acid);
+  color: var(--night);
+  box-shadow: 0 20px 60px -14px color-mix(in srgb, var(--acid) 60%, transparent);
+  transition: background-color 250ms ease;
+}
+
+.primary:hover {
+  background: var(--ink);
+}
+
+.secondary {
+  border: 1px solid var(--line-strong);
+  transition: border-color 200ms ease;
+}
+
+.secondary:hover {
+  border-color: var(--ink);
+}
+
+/* ── Scroll-driven fill ────────────────────────────────────────────
+   From the moment the section starts entering until it has fully
+   entered. Without support the heading is simply shown filled. */
+
+.section {
+  view-timeline: --closing block;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  @supports (animation-timeline: view()) {
+    .giant,
+    .clip,
+    .lit,
+    .dot {
+      animation-timing-function: linear;
+      animation-fill-mode: both;
+      animation-timeline: --closing;
+      animation-range: entry 0% entry 100%;
+    }
+
+    .giant {
+      animation-name: closingScale;
+    }
+
+    .clip {
+      animation-name: closingClip;
+    }
+
+    .lit {
+      animation-name: closingText;
+    }
+
+    .dot {
+      animation-name: closingDot;
+    }
+  }
+}
+
+@keyframes closingScale {
+  from {
+    transform: scale(0.82);
+  }
+  80%,
+  to {
+    transform: scale(1);
+  }
+}
+
+@keyframes closingClip {
+  0%,
+  10% {
+    transform: translateX(-100%);
+  }
+  75%,
+  100% {
+    transform: translateX(0);
+  }
+}
+
+@keyframes closingText {
+  0%,
+  10% {
+    transform: translateX(100%);
+  }
+  75%,
+  100% {
+    transform: translateX(0);
+  }
+}
+
+@keyframes closingDot {
+  0%,
+  55% {
+    transform: scale(0);
+  }
+  85%,
+  100% {
+    transform: scale(1);
+  }
+}

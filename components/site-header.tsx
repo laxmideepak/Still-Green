@@ -2,89 +2,90 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Brand } from "./brand";
-import { ArrowRight, Github, Menu, X } from "./icons";
-import { GITHUB_URL } from "@/lib/site";
-import { Button, IconButton } from "./ui";
+import { ArrowUpRight, Github } from "./icons";
 import styles from "./site-header.module.css";
 
-// One name per page, used the same way in the footer and on the 404 page:
-// /setup is the "Setup guide" (nav: "Setup"), /start is the "Quick start".
 const nav = [
-  { href: "/#how", label: "How it works", match: null },
-  { href: "/setup", label: "Setup", match: "/setup" },
-  { href: "/start", label: "Quick start", match: "/start" },
-] as const;
+  { href: "/#how", label: "How it works", match: "/#" },
+  { href: "/start", label: "Setup", match: "/start" },
+  { href: "/setup", label: "CLI", match: "/setup" },
+];
 
 export function SiteHeader() {
   const pathname = usePathname();
-  const [open, setOpen] = useState(false);
-  const panelId = useId();
+  const [hidden, setHidden] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+  const last = useRef(0);
 
-  // Close the mobile menu on navigation and on Escape.
-  useEffect(() => setOpen(false), [pathname]);
+  // Lets other sticky bars (like the CLI page contents chips) follow the header.
   useEffect(() => {
-    if (!open) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open]);
+    document.documentElement.dataset.header = hidden ? "hidden" : "shown";
+  }, [hidden]);
 
-  const isCurrent = (match: string | null) => (match && pathname?.startsWith(match) ? "page" : undefined);
+  useEffect(() => {
+    // Only flips state when the direction changes, not on every scroll event.
+    let frame = 0;
+    const onScroll = () => {
+      if (frame) return;
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        const y = window.scrollY;
+        const delta = y - last.current;
+        if (Math.abs(delta) > 6) {
+          setHidden(delta > 0 && y > 160);
+          last.current = y;
+        }
+        setScrolled(y > 8);
+      });
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      cancelAnimationFrame(frame);
+    };
+  }, []);
 
   return (
-    <header className={styles.header}>
+    <header
+      className={styles.header}
+      data-hidden={hidden}
+      data-scrolled={scrolled}
+      onFocusCapture={() => setHidden(false)}
+    >
       <div className={`container ${styles.inner}`}>
         <Brand />
-        <nav className={styles.nav} aria-label="Main">
-          {nav.map((item) => (
-            <Link key={item.href} href={item.href} className={styles.navLink} aria-current={isCurrent(item.match)}>
-              {item.label}
-            </Link>
-          ))}
+        <nav className={styles.nav} aria-label="Primary navigation">
+          {nav.map((item) => {
+            const active = item.match !== "/#" && pathname?.startsWith(item.match);
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={styles.navLink}
+                aria-current={active ? "page" : undefined}
+              >
+                {item.label}
+              </Link>
+            );
+          })}
         </nav>
         <div className={styles.actions}>
-          <IconButton href={GITHUB_URL} label="Stillgreen on GitHub" className={styles.github}>
-            <Github />
-          </IconButton>
-          <Button href="/dashboard" variant="primary" size="sm" iconRight={<ArrowRight />} className={styles.cta}>
-            Open dashboard
-          </Button>
-          <IconButton
-            label={open ? "Close menu" : "Open menu"}
-            className={styles.menuButton}
-            aria-expanded={open}
-            aria-controls={panelId}
-            onClick={() => setOpen((value) => !value)}
+          <a
+            href="https://github.com/laxmideepak/slack"
+            className={styles.source}
+            target="_blank"
+            rel="noreferrer"
+            aria-label="View source on GitHub"
           >
-            {open ? <X /> : <Menu />}
-          </IconButton>
-        </div>
-      </div>
-      <div id={panelId} className={styles.panel} hidden={!open}>
-        <nav className={`container ${styles.panelNav}`} aria-label="Main (mobile)">
-          {nav.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={styles.panelLink}
-              aria-current={isCurrent(item.match)}
-              onClick={() => setOpen(false)}
-            >
-              {item.label}
-            </Link>
-          ))}
-          <a href={GITHUB_URL} className={styles.panelLink} target="_blank" rel="noreferrer">
-            <Github />
-            GitHub
+            <Github width={17} height={17} />
           </a>
-          <Button href="/dashboard" variant="primary" size="lg" block iconRight={<ArrowRight />} className={styles.panelCta}>
+          <Link href="/dashboard" className={`button buttonPrimary buttonSmall ${styles.cta}`}>
             Open dashboard
-          </Button>
-        </nav>
+            <ArrowUpRight width={15} height={15} />
+          </Link>
+        </div>
       </div>
     </header>
   );

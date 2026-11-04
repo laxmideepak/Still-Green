@@ -4,7 +4,7 @@ import { DashboardRoute } from "@/components/dashboard-route";
 export const metadata: Metadata = {
   title: "Dashboard",
   description:
-    "Control your own Stillgreen daemon from the browser: pause, keep me online, schedule and workspaces. Shows sample data until you connect.",
+    "Control your Stillgreen daemon: presence, schedules, workspaces, and an honest sample preview when no daemon is connected.",
 };
 
 export default function DashboardPage() {
