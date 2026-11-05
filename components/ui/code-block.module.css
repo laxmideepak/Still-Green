@@ -1,0 +1,59 @@
+/* Mirrors .code-block in sg_local/static/ui.css. */
+.block {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  min-height: var(--control-lg);
+  padding: 4px 4px 4px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-sm);
+}
+
+.multiline {
+  align-items: flex-start;
+  padding: 10px 6px 10px 14px;
+}
+
+.code {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  /* Room at the end, faded, so a long command reads as "scrolls on" instead
+     of being cut off next to the copy button. */
+  padding-right: var(--space-6);
+  overflow-x: auto;
+  font: inherit;
+  white-space: pre;
+  scrollbar-width: thin;
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - var(--space-6)), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - var(--space-6)), transparent);
+}
+
+.block:not(:has(.copy)) .code {
+  padding-right: var(--space-2);
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+
+.prompt {
+  color: var(--accent-text);
+  user-select: none;
+}
+
+.copy {
+  flex-shrink: 0;
+}
+
+.multiline .copy {
+  margin-top: -4px;
+}
+
+.copied {
+  color: var(--accent-text);
+}
