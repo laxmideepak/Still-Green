@@ -1,619 +1,286 @@
 "use client";
 
-import Link from "next/link";
-import { AnimatePresence, MotionConfig, motion } from "motion/react";
-import { useState, type CSSProperties, type ReactNode } from "react";
-import { SiteFooter } from "./site-footer";
-import { SiteHeader } from "./site-header";
-import { Magnetic } from "./motion/magnetic";
-import { SplitText } from "./motion/split-text";
-import {
-  ArrowRight,
-  Calendar,
-  Check,
-  Clock,
-  Lock,
-  Pause,
-  Play,
-  Shield,
-  Signal,
-  Sliders,
-} from "./icons";
-import {
-  Card,
-  EASE,
-  Label,
-  LogList,
-  PresenceOrb,
-  Segmented,
-  Ticker,
-  windowSegments,
-} from "./dashboard-kit";
-import {
-  DAYS,
-  WEEKDAY_KEYS,
-  formatHours,
-  isOvernight,
-  toMinutes,
-  weeklyHours,
-  windowHours,
-  type DayInfo,
-  type Tone,
-} from "@/lib/dashboard";
-import shared from "./dashboard-shared.module.css";
-import styles from "./dashboard-preview.module.css";
+// The dashboard with sample data, shown until a daemon is connected. Every
+// control works, but only on the sample data in this tab; nothing is sent.
 
-// Matches the daemon: one window for every active day, two schedule modes, and
-// pause as a separate override.
-type Mode = "scheduled" | "always";
-type View = Mode | "paused";
+import { useMemo, useRef, useState } from "react";
+import { DashboardView, type DashboardApi, type DashboardNotice, type SchedulePayload } from "./dashboard-kit";
+import { Button } from "./ui";
+import type { ActivityEntry, DaemonState, WorkspaceState } from "@/lib/bridge";
+import { DAYS, clockFromHHMM, daysSummary } from "@/lib/dashboard";
 
-type Day = DayInfo & {
-  enabled: boolean;
+const SAMPLE_HOST = "127.0.0.1:8765";
+
+function pad(value: number) {
+  return String(value).padStart(2, "0");
+}
+
+function iso(date: Date) {
+  return date.toISOString();
+}
+
+function hhmm(date: Date) {
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function ymd(date: Date) {
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+function minutesAgo(now: Date, minutes: number) {
+  return new Date(now.getTime() - minutes * 60000);
+}
+
+function entry(at: Date, text: string, tone: ActivityEntry["tone"], workspace = ""): ActivityEntry {
+  return { date: ymd(at), time: hhmm(at), at: iso(at), workspace, text, tone, level: "INFO" };
+}
+
+function scheduleSummary(schedule: Pick<SchedulePayload, "mode" | "active_days" | "start_time" | "end_time">) {
+  if (schedule.mode === "always") return "always on";
+  return `${daysSummary(schedule.active_days).toLowerCase()}, ${clockFromHHMM(schedule.start_time)} to ${clockFromHHMM(schedule.end_time)}`;
+}
+
+/**
+ * Sample state: two workspaces, a few recent events, and a schedule that
+ * agrees with the real clock. During weekday work hours it is a 9 to 5
+ * schedule that ends at 5 PM; at any other time it is always on, so the
+ * sample never claims a schedule that has already ended.
+ */
+function sampleState(): DaemonState {
+  const now = new Date();
+  const end = new Date(now);
+  end.setHours(17, 0, 0, 0);
+  const weekday = now.getDay() >= 1 && now.getDay() <= 5;
+  const workHours = weekday && now.getHours() >= 9 && now.getTime() < end.getTime();
+  const workspaces: WorkspaceState[] = [
+    {
+      team_id: "T01SAMPLE",
+      name: "Acme Corp",
+      user_id: "U01SAMPLE",
+      paused: false,
+      status: "active",
+      connected: true,
+      reason: "",
+      last_presence: "active",
+      last_error: null,
+      stats: { pings: 412, presence_checks: 96, reconnects: 1 },
+    },
+    {
+      team_id: "T02SAMPLE",
+      name: "Northwind Studio",
+      user_id: "U02SAMPLE",
+      paused: true,
+      status: "paused",
+      connected: false,
+      reason: "paused",
+      last_presence: null,
+      last_error: null,
+      stats: {},
+    },
+  ];
+  return settle({
+    ok: true,
+    app: "stillgreen",
+    version: "1.4.2",
+    server_time: iso(now),
+    daemon: {
+      running: true,
+      pid: 4242,
+      started_at: iso(new Date(now.getTime() - (6 * 24 + 3) * 3600000)),
+      updated_at: iso(now),
+      stopped_at: null,
+    },
+    schedule: {
+      mode: workHours ? "scheduled" : "always",
+      active_days: DAYS.slice(0, 5).map((day) => day.key),
+      start_time: "09:00",
+      end_time: "17:00",
+      timezone: "local",
+      summary: workHours ? `weekdays, ${clockFromHHMM("09:00")} to ${clockFromHHMM("17:00")}` : "always on",
+      active: true,
+      next_change: workHours ? iso(end) : null,
+    },
+    paused: false,
+    pause_until: null,
+    stay_active: false,
+    stay_until: null,
+    workspaces,
+    connected_count: 1,
+    activity: [
+      entry(minutesAgo(now, 2), "Presence is active", "green", "Acme Corp"),
+      entry(minutesAgo(now, 48), "Paused Northwind Studio", "amber"),
+      entry(minutesAgo(now, 95), "Reconnected to Slack after a network change", "amber", "Acme Corp"),
+      entry(minutesAgo(now, 140), "Connected to Slack", "green", "Acme Corp"),
+      entry(minutesAgo(now, 141), workHours ? "mode: inside schedule" : "mode: always on", "muted"),
+    ],
+    config_error: null,
+  });
+}
+
+/** Work out each workspace's status the way the daemon would. */
+function settle(state: DaemonState): DaemonState {
+  const pausedAll = state.paused && !state.stay_active;
+  const workspaces = state.workspaces.map((workspace) => {
+    const off = workspace.paused || pausedAll;
+    return {
+      ...workspace,
+      status: off ? "paused" : "active",
+      connected: !off,
+      last_presence: off ? null : "active",
+    };
+  });
+  return {
+    ...state,
+    server_time: new Date().toISOString(),
+    workspaces,
+    connected_count: workspaces.filter((item) => item.connected).length,
+  };
+}
+
+function later<T>(value: T): Promise<T> {
+  return new Promise((resolve) => window.setTimeout(() => resolve(value), 250));
+}
+
+type Props = {
+  /** Replaces the "Preview mode" banner, e.g. while checking a saved daemon. */
+  notice?: DashboardNotice;
+  onConnect: () => void;
 };
 
-type Entry = {
-  id: number;
-  time: string;
-  text: string;
-  tone: Tone;
-};
+export function DashboardPreview({ notice, onConnect }: Props) {
+  const [state, setState] = useState<DaemonState>(sampleState);
 
-// Sample data for the preview. Nothing below comes from a daemon or from Slack.
-const sampleDays: Day[] = DAYS.map((day) => ({
-  ...day,
-  enabled: WEEKDAY_KEYS.includes(day.key),
-}));
+  // The view hands each result back through onState, so read the latest here.
+  const latest = useRef(state);
+  latest.current = state;
 
-const sampleEntries: Entry[] = [
-  { id: 4, time: "12:30", text: "Presence check: active", tone: "green" },
-  { id: 3, time: "10:30", text: "Activity tickle sent", tone: "muted" },
-  { id: 2, time: "09:01", text: "Presence check: active", tone: "green" },
-  { id: 1, time: "09:00", text: "Session started for Fieldwork", tone: "green" },
-];
+  const api = useMemo<DashboardApi>(() => {
+    const nameOf = (current: DaemonState, teamId?: string) =>
+      current.workspaces.find((item) => item.team_id === teamId)?.name ?? "a workspace";
 
-const modes: Array<{ id: Mode; label: string }> = [
-  { id: "scheduled", label: "Scheduled" },
-  { id: "always", label: "Always on" },
-];
+    // Apply a change to the latest sample state and log it, after a short wait
+    // so buttons show their busy state like they do with a real daemon.
+    const apply = (
+      change: (current: DaemonState) => DaemonState,
+      text: (current: DaemonState) => string,
+      tone: ActivityEntry["tone"],
+    ) => {
+      const current = latest.current;
+      const changed = change(current);
+      return later(
+        settle({ ...changed, activity: [entry(new Date(), text(current), tone), ...changed.activity].slice(0, 30) }),
+      );
+    };
 
-const zones = [
-  "Europe/Amsterdam",
-  "Europe/London",
-  "America/New_York",
-  "America/Los_Angeles",
-  "Asia/Kolkata",
-  "UTC",
-];
+    return {
+      pause: ({ duration, workspace }) =>
+        apply(
+          (current) =>
+            workspace
+              ? {
+                  ...current,
+                  workspaces: current.workspaces.map((item) =>
+                    item.team_id === workspace ? { ...item, paused: true } : item,
+                  ),
+                }
+              : {
+                  ...current,
+                  paused: true,
+                  pause_until: duration ? new Date(Date.now() + 3600000).toISOString() : null,
+                },
+          (current) =>
+            workspace
+              ? `Paused ${nameOf(current, workspace)}`
+              : duration
+                ? "Paused all workspaces for 1 hour"
+                : "Paused all workspaces",
+          "amber",
+        ),
+      resume: ({ workspace }) =>
+        apply(
+          (current) =>
+            workspace
+              ? {
+                  ...current,
+                  workspaces: current.workspaces.map((item) =>
+                    item.team_id === workspace ? { ...item, paused: false } : item,
+                  ),
+                }
+              : {
+                  ...current,
+                  paused: false,
+                  pause_until: null,
+                  workspaces: current.workspaces.map((item) => ({ ...item, paused: false })),
+                },
+          (current) => (workspace ? `Resumed ${nameOf(current, workspace)}` : "Resumed all workspaces"),
+          "green",
+        ),
+      stay: (choice) => {
+        if (choice === null) {
+          return apply(
+            (current) => ({ ...current, stay_active: false, stay_until: null }),
+            () => "Keep me online ended",
+            "muted",
+          );
+        }
+        const minutes: Record<string, number> = { "30m": 30, "1h": 60, "2h": 120, "3h": 180 };
+        const until =
+          typeof choice === "string" ? new Date(Date.now() + (minutes[choice] ?? 60) * 60000) : choice.until;
+        return apply(
+          (current) => ({ ...current, stay_active: true, stay_until: until.toISOString() }),
+          () => "Keep me online started",
+          "green",
+        );
+      },
+      saveSchedule: (payload) =>
+        apply(
+          (current) => ({
+            ...current,
+            schedule: { ...current.schedule, ...payload, summary: scheduleSummary(payload) },
+          }),
+          () => "Schedule saved",
+          "muted",
+        ),
+      removeWorkspace: (teamId) =>
+        apply(
+          (current) => ({
+            ...current,
+            workspaces: current.workspaces.filter((item) => item.team_id !== teamId),
+          }),
+          (current) => `Removed ${nameOf(current, teamId)}`,
+          "muted",
+        ),
+    };
+  }, []);
 
-// "Now" in the sample day (Wednesday, about 13:55).
-const NOW_PERCENT = 58;
-const TODAY_INDEX = 2;
-
-const modeCopy: Record<View, { title: string; detail: string; change: string; progress: number }> = {
-  scheduled: {
-    title: "Online",
-    detail: "Inside today's window",
-    change: "17:00 today",
-    progress: 0.58,
-  },
-  always: {
-    title: "Always on",
-    detail: "No end time set",
-    change: "Never",
-    progress: 1,
-  },
-  paused: {
-    title: "Paused",
-    detail: "Disconnected from Slack",
-    change: "When you resume",
-    progress: 0,
-  },
-};
-
-type DashboardPreviewProps = {
-  topSlot?: ReactNode;
-};
-
-export function DashboardPreview({ topSlot }: DashboardPreviewProps = {}) {
-  const [mode, setMode] = useState<Mode>("scheduled");
-  const [paused, setPaused] = useState(false);
-  const [days, setDays] = useState<Day[]>(sampleDays);
-  const [windowStart, setWindowStart] = useState("09:00");
-  const [windowEnd, setWindowEnd] = useState("17:00");
-  const [zone, setZone] = useState(zones[0]);
-  const [entries, setEntries] = useState<Entry[]>(sampleEntries);
-  const [announcement, setAnnouncement] = useState("Preview ready. Sample data only.");
-  const [counter, setCounter] = useState(5);
-
-  const activeDays = days.filter((day) => day.enabled);
-  const dayHours = windowHours(windowStart, windowEnd);
-  const totalHours = weeklyHours(activeDays.length, windowStart, windowEnd);
-  const view: View = paused ? "paused" : mode;
-  const current = modeCopy[view];
-  const today = { ...days[TODAY_INDEX], start: windowStart, end: windowEnd };
-  const segments = windowSegments(toMinutes(windowStart), toMinutes(windowEnd));
-  const overnight = isOvernight(windowStart, windowEnd);
-  const tone = paused ? "amber" : "green";
-
-  function log(text: string, entryTone: Tone) {
-    setEntries((previous) => [{ id: counter, time: "Now", text, tone: entryTone }, ...previous]);
-    setCounter((value) => value + 1);
-  }
-
-  function applyMode(next: Mode, message: string) {
-    setMode(next);
-    setAnnouncement(message);
-    log(message, "green");
-  }
-
-  function applyPause(next: boolean, message: string) {
-    setPaused(next);
-    setAnnouncement(message);
-    log(message, next ? "amber" : "green");
-  }
-
-  function toggleDay(key: string) {
-    setDays((previous) =>
-      previous.map((day) => (day.key === key ? { ...day, enabled: !day.enabled } : day)),
-    );
-  }
-
-  function applyPreset(preset: "weekdays" | "everyday" | "clear") {
-    setDays((previous) =>
-      previous.map((day) => ({
-        ...day,
-        enabled:
-          preset === "everyday" ? true : preset === "weekdays" ? WEEKDAY_KEYS.includes(day.key) : false,
-      })),
-    );
-    setAnnouncement(
-      preset === "weekdays"
-        ? "Weekdays only applied."
-        : preset === "everyday"
-          ? "Every day applied."
-          : "All days cleared.",
-    );
-  }
+  const banner: DashboardNotice = notice ?? {
+    tone: "info",
+    title: "Preview mode · sample data",
+    body: "Nothing here is real yet. Connect your Stillgreen to control your own Slack status. Stillgreen is free and runs on your own computer or cloud server.",
+    actions: (
+      <>
+        <Button variant="primary" size="sm" onClick={onConnect}>
+          Connect Stillgreen
+        </Button>
+        <Button size="sm" href="/setup">
+          Set it up
+        </Button>
+      </>
+    ),
+  };
 
   return (
-    <>
-      <SiteHeader />
-      <MotionConfig reducedMotion="user">
-        <main id="main" className={shared.main}>
-          {topSlot}
-          <section className={shared.masthead}>
-            <div className={`container ${shared.mastheadInner}`}>
-              <div>
-                <p className={`${shared.eyebrow} riseIn`}>
-                  <span className={shared.dot} data-tone={tone} aria-hidden="true" />
-                  Preview · sample workspace
-                </p>
-                <h1 className={shared.title}>
-                  <SplitText text="The control" delay={0.1} />
-                  <br />
-                  <span className={shared.titleAcid}>
-                    <SplitText text="surface." delay={0.42} />
-                  </span>
-                </h1>
-                <p
-                  className={`${shared.lede} riseIn`}
-                  style={{ "--rise-delay": "600ms" } as CSSProperties}
-                >
-                  Move the schedule, pause the session, watch the log. Everything here is
-                  interactive — nothing here is connected to Slack.
-                </p>
-              </div>
-              <div
-                className={`${shared.meta} riseIn`}
-                style={{ "--rise-delay": "750ms" } as CSSProperties}
-              >
-                <span className={shared.metaChip}>
-                  <Calendar width={14} height={14} />
-                  Sample week · Oct 26–Nov 1
-                </span>
-                <span className={shared.metaChip}>
-                  <Shield width={14} height={14} />
-                  No tokens requested
-                </span>
-                <Link href="/setup" className={shared.metaLink}>
-                  Run it locally
-                  <ArrowRight width={14} height={14} />
-                </Link>
-              </div>
-            </div>
-          </section>
-
-          <div className={`container ${styles.grid}`}>
-            <Card className={styles.presence} aria-labelledby="presence-heading">
-              <div className={styles.presenceBody}>
-                <div className={styles.orbCol}>
-                  <PresenceOrb
-                    tone={tone}
-                    fast={view === "always"}
-                    progress={current.progress}
-                  />
-                  <div className={shared.readout} aria-hidden="true">
-                    <span>Presence</span>
-                    <strong className={styles.readoutValue} data-tone={tone}>
-                      <Ticker value={paused ? "Away" : "Active"} />
-                    </strong>
-                    <small>
-                      <Ticker value={current.detail} />
-                    </small>
-                  </div>
-                </div>
-
-                <div className={styles.presenceCopy}>
-                  <Label tone={tone}>
-                    {paused ? "Paused" : mode === "always" ? "Always on" : "Scheduled"}
-                  </Label>
-                  <h2 id="presence-heading" className={styles.presenceTitle} data-tone={tone}>
-                    <motion.span
-                      key={current.title}
-                      initial={{ opacity: 0, y: 24 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ duration: 0.5, ease: EASE }}
-                    >
-                      {current.title}
-                    </motion.span>
-                  </h2>
-                  <p className={shared.cardText}>
-                    {paused
-                      ? "The daemon is disconnected. Slack shows your manual status."
-                      : "The daemon holds the session open and checks presence every minute."}
-                  </p>
-                  <div className={styles.changeRow}>
-                    <Clock width={14} height={14} />
-                    <span>Next change</span>
-                    <strong>
-                      <Ticker value={current.change} />
-                    </strong>
-                  </div>
-                  <Segmented
-                    label="Preview presence mode"
-                    className={styles.modeBar}
-                    options={modes}
-                    value={mode}
-                    tone={tone}
-                    onChange={(next) =>
-                      applyMode(
-                        next,
-                        next === "always"
-                          ? "Always on selected for preview."
-                          : "Schedule selected for preview.",
-                      )
-                    }
-                  />
-                </div>
-              </div>
-            </Card>
-
-            <Card className={styles.session} delay={120} aria-labelledby="session-heading">
-              <div className={shared.cardHead}>
-                <Label>Daemon</Label>
-                <span className={shared.pill} data-tone={paused ? "muted" : "green"}>
-                  <span aria-hidden="true" />
-                  {paused ? "Idle" : "Sample daemon"}
-                </span>
-              </div>
-              <h2 id="session-heading" className={shared.cardTitle}>
-                Session
-              </h2>
-              <dl className={styles.sessionList}>
-                <div>
-                  <dt>Transport</dt>
-                  <dd>WebSocket</dd>
-                </div>
-                <div>
-                  <dt>Keepalive</dt>
-                  <dd>Ping · 30s</dd>
-                </div>
-                <div>
-                  <dt>Presence check</dt>
-                  <dd>60s interval</dd>
-                </div>
-                <div>
-                  <dt>Timezone</dt>
-                  <dd>
-                    <label className="visuallyHidden" htmlFor="timezone">
-                      Preview timezone
-                    </label>
-                    <select
-                      id="timezone"
-                      className={`${shared.input} ${styles.zoneSelect}`}
-                      value={zone}
-                      onChange={(event) => {
-                        setZone(event.target.value);
-                        setAnnouncement(`Timezone set to ${event.target.value} in preview.`);
-                      }}
-                    >
-                      {zones.map((item) => (
-                        <option key={item}>{item}</option>
-                      ))}
-                    </select>
-                  </dd>
-                </div>
-              </dl>
-              <div className={styles.statRow}>
-                <div className={shared.stat}>
-                  <span>Weekly window</span>
-                  <strong>
-                    <Ticker value={formatHours(totalHours)} />
-                  </strong>
-                </div>
-                <div className={shared.stat}>
-                  <span>Active days</span>
-                  <strong>
-                    <Ticker value={`${activeDays.length} / 7`} />
-                  </strong>
-                </div>
-              </div>
-            </Card>
-
-            <Card className={styles.schedule} aria-labelledby="schedule-heading">
-              <div className={styles.scheduleHead}>
-                <div>
-                  <Label>Week</Label>
-                  <h2 id="schedule-heading" className={shared.cardTitle}>
-                    Schedule
-                  </h2>
-                  <p className={shared.cardText}>
-                    Click a day to include or exclude it. One window applies to every active
-                    day, in your chosen timezone.
-                  </p>
-                </div>
-                <div className={shared.chips} role="group" aria-label="Schedule presets">
-                  <button type="button" className={shared.chipButton} onClick={() => applyPreset("weekdays")}>
-                    Weekdays
-                  </button>
-                  <button type="button" className={shared.chipButton} onClick={() => applyPreset("everyday")}>
-                    Every day
-                  </button>
-                  <button type="button" className={shared.chipButton} onClick={() => applyPreset("clear")}>
-                    Clear
-                  </button>
-                </div>
-              </div>
-
-              <div className={styles.windowRow}>
-                <label htmlFor="window-start">Start</label>
-                <input
-                  id="window-start"
-                  className={shared.input}
-                  type="time"
-                  value={windowStart}
-                  onChange={(event) => event.target.value && setWindowStart(event.target.value)}
-                />
-                <span aria-hidden="true">→</span>
-                <label htmlFor="window-end">End</label>
-                <input
-                  id="window-end"
-                  className={shared.input}
-                  type="time"
-                  value={windowEnd}
-                  onChange={(event) => event.target.value && setWindowEnd(event.target.value)}
-                />
-                {overnight && <span className={styles.overnightTag}>overnight</span>}
-              </div>
-
-              <div className={styles.week}>
-                {days.map((day, index) => (
-                  <div
-                    key={day.key}
-                    className={styles.dayRow}
-                    data-enabled={day.enabled}
-                    data-today={index === TODAY_INDEX}
-                  >
-                    <button
-                      type="button"
-                      className={styles.dayToggle}
-                      aria-pressed={day.enabled}
-                      aria-label={`${day.enabled ? "Disable" : "Enable"} ${day.label} ${day.long}`}
-                      onClick={() => toggleDay(day.key)}
-                    >
-                      <span className={styles.switch} aria-hidden="true">
-                        <motion.span
-                          className={styles.knob}
-                          initial={false}
-                          animate={{ x: day.enabled ? 16 : 0 }}
-                          transition={{ type: "spring", stiffness: 600, damping: 32 }}
-                        >
-                          {day.enabled && <Check width={10} height={10} />}
-                        </motion.span>
-                      </span>
-                      <span className={styles.dayName}>{day.label}</span>{" "}
-                      <span className={styles.dayLong}>{day.long}</span>
-                    </button>
-                    <div className={styles.track} aria-hidden="true">
-                      <AnimatePresence initial={false}>
-                        {day.enabled &&
-                          segments.map(([left, width], part) => (
-                            <motion.i
-                              key={`${day.key}-${part}`}
-                              style={{ left: `${left}%`, width: `${width}%` }}
-                              initial={{ scaleX: 0, opacity: 0 }}
-                              animate={{ scaleX: 1, opacity: 1 }}
-                              exit={{ scaleX: 0, opacity: 0 }}
-                              transition={{ duration: 0.6, ease: EASE, delay: part * 0.08 }}
-                            />
-                          ))}
-                      </AnimatePresence>
-                      {index === TODAY_INDEX && (
-                        <span className={styles.trackNow} style={{ left: `${NOW_PERCENT}%` }} />
-                      )}
-                    </div>
-                    <span className={styles.dayRange}>
-                      {day.enabled ? `${windowStart} – ${windowEnd}` : "—"}
-                    </span>
-                    <span className={styles.dayHours}>{day.enabled ? formatHours(dayHours) : "—"}</span>
-                  </div>
-                ))}
-                <div className={styles.axis} aria-hidden="true">
-                  <span>00</span>
-                  <span>06</span>
-                  <span>12</span>
-                  <span>18</span>
-                  <span>24</span>
-                </div>
-              </div>
-
-              <div className={styles.scheduleFoot}>
-                <span>
-                  <Clock width={14} height={14} />
-                  Total{" "}
-                  <strong>
-                    <Ticker value={formatHours(totalHours)} />
-                  </strong>{" "}
-                  per week
-                </span>
-                <span>
-                  <Sliders width={14} height={14} />
-                  {zone}
-                </span>
-              </div>
-            </Card>
-
-            <Card className={styles.quick} delay={120} aria-labelledby="quick-heading">
-              <Label>Controls</Label>
-              <h2 id="quick-heading" className={shared.cardTitle}>
-                Quick actions
-              </h2>
-              <div className={styles.quickGrid}>
-                <button
-                  type="button"
-                  className={styles.quickButton}
-                  data-tone="amber"
-                  onClick={() => applyPause(true, "Paused for 1 hour in preview.")}
-                >
-                  <Pause width={16} height={16} />
-                  Pause 1h
-                </button>
-                <button
-                  type="button"
-                  className={styles.quickButton}
-                  data-tone="green"
-                  onClick={() => applyPause(false, "Session resumed in preview.")}
-                >
-                  <Play width={16} height={16} />
-                  Resume
-                </button>
-                <button
-                  type="button"
-                  className={styles.quickButton}
-                  data-tone="green"
-                  onClick={() => {
-                    setAnnouncement("Activity tickle sent in preview.");
-                    log("Activity tickle sent", "muted");
-                  }}
-                >
-                  <Signal width={16} height={16} />
-                  Send tickle
-                </button>
-                <button
-                  type="button"
-                  className={styles.quickButton}
-                  data-tone="amber"
-                  onClick={() => applyPause(true, "Session stopped in preview.")}
-                >
-                  <Lock width={16} height={16} />
-                  Stop session
-                </button>
-              </div>
-
-              <div className={styles.today}>
-                <div className={styles.todayHead}>
-                  <span>Today · Wednesday</span>
-                  <strong>{today.enabled ? `${today.start} – ${today.end}` : "No window"}</strong>
-                </div>
-                <div className={styles.todayTrack} aria-hidden="true">
-                  {today.enabled &&
-                    segments.map(([left, width], part) => (
-                      <i key={part} style={{ left: `${left}%`, width: `${width}%` }} />
-                    ))}
-                  <span className={styles.todayNow} style={{ left: `${NOW_PERCENT}%` }} data-tone={tone} />
-                </div>
-                <div className={styles.todayAxis} aria-hidden="true">
-                  <span>00:00</span>
-                  <span>12:00</span>
-                  <span>24:00</span>
-                </div>
-              </div>
-
-              <div className={styles.next}>
-                <p className={styles.nextLabel}>Next in preview</p>
-                <ul>
-                  <li>
-                    <span>Presence check</span>
-                    <em>60s</em>
-                  </li>
-                  <li>
-                    <span>Activity tickle</span>
-                    <em>3m</em>
-                  </li>
-                  <li>
-                    <span>Window closes</span>
-                    <em>
-                      <Ticker value={today.enabled ? today.end : "—"} />
-                    </em>
-                  </li>
-                </ul>
-              </div>
-              <p className={styles.quickNote}>
-                Real actions run through <code className={shared.code}>./sg-local</code> on your
-                daemon host.
-              </p>
-            </Card>
-
-            <Card className={styles.activity} aria-labelledby="activity-heading">
-              <div className={shared.cardHead}>
-                <Label tone="green">Log</Label>
-                <span className={shared.pill}>
-                  <Ticker value={`${entries.length} events`} />
-                </span>
-              </div>
-              <h2 id="activity-heading" className={shared.cardTitle}>
-                Activity
-              </h2>
-              <p className={shared.cardText}>Preview events appear here as you use the controls.</p>
-              <LogList
-                entries={entries.map((entry) => ({
-                  key: String(entry.id),
-                  time: entry.time,
-                  text: entry.text,
-                  tone: entry.tone,
-                }))}
-              />
-            </Card>
-
-            <Card className={styles.honesty} delay={120}>
-              <div className={styles.honestyIcon} aria-hidden="true">
-                <Shield width={20} height={20} />
-              </div>
-              <h2 className={styles.honestyTitle}>What this page can and cannot do.</h2>
-              <p className={shared.cardText}>
-                This dashboard is a static preview. It never asks for Slack tokens and cannot
-                reach your workspace until you pair it with a daemon. The daemon, config, and
-                presence connection live on the host you own.
-              </p>
-              <div className={styles.honestyActions}>
-                <Magnetic>
-                  <Link href="/start#connect" className="button buttonPrimary">
-                    Connect a daemon
-                    <ArrowRight width={15} height={15} />
-                  </Link>
-                </Magnetic>
-                <code className={shared.code}>./sg-local start</code>
-              </div>
-            </Card>
-          </div>
-
-          <p className={shared.liveRegion} role="status" aria-live="polite">
-            {announcement}
-          </p>
-        </main>
-      </MotionConfig>
-      <SiteFooter />
-    </>
+    <DashboardView
+      preview
+      state={state}
+      api={api}
+      onState={setState}
+      lastOkAt={null}
+      daemonUrl={`http://${SAMPLE_HOST}`}
+      host={SAMPLE_HOST}
+      accessCode=""
+      notices={[banner]}
+      onConnect={onConnect}
+    />
   );
 }

@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import { StartGuide } from "@/components/start-guide";
 
 export const metadata: Metadata = {
-  title: "Local setup",
+  title: "Quick start",
   description:
-    "Run the Stillgreen presence daemon on your own machine, capture your Slack session with the bundled extension, then connect the Vercel dashboard with a URL and access code.",
+    "Get Stillgreen running in four steps, then look up every sg-local command: start and stop, workspaces, schedule, pause and stay online.",
 };
 
 export default function StartPage() {

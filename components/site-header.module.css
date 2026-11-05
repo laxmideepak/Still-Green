@@ -1,121 +1,131 @@
 .header {
   position: sticky;
   top: 0;
-  z-index: 40;
-  border-bottom: 1px solid transparent;
-  background: transparent;
-  transition:
-    transform 450ms var(--ease-out),
-    background-color 300ms ease,
-    border-color 300ms ease;
-  will-change: transform;
-}
-
-.header[data-scrolled="true"] {
-  border-bottom-color: var(--line);
-  background: color-mix(in srgb, var(--night) 94%, transparent);
-}
-
-.header[data-hidden="true"] {
-  transform: translate3d(0, -100%, 0);
+  z-index: var(--z-header);
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg) 85%, transparent);
+  -webkit-backdrop-filter: saturate(180%) blur(12px);
+  backdrop-filter: saturate(180%) blur(12px);
 }
 
 .inner {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 24px;
-  min-height: 72px;
+  gap: var(--space-10);
+  height: 64px;
 }
 
 .nav {
   display: flex;
   align-items: center;
-  gap: clamp(16px, 2.4vw, 30px);
+  gap: var(--space-1);
 }
 
 .navLink {
-  position: relative;
-  padding-block: 6px;
-  color: var(--muted);
-  font-size: 0.92rem;
-  font-weight: 500;
-  letter-spacing: -0.01em;
-  transition: color 150ms ease;
+  display: inline-flex;
+  align-items: center;
+  height: var(--control-sm);
+  padding: 0 10px;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: var(--font-size-base);
+  text-decoration: none;
+  transition:
+    background-color var(--duration-fast) var(--ease),
+    color var(--duration-fast) var(--ease);
 }
 
-.navLink::after {
-  content: "";
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  height: 1px;
-  background: var(--acid);
-  transform: scaleX(0);
-  transform-origin: 100% 50%;
-  transition: transform 400ms var(--ease-out);
+.navLink:hover {
+  background: var(--hover);
+  color: var(--text);
 }
 
-.navLink:hover,
 .navLink[aria-current="page"] {
-  color: var(--ink);
+  color: var(--text);
+  font-weight: var(--font-weight-medium);
 }
 
-.navLink:hover::after,
-.navLink[aria-current="page"]::after {
-  transform: scaleX(1);
-  transform-origin: 0 50%;
+.navLink:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .actions {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: var(--space-2);
+  margin-left: auto;
 }
 
-.source {
-  display: grid;
-  width: 38px;
-  height: 38px;
-  place-items: center;
-  border-radius: 50%;
-  color: var(--muted);
-  transition:
-    color 150ms ease,
-    background-color 150ms ease;
+/* ".actions" raises specificity above the Button's own display rule. */
+.actions .menuButton {
+  display: none;
 }
 
-.source:hover {
-  color: var(--ink);
-  background: color-mix(in srgb, var(--ink) 8%, transparent);
+/* Mobile menu panel */
+.panel {
+  display: none;
 }
 
-.cta {
-  min-height: 40px;
-}
-
-@media (max-width: 760px) {
-  .nav {
+@media (max-width: 767px) {
+  .nav,
+  .actions .github,
+  .actions .cta {
     display: none;
   }
 
-  .source {
+  .actions .menuButton {
+    display: inline-flex;
+    margin-right: -8px;
+  }
+
+  .panel {
+    display: block;
+    border-top: 1px solid var(--border);
+    background: var(--bg);
+  }
+
+  .panel[hidden] {
     display: none;
   }
 
-  .inner {
-    min-height: 64px;
+  .panelNav {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    padding: var(--space-3) 0 var(--space-4);
   }
 
-  .cta {
-    min-height: 38px;
-    padding-inline: 0.8rem;
+  .panelLink {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    height: 44px;
+    padding: 0 var(--space-2);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-size: var(--font-size-md);
+    font-weight: var(--font-weight-medium);
+    text-decoration: none;
   }
-}
 
-@media (max-width: 390px) {
-  .cta {
-    font-size: 0.8rem;
+  .panelLink svg {
+    width: 16px;
+    height: 16px;
+    color: var(--text-subtle);
+  }
+
+  .panelLink:hover,
+  .panelLink[aria-current="page"] {
+    background: var(--hover);
+  }
+
+  .panelLink:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring);
+  }
+
+  .panelCta {
+    margin-top: var(--space-3);
   }
 }
