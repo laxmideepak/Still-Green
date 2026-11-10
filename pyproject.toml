@@ -7,11 +7,12 @@ name = "slack-green-local"
 version = "0.1.0"
 description = "Personal, local Slack presence daemon (slack.green-style, self-hosted)"
 readme = "README.md"
+license = { text = "MIT" }
 requires-python = ">=3.11"
 dependencies = ["websockets>=14"]
 
 [project.urls]
-Homepage = "https://github.com/laxmideepak/slack"
+Homepage = "https://github.com/laxmideepak/Still-Green"
 
 [project.scripts]
 sg-local = "sg_local.cli:main"

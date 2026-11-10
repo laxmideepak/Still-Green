@@ -2,23 +2,35 @@ import Link from "next/link";
 import styles from "./brand.module.css";
 
 type BrandProps = {
-  inverted?: boolean;
+  /** Where the logo links. Default "/". Pass null for a plain, unlinked logo. */
+  href?: string | null;
+  /** Mark only, without the "Stillgreen" word. */
   compact?: boolean;
+  size?: "sm" | "md";
   className?: string;
 };
 
-export function Brand({ inverted = false, compact = false, className = "" }: BrandProps) {
+/** The Stillgreen mark and wordmark. */
+export function BrandMark({ className = "" }: { className?: string }) {
   return (
-    <Link
-      href="/"
-      className={`${styles.brand} ${inverted ? styles.inverted : ""} ${className}`}
-      aria-label="Stillgreen home"
-    >
-      <span className={styles.mark} aria-hidden="true">
-        <span className={styles.orbit} />
-        <span className={styles.dot} />
-      </span>
-      {!compact && <span className={styles.word}>stillgreen</span>}
+    <span className={`${styles.mark} ${className}`} aria-hidden="true">
+      <span className={styles.dot} />
+    </span>
+  );
+}
+
+export function Brand({ href = "/", compact = false, size = "md", className = "" }: BrandProps) {
+  const classes = `${styles.brand} ${size === "sm" ? styles.sm : ""} ${className}`;
+  const content = (
+    <>
+      <BrandMark />
+      {compact ? <span className="visually-hidden">Stillgreen</span> : <span className={styles.word}>Stillgreen</span>}
+    </>
+  );
+  if (href === null) return <span className={classes}>{content}</span>;
+  return (
+    <Link href={href} className={classes} aria-label={href === "/" ? "Stillgreen home" : undefined}>
+      {content}
     </Link>
   );
 }

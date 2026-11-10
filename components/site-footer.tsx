@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Brand } from "./brand";
-import { ArrowUpRight } from "./icons";
+import { GITHUB_URL, ISSUES_URL, README_URL } from "@/lib/site";
 import styles from "./site-footer.module.css";
 
 export function SiteFooter() {
@@ -9,38 +9,30 @@ export function SiteFooter() {
       <div className={`container ${styles.grid}`}>
         <div className={styles.identity}>
           <Brand />
-          <p>Presence on your schedule, running on your own machine.</p>
+          <p>Keeps your Slack status green on your schedule. Free, and it runs on your own computer or server.</p>
         </div>
-        <div className={styles.column}>
+        <nav className={styles.column} aria-label="Product">
           <p className={styles.heading}>Product</p>
-          <Link href="/dashboard">Dashboard</Link>
-          <Link href="/start">Local setup</Link>
-          <Link href="/setup">CLI setup</Link>
-        </div>
-        <div className={styles.column}>
+          <ul>
+            <li><Link href="/dashboard">Dashboard</Link></li>
+            <li><Link href="/setup">Setup guide</Link></li>
+            <li><Link href="/start">Quick start</Link></li>
+          </ul>
+        </nav>
+        <nav className={styles.column} aria-label="Project">
           <p className={styles.heading}>Project</p>
-          <a href="https://github.com/laxmideepak/slack" target="_blank" rel="noreferrer">
-            Source code
-            <ArrowUpRight width={13} height={13} />
-          </a>
-          <a href="https://github.com/laxmideepak/slack#readme" target="_blank" rel="noreferrer">
-            Documentation
-            <ArrowUpRight width={13} height={13} />
-          </a>
-          <a href="https://github.com/laxmideepak/slack/issues" target="_blank" rel="noreferrer">
-            Issues
-            <ArrowUpRight width={13} height={13} />
-          </a>
+          <ul>
+            <li><a href={GITHUB_URL} target="_blank" rel="noreferrer">GitHub</a></li>
+            <li><a href={README_URL} target="_blank" rel="noreferrer">Documentation</a></li>
+            <li><a href={ISSUES_URL} target="_blank" rel="noreferrer">Report a problem</a></li>
+          </ul>
+        </nav>
+      </div>
+      <div className="container">
+        <div className={styles.bottom}>
+          <p>Not made by or connected to Slack. Only use it on workspaces where you are allowed to.</p>
+          <p>Your Slack login stays on your own computer or server. It never goes to this website.</p>
         </div>
-      </div>
-      <div className={`container ${styles.wordmarkWrap}`} aria-hidden="true">
-        <p className={styles.wordmark} data-reveal>
-          stillgreen<span>.</span>
-        </p>
-      </div>
-      <div className={`container ${styles.bottom}`}>
-        <p>Not affiliated with Slack. Use only on workspaces you have permission to automate.</p>
-        <p>Built to run on your own machine.</p>
       </div>
     </footer>
   );

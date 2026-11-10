@@ -2,7 +2,7 @@
 # Set up Stillgreen on a fresh Debian or Ubuntu server (for example a free
 # Google Cloud e2-micro or Oracle Cloud VM), with HTTPS from Let's Encrypt.
 #
-#   git clone https://github.com/laxmideepak/slack.git && cd slack
+#   git clone https://github.com/laxmideepak/Still-Green.git && cd Still-Green
 #   sudo sh deploy/setup-vm.sh                 # uses <ip>.sslip.io as the name
 #   sudo sh deploy/setup-vm.sh my.domain.com   # or your own domain
 #

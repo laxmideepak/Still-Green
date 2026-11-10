@@ -157,9 +157,9 @@ describe("dashboard", () => {
     await connect(page);
 
     // Live dashboard with the workspace from the daemon.
-    await page.getByRole("heading", { name: "Connected Slack accounts" }).waitFor();
+    await page.getByRole("heading", { name: "Workspaces", exact: true }).waitFor();
     await page.getByText("E2E Workspace").first().waitFor();
-    await page.getByText("WebSocket connected").waitFor();
+    await page.getByText("Live connection to Slack", { exact: true }).waitFor();
 
     // Pause and resume one workspace.
     await page.getByRole("button", { name: "Pause", exact: true }).click();
@@ -170,16 +170,18 @@ describe("dashboard", () => {
     await waitFor(async () => !(await daemonState()).workspaces[0].paused, "workspace resumed");
 
     // Pause everything for an hour, then resume.
-    await page.getByRole("button", { name: "Pause all 1h" }).click();
+    await page.getByRole("button", { name: "Pause 1 h" }).click();
     await waitFor(async () => (await daemonState()).paused, "global pause");
     await page.getByRole("button", { name: "Resume all" }).click();
     await waitFor(async () => !(await daemonState()).paused, "global resume");
 
-    // Stay-online override.
-    await page.getByRole("button", { name: "30m", exact: true }).click();
-    await page.getByRole("button", { name: "Cancel override" }).waitFor();
+    // Keep me online for 30 minutes, then cancel it.
+    const keep = page.getByRole("region", { name: "Keep me online" });
+    await keep.getByRole("button", { name: "30 minutes", exact: true }).click();
+    await keep.getByRole("button", { name: /^Keep on for 30 min/ }).click();
+    await keep.getByRole("button", { name: "Cancel", exact: true }).waitFor();
     assert.equal((await daemonState()).stay_active, true);
-    await page.getByRole("button", { name: "Cancel override" }).click();
+    await keep.getByRole("button", { name: "Cancel", exact: true }).click();
     await waitFor(async () => !(await daemonState()).stay_active, "override cleared");
 
     // Switch to a schedule and save it.
@@ -195,9 +197,9 @@ describe("dashboard", () => {
     await page.reload();
     await page.getByText("E2E Workspace").first().waitFor();
 
-    // Disconnect (after the confirm prompt) goes back to the preview.
-    page.once("dialog", (prompt) => prompt.accept());
+    // Disconnect (after the confirm dialog) goes back to the preview.
     await page.getByRole("button", { name: "Disconnect" }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Disconnect" }).click();
     await page.getByText("Preview mode · sample data").waitFor();
 
     assert.deepEqual(problems, []);
