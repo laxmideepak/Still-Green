@@ -9,7 +9,7 @@ export function SiteFooter() {
       <div className={`container ${styles.grid}`}>
         <div className={styles.identity}>
           <Brand />
-          <p>Keeps your Slack status green on your schedule. Free, and it runs on your own computer or server.</p>
+          <p>Helps keep your Slack status active on your schedule. Free, and it runs on your own computer.</p>
         </div>
         <nav className={styles.column} aria-label="Product">
           <p className={styles.heading}>Product</p>
@@ -17,6 +17,7 @@ export function SiteFooter() {
             <li><Link href="/dashboard">Dashboard</Link></li>
             <li><Link href="/setup">Setup guide</Link></li>
             <li><Link href="/start">Quick start</Link></li>
+            <li><Link href="/privacy">Privacy</Link></li>
           </ul>
         </nav>
         <nav className={styles.column} aria-label="Project">
@@ -30,7 +31,7 @@ export function SiteFooter() {
       </div>
       <div className="container">
         <div className={styles.bottom}>
-          <p>Not made by or connected to Slack. Only use it on workspaces where you are allowed to.</p>
+          <p>Not made by or connected to Slack, and Slack does not officially support it. Only use it on workspaces where you are allowed to.</p>
           <p>Your Slack login stays on your own computer or server. It never goes to this website.</p>
         </div>
       </div>

@@ -214,6 +214,89 @@ class PresenceSessionTests(unittest.IsolatedAsyncioTestCase):
         self.assertGreaterEqual(calls, 2)
         self.assertGreaterEqual(session.reconnects, 0)
 
+    async def test_active_presence_is_verified_and_reported(self) -> None:
+        session = PresenceSession(workspace())
+        session.client.get_presence = lambda user_id="": {"ok": True, "presence": "active"}  # type: ignore[method-assign]
+        self.assertIsNone(session.snapshot()["presence_verified_at"])
+        self.assertEqual(session.snapshot()["auth"], "unknown")
+        with mock.patch("sg_local.slack.websockets.connect", mock.AsyncMock(return_value=self.fake)):
+            task = asyncio.create_task(session.run())
+            await asyncio.sleep(0.1)
+            live = session.snapshot()
+            await session.stop()
+            await asyncio.wait_for(task, timeout=3)
+        self.assertEqual(live["auth"], "ok")
+        self.assertEqual(live["presence"], "active")
+        self.assertIsNotNone(live["presence_verified_at"])
+        self.assertIsNotNone(session.slack_ok_at)
+        # After the connection closes the current presence is unknown, but the
+        # last confirmation is kept.
+        after = session.snapshot()
+        self.assertEqual(after["presence"], "unknown")
+        self.assertEqual(after["presence_verified_at"], live["presence_verified_at"])
+
+    async def test_away_is_not_verified(self) -> None:
+        session = PresenceSession(workspace())
+        session.client.get_presence = lambda user_id="": {"ok": True, "presence": "away", "manual_away": True}  # type: ignore[method-assign]
+        with mock.patch("sg_local.slack.websockets.connect", mock.AsyncMock(return_value=self.fake)):
+            task = asyncio.create_task(session.run())
+            await asyncio.sleep(0.08)
+            live = session.snapshot()
+            await session.stop()
+            await asyncio.wait_for(task, timeout=3)
+        self.assertEqual(live["presence"], "manual_away")
+        self.assertIsNone(live["presence_verified_at"])
+
+    async def test_errors_are_stored_with_a_catalogue_code(self) -> None:
+        session = PresenceSession(workspace())
+        session._reconnect_delay = 0.01
+
+        async def refused(*args, **kwargs):
+            raise ConnectionRefusedError(111, "Connection refused xoxc-secret-token")
+
+        with mock.patch("sg_local.slack.websockets.connect", side_effect=refused):
+            task = asyncio.create_task(session.run())
+            await asyncio.sleep(0.05)
+            await session.stop()
+            await asyncio.wait_for(task, timeout=3)
+        snap = session.snapshot()
+        self.assertEqual(snap["last_error_code"], "network_unreachable")
+        self.assertNotIn("xoxc-secret-token", snap["last_error"])
+        self.assertIsNotNone(session.slack_fail_at)
+        self.assertEqual(session.slack_fail_code, "network_unreachable")
+
+    async def test_rejected_tokens_set_auth_and_code(self) -> None:
+        session = PresenceSession(workspace())
+
+        def rejected(user_id: str = "") -> dict:
+            raise SlackAPIError("invalid_auth", token_invalid=True)
+
+        session.client.get_presence = rejected  # type: ignore[method-assign]
+        with mock.patch("sg_local.slack.websockets.connect", mock.AsyncMock(return_value=self.fake)):
+            await asyncio.wait_for(asyncio.create_task(session.run()), timeout=3)
+        snap = session.snapshot()
+        self.assertEqual(snap["auth"], "rejected")
+        self.assertEqual(snap["last_error_code"], "slack_auth_rejected")
+
+    async def test_a_good_answer_clears_an_old_problem(self) -> None:
+        session = PresenceSession(workspace())
+        answers = iter([SlackAPIError("Network timeout contacting Slack", cause=TimeoutError())])
+
+        def presence(user_id: str = "") -> dict:
+            for answer in answers:
+                raise answer
+            return {"ok": True, "presence": "active"}
+
+        session.client.get_presence = presence  # type: ignore[method-assign]
+        with mock.patch("sg_local.slack.websockets.connect", mock.AsyncMock(return_value=self.fake)):
+            task = asyncio.create_task(session.run())
+            await asyncio.sleep(0.15)
+            await session.stop()
+            await asyncio.wait_for(task, timeout=3)
+        self.assertIsNone(session.last_error)
+        self.assertIsNone(session.snapshot()["last_error_code"])
+        self.assertIsNotNone(session.presence_verified_at)
+
 
 if __name__ == "__main__":
     unittest.main()

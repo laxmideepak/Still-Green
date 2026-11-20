@@ -418,6 +418,22 @@ sideways instead of wrapping.
   `id="how"`.
 - `<SiteFooter />`: product and project links, and the "not made by Slack" note.
 
+### Health views (dashboard only)
+
+`components/dashboard-health.tsx` holds the three status signals
+(`StatusSignals`: "Stillgreen running", "Slack login valid", "Presence
+confirmed"), the "Check my setup" card, the setup checklist and the short
+honesty note. The control page has the same views in `sg_local/static/app.js`
+(`.signals`, `.checks`, `.setup-steps`, `.honesty` in `app.css`). Rules:
+
+- Say "Active" (and use green) only when Slack's own status check confirmed it
+  recently (`presenceConfirmed` in `lib/dashboard.ts`). A live connection alone
+  is "Connected · waiting for Slack to confirm" (info tone).
+- Show a problem as title, message and "What to do:" (`ProblemText`), from the
+  daemon's `last_error_info` or `errorInfo()` in `lib/bridge.ts`. Never show raw
+  exception text or token values.
+- Sample data is always marked "Demo" (violet, dashed status card).
+
 ## Plain-CSS classes (`ui.css`)
 
 Same look and names for the daemon page and the extension. Base styles (box

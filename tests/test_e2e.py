@@ -8,10 +8,13 @@ for a user, in a temporary config folder. Slack is replaced by
 from __future__ import annotations
 
 import json
+import os
+import subprocess
 import sys
 import unittest
 from pathlib import Path
 
+ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(Path(__file__).resolve().parent / "e2e"))
 
 from fake_slack import GOOD_XOXC, GOOD_XOXD, TEAM_ID, USER_ID  # noqa: E402
@@ -58,12 +61,34 @@ class EndToEndTest(unittest.TestCase):
         self.assertGreaterEqual(self.stack.slack.ws_connections, 1)
         self.assertEqual(state["connected_count"], 1)
 
+        # Slack's users.getPresence said "active": presence is now verified,
+        # separately from "connected" and from "the login works".
+        state = wait_for(
+            lambda: (lambda s: s if workspace(s)["presence_verified_at"] else None)(self.stack.state()),
+            "presence verified by users.getPresence",
+        )
+        item = workspace(state)
+        self.assertEqual(item["auth"], "ok")
+        self.assertEqual(item["presence"], "active")
+        self.assertIsNone(item["last_error_info"])
+        self.assertIn("users.getPresence", self.stack.slack.calls)
+        self.assertTrue(state["health"]["daemon"])
+        state = wait_for(
+            lambda: (lambda s: s if s["health"]["slack_reachable"] else None)(self.stack.state()),
+            "Slack reachable in health",
+        )
+        self.assertIsNotNone(state["health"]["checked_at"])
+        verified_at = item["presence_verified_at"]
+
         # Global pause disconnects; resume reconnects.
         status, _ = self.stack.call("POST", "/api/pause", {"duration": "1h"})
         self.assertEqual(status, 200)
         state = self.wait_status("paused")
         self.assertTrue(state["paused"])
         self.assertFalse(workspace(state)["connected"])
+        # While paused nothing is confirmed now, but the last confirmation stays.
+        self.assertEqual(workspace(state)["presence"], "unknown")
+        self.assertGreaterEqual(workspace(state)["presence_verified_at"], verified_at)
 
         # A stay-online override wins over the pause.
         status, _ = self.stack.call("POST", "/api/stay", {"duration": "30m"})
@@ -124,8 +149,9 @@ class EndToEndTest(unittest.TestCase):
         self.wait_status("active")
         connections = self.stack.slack.ws_connections
         self.stack.slack.presence, self.stack.slack.manual_away = "away", True
-        self.wait_status("manual_away")
+        state = self.wait_status("manual_away")
         self.assertEqual(self.stack.slack.ws_connections, connections)
+        self.assertEqual(workspace(state)["presence"], "manual_away")
 
     def test_auto_away_triggers_reconnect(self) -> None:
         self.add_workspace()
@@ -145,6 +171,8 @@ class EndToEndTest(unittest.TestCase):
         self.stack.slack.revoked = True
         state = self.wait_status("invalid_token")
         self.assertFalse(workspace(state)["connected"])
+        self.assertEqual(workspace(state)["auth"], "rejected")
+        self.assertEqual(workspace(state)["last_error_info"]["code"], "slack_auth_rejected")
 
         # Signing back in gives the same token pair; capturing it again must
         # bring the workspace back without restarting the daemon.
@@ -170,6 +198,7 @@ class EndToEndTest(unittest.TestCase):
         )
         self.assertEqual(status, 400)
         self.assertIn("rejected", body["error"])
+        self.assertEqual(body["error_code"], "slack_auth_rejected")
         self.assertNotIn("xoxc-wrong", json.dumps(body))
         self.assertEqual(self.stack.state()["workspaces"], [])
 
@@ -182,6 +211,42 @@ class EndToEndTest(unittest.TestCase):
             "daemon stopped",
         )
         self.assertFalse(workspace(state)["connected"])
+
+    def test_uninstall_yes_stops_the_daemon_and_deletes_the_data(self) -> None:
+        self.add_workspace()
+        self.wait_status("active")
+        self.assertTrue((self.stack.config_dir / "config.json").exists())
+        daemon = self.stack.daemon
+        env = {**self.stack.env, "SG_LOCAL_PYTHON": sys.executable}
+        env.pop("SG_LOCAL_BRIDGE_CODE", None)
+        # The real launcher, on the test's temporary folders only.
+        result = subprocess.run(
+            [str(ROOT / "sg-local"), "uninstall", "--yes"],
+            env=env,
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        output = result.stdout + result.stderr
+        self.assertEqual(result.returncode, 0, output)
+        self.assertIsNotNone(daemon.wait(timeout=15), "the daemon kept running")
+        self.assertFalse(self.stack.config_dir.exists(), output)
+        self.assertFalse(self.stack.state_dir.exists(), output)
+        self.assertIn(f"Deleted: {self.stack.config_dir}", output)
+        self.assertIn("chrome://extensions", output)
+        self.assertIn("Sign out of all other sessions", output)
+        # The program folder stays, and no secret is printed.
+        self.assertTrue((ROOT / "sg_local" / "cli.py").exists())
+        for secret in (GOOD_XOXC, GOOD_XOXD, CODE):
+            self.assertNotIn(secret, output)
+        # The control page now reports a stopped daemon and no workspaces.
+        state = wait_for(
+            lambda: (lambda s: s if not s["daemon"]["running"] else None)(self.stack.state()),
+            "daemon reported as stopped",
+        )
+        self.assertEqual(state["workspaces"], [])
+        self.assertFalse(state["health"]["daemon"])
 
     # -------------------------------------------------------------- security
 

@@ -65,11 +65,30 @@ def _iso_from_epoch(value: float | None) -> str | None:
     return datetime.fromtimestamp(value, timezone.utc).isoformat(timespec="seconds")
 
 
+def _previous_memory() -> dict[str, dict[str, Any]]:
+    """What the last run knew about each workspace, from the state file.
+
+    Keeps "presence last confirmed" across restarts.
+    """
+    previous = state.read_state() or {}
+    memory: dict[str, dict[str, Any]] = {}
+    for item in previous.get("workspaces") or []:
+        if not isinstance(item, dict) or not item.get("team_id"):
+            continue
+        memory[str(item["team_id"])] = {
+            "auth": item.get("auth") if item.get("auth") in {"ok", "rejected"} else "unknown",
+            "presence_verified_at": item.get("presence_verified_at"),
+        }
+    return memory
+
+
 class Daemon:
     def __init__(self) -> None:
         self.stop_event = asyncio.Event()
         self.reload_requested = False
         self.started_at = time.time()
+        # The program files this process runs; see state.build_id().
+        state.build_id()
         self.config: dict[str, Any] = config.default_config()
         self.config_mtime: int | None = None
         self.sessions: dict[str, dict[str, Any]] = {}
@@ -89,6 +108,12 @@ class Daemon:
         self.last_mode_log: str | None = None
         self.last_state_write = 0.0
         self._lock_fd: int | None = None
+        # team key -> {"auth", "presence_verified_at"}, kept after a session ends.
+        self.memory: dict[str, dict[str, Any]] = {}
+        # Whether Slack could be reached, from every session's last attempt.
+        self.slack_ok_at: float | None = None
+        self.slack_fail_at: float | None = None
+        self.slack_fail_code: str | None = None
 
     # ------------------------------------------------------------ lifecycle
 
@@ -318,9 +343,42 @@ class Daemon:
         if exc is not None:
             LOGGER.error("session task ended unexpectedly: %s", exc)
 
+    def _remember(self, key: str, session: Any) -> None:
+        """Keep what a session learned, so it outlives the session."""
+        known = self.memory.setdefault(key, {"auth": "unknown", "presence_verified_at": None})
+        auth = getattr(session, "auth", "unknown")
+        if auth in {"ok", "rejected"}:
+            known["auth"] = auth
+        verified = getattr(session, "presence_verified_at", None)
+        if verified:
+            known["presence_verified_at"] = _iso_from_epoch(verified)
+        ok_at = getattr(session, "slack_ok_at", None)
+        fail_at = getattr(session, "slack_fail_at", None)
+        if ok_at and (self.slack_ok_at is None or ok_at > self.slack_ok_at):
+            self.slack_ok_at = ok_at
+        if fail_at and (self.slack_fail_at is None or fail_at > self.slack_fail_at):
+            self.slack_fail_at = fail_at
+            self.slack_fail_code = getattr(session, "slack_fail_code", None)
+
+    def slack_health(self) -> dict[str, Any]:
+        """Could Slack be reached on the last try? From real traffic only."""
+        for key, entry in self.sessions.items():
+            self._remember(key, entry["session"])
+        ok_at, fail_at = self.slack_ok_at, self.slack_fail_at
+        if ok_at is None and fail_at is None:
+            return {"reachable": None, "checked_at": None, "code": None}
+        if fail_at is not None and (ok_at is None or fail_at > ok_at):
+            return {
+                "reachable": False,
+                "checked_at": _iso_from_epoch(fail_at),
+                "code": self.slack_fail_code,
+            }
+        return {"reachable": True, "checked_at": _iso_from_epoch(ok_at), "code": None}
+
     async def _collect_finished(self, key: str, entry: dict[str, Any]) -> None:
         task: asyncio.Task[Any] = entry["task"]
         session: PresenceSession = entry["session"]
+        self._remember(key, session)
         try:
             task.result()
         except asyncio.CancelledError:
@@ -335,6 +393,7 @@ class Daemon:
                 session.last_error or "Slack rejected the stored tokens",
                 entry["verified_at"],
             )
+            self.memory.setdefault(key, {"presence_verified_at": None})["auth"] = "rejected"
             LOGGER.error(
                 "tokens for %s were rejected; update them with 'sg-local add'", session.name
             )
@@ -350,6 +409,7 @@ class Daemon:
             return
         session: PresenceSession = entry["session"]
         task: asyncio.Task[Any] = entry["task"]
+        self._remember(key, session)
         LOGGER.info("stopping session for %s (%s)", session.name, reason)
         try:
             await session.stop()
@@ -358,7 +418,7 @@ class Daemon:
         if not task.done():
             try:
                 await asyncio.wait_for(task, timeout=8)
-            except TimeoutError:
+            except (asyncio.TimeoutError, TimeoutError):  # different before 3.11
                 task.cancel()
                 try:
                     await task
@@ -376,14 +436,23 @@ class Daemon:
                 continue
             key = config.workspace_key(workspace)
             valid, message = config.validate_workspace(workspace)
+            known = self.memory.get(key) or {}
             base: dict[str, Any] = {
                 "team_id": workspace.get("team_id"),
                 "name": workspace.get("name"),
                 "user_id": workspace.get("user_id"),
                 "paused": bool(workspace.get("paused")),
+                # Without a running session, Slack's current answer is unknown;
+                # the last confirmed time and the last login result are kept.
+                "auth": known.get("auth") or "unknown",
+                "presence": "unknown",
+                "presence_verified_at": known.get("presence_verified_at"),
+                "last_error_code": None,
             }
             entry = self.sessions.get(key)
             if entry:
+                self._remember(key, entry["session"])
+                known = self.memory.get(key) or {}
                 snapshot = entry["session"].snapshot()
                 snapshot.update(
                     {
@@ -391,6 +460,14 @@ class Daemon:
                         "reason": entry.get("reason", ""),
                     }
                 )
+                snapshot.setdefault("auth", known.get("auth") or "unknown")
+                if snapshot.get("auth") == "unknown" and known.get("auth") == "ok":
+                    # A fresh session has not heard from Slack yet.
+                    snapshot["auth"] = "ok"
+                snapshot.setdefault("presence", "unknown")
+                if not snapshot.get("presence_verified_at"):
+                    snapshot["presence_verified_at"] = known.get("presence_verified_at")
+                snapshot.setdefault("last_error_code", None)
                 result.append(snapshot)
             elif not valid:
                 base.update(
@@ -398,6 +475,7 @@ class Daemon:
                         "status": "invalid_config",
                         "connected": False,
                         "last_error": message,
+                        "last_error_code": "workspace_invalid",
                         "desired": False,
                         "reason": "invalid config",
                         "stats": {},
@@ -409,7 +487,9 @@ class Daemon:
                     {
                         "status": "invalid_token",
                         "connected": False,
+                        "auth": "rejected",
                         "last_error": self.invalid_tokens[key][1],
+                        "last_error_code": "slack_auth_rejected",
                         "desired": False,
                         "reason": "tokens rejected; run 'sg-local add'",
                         "stats": {},
@@ -448,6 +528,7 @@ class Daemon:
             "version": 1,
             "pid": os.getpid(),
             "running": True,
+            "build": state.build_id(),
             "started_at": _iso_from_epoch(self.started_at),
             "updated_at": config.now_iso(),
             "schedule": {
@@ -460,6 +541,7 @@ class Daemon:
             "stay_active": self.stay_active,
             "stay_until": self.stay_until,
             "workspaces": self._workspace_state(),
+            "slack": self.slack_health(),
         }
         try:
             state.write_state(payload)
@@ -470,6 +552,13 @@ class Daemon:
 
     async def run(self) -> int:
         loop = asyncio.get_running_loop()
+        # On Python 3.9 an asyncio.Event belongs to the event loop that was
+        # current when it was made, and __init__ runs before asyncio.run()
+        # starts this loop. Make it again here, keeping a stop that came early.
+        stop_requested = self.stop_event.is_set()
+        self.stop_event = asyncio.Event()
+        if stop_requested:
+            self.stop_event.set()
         for sig in (signal.SIGTERM, signal.SIGINT):
             try:
                 loop.add_signal_handler(sig, self.request_stop)
@@ -481,6 +570,7 @@ class Daemon:
             except (NotImplementedError, RuntimeError):
                 pass
 
+        self.memory = _previous_memory()
         state.write_pid(os.getpid())
         LOGGER.info("daemon started (pid %s)", os.getpid())
         self.load_config(initial=True)
@@ -500,7 +590,7 @@ class Daemon:
                     LOGGER.exception("could not write state: %s", exc)
                 try:
                     await asyncio.wait_for(self.stop_event.wait(), timeout=RECONCILE_INTERVAL)
-                except TimeoutError:
+                except (asyncio.TimeoutError, TimeoutError):  # different before 3.11
                     pass
         finally:
             LOGGER.info("daemon shutting down")
@@ -534,6 +624,7 @@ class Daemon:
             "stay_active": self.stay_active,
             "stay_until": self.stay_until,
             "workspaces": self._workspace_state(),
+            "slack": self.slack_health(),
         }
         try:
             state.write_state(final)

@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { SiteFooter } from "./site-footer";
 import { SiteHeader } from "./site-header";
-import { ArrowRight, Check, Clock, Github, Info, Laptop, Shield, Terminal } from "./icons";
+import { ArrowRight, Check, Clock, Github, Info, Laptop, Lock, Shield, Terminal } from "./icons";
 import { Badge, Banner, Button, CodeBlock, Kbd } from "./ui";
 import { DocsNav, type DocsNavItem } from "./setup/docs-nav";
 import { CLOUD_GUIDE_URL, GITHUB_URL, ISSUES_URL } from "@/lib/site";
@@ -17,7 +17,8 @@ const navItems: DocsNavItem[] = [
   { id: "start", label: "Start", number: "2" },
   { id: "add-slack", label: "Add your Slack", number: "3" },
   { id: "dashboard", label: "Connect the dashboard", number: "4" },
-  { id: "cloud", label: "Run it in the cloud", number: "5" },
+  { id: "cloud", label: "Cloud (advanced)", number: "5" },
+  { id: "remove", label: "Remove Stillgreen", icon: <Lock /> },
   { id: "troubleshooting", label: "Troubleshooting", icon: <Info /> },
 ];
 
@@ -69,13 +70,34 @@ const troubles: Array<{ problem: ReactNode; fix: ReactNode }> = [
   {
     problem: (
       <>
-        <code>No module named &apos;websockets&apos;</code>
+        <code>./sg-local</code> says Python is too old, or can&apos;t find Python
       </>
     ),
     fix: (
       <>
-        Install the one package Stillgreen needs:{" "}
-        <code className={docs.wrap}>python3 -m pip install --user websockets</code>
+        Stillgreen needs Python 3.9 or newer. On a Mac, run <code>python3 --version</code>; if macOS offers to install
+        the developer tools, click <strong>Install</strong>. Or install Python from{" "}
+        <Ext href="https://www.python.org/downloads/">python.org</Ext>, then run <code>./sg-local</code> again.
+      </>
+    ),
+  },
+  {
+    problem: "Stillgreen couldn't set itself up",
+    fix: (
+      <>
+        The first run downloads two small packages, so it needs the internet once. The full message is in{" "}
+        <code>.venv-setup.log</code> in the Stillgreen folder. Fix what it says, then run <code>./sg-local</code> again.
+      </>
+    ),
+  },
+  {
+    problem: "Could not make a secure connection to Slack (certificate)",
+    fix: (
+      <>
+        Your network may check secure traffic with its own certificate (common on work computers and VPNs). Run{" "}
+        <code>./sg-local doctor</code> to see where Stillgreen looks for certificates. With Python 3.10 or newer it
+        uses the same certificates as your Mac. Ask your IT team for the company certificate if needed. Stillgreen
+        never turns the certificate check off.
       </>
     ),
   },
@@ -157,10 +179,18 @@ const troubles: Array<{ problem: ReactNode; fix: ReactNode }> = [
     problem: "I go away when my laptop sleeps",
     fix: (
       <>
-        A sleeping computer can&apos;t keep the connection open. <a href="#cloud">Run Stillgreen in the cloud</a> to
-        stay green with the lid closed.
+        A sleeping computer can&apos;t keep the connection open. To keep it running with the lid closed, you can{" "}
+        <a href="#cloud">run Stillgreen in the cloud</a> (advanced).
       </>
     ),
+  },
+  {
+    problem: (
+      <>
+        The dashboard says <strong>Connected · waiting for Slack to confirm</strong>
+      </>
+    ),
+    fix: "Stillgreen has a live connection and asks Slack about once a minute. If it stays like this for more than a few minutes, Slack may not be counting the connection. Slack decides your final status.",
   },
   {
     problem: (
@@ -190,8 +220,8 @@ export function SetupGuide() {
             </p>
             <h1 className={docs.title}>Set up Stillgreen</h1>
             <p className={docs.lead}>
-              Stillgreen runs on your own computer or your own cloud server. This guide takes you from download to a
-              green dot in Slack.
+              Stillgreen runs on your own computer. This guide takes you from download to a working setup. Slack
+              decides your final status; the dashboard shows when Slack confirms it.
             </p>
             <ul className={docs.facts} aria-label="At a glance">
               <li>
@@ -204,7 +234,7 @@ export function SetupGuide() {
               </li>
               <li>
                 <Terminal />
-                Python 3.11 or newer
+                Python 3.9 or newer
               </li>
               <li>
                 <Shield />
@@ -232,7 +262,7 @@ export function SetupGuide() {
               id="install"
               number="1"
               title="Install"
-              lead="Download Stillgreen and the one Python package it needs."
+              lead="Download Stillgreen. It sets itself up the first time you run it."
             >
               <ul className={docs.checklist} aria-label="What you need">
                 <li>
@@ -241,7 +271,7 @@ export function SetupGuide() {
                 </li>
                 <li>
                   <Check />
-                  <span>Python 3.11 or newer</span>
+                  <span>Python 3.9 or newer. Macs already have it.</span>
                 </li>
                 <li>
                   <Check />
@@ -252,17 +282,23 @@ export function SetupGuide() {
                   <span>A Slack workspace you can sign in to</span>
                 </li>
               </ul>
-              <p>Check your Python version first:</p>
-              <Cmd code="python3 --version" />
-              <p>Then run these one at a time:</p>
+              <p>Run these one at a time:</p>
               <div className={docs.commands}>
                 <Cmd code={`git clone ${REPO_GIT}`} label="Copy the download command" />
                 <Cmd code="cd Still-Green" />
-                <Cmd code="python3 -m pip install --user websockets" />
+                <Cmd code="./sg-local --version" />
               </div>
+              <p>
+                The first run sets up a private Python environment in a <code>.venv</code> folder inside{" "}
+                <code>Still-Green</code>, with the exact package versions Stillgreen was tested with. It takes about a
+                minute and needs the internet once. Nothing is installed system-wide and you don&apos;t need{" "}
+                <code>pip</code> or <code>sudo</code>. After that, <code>./sg-local</code> starts at once.
+              </p>
               <p className={docs.small}>
-                Optional: run <code>./install.sh</code> so you can type <code>sg-local</code> from any folder. This
-                guide uses <code>./sg-local</code>, which works from inside the <code>Still-Green</code> folder.
+                On a new Mac, <code>git</code> or <code>python3</code> may first ask to install the developer tools.
+                Click <strong>Install</strong>, then run the command again. Stillgreen uses Python 3.10 or newer if you
+                have it, otherwise the Mac&apos;s own Python 3.9. Optional: run <code>./install.sh</code> so you can type{" "}
+                <code>sg-local</code> from any folder.
               </p>
             </Step>
 
@@ -291,6 +327,12 @@ export function SetupGuide() {
               title="Add your Slack"
               lead="Give Stillgreen your Slack login. The extension does it in one click."
             >
+              <Banner tone="info" title="What you are sharing">
+                The extension reads your Slack session token and the &ldquo;d&rdquo; cookie. Together they let
+                Stillgreen act as you in Slack, like being signed in. They go only to your own Stillgreen, never to this
+                website. The first time, the extension explains this and asks you to agree. Read the{" "}
+                <Link href="/privacy">privacy policy</Link>.
+              </Banner>
               <h3 className={docs.h3}>
                 With the Chrome extension <Badge tone="success">Recommended</Badge>
               </h3>
@@ -329,14 +371,16 @@ export function SetupGuide() {
                 </li>
                 <li>
                   <p>
-                    Click <strong>Capture from Slack</strong>.
+                    Click <strong>Capture from Slack</strong>. The first time, read what the extension shares and click{" "}
+                    <strong>I understand, continue</strong>.
                   </p>
                 </li>
               </ol>
               <p>
                 The extension sends your Slack login to your Stillgreen, which checks it with Slack. The workspace shows up
-                on the control page and turns <strong>Active</strong> within a few seconds. Signed in to more than one
-                workspace? They are all added at once.
+                on the control page within a few seconds. About a minute later, <strong>Presence confirmed</strong> turns
+                green when Slack&apos;s own status check says you are active. Signed in to more than one workspace? They
+                are all added at once.
               </p>
 
               <h3 className={docs.h3} id="tokens">
@@ -373,7 +417,8 @@ export function SetupGuide() {
               </ol>
               <Banner tone="warning" title="Treat these like a password">
                 Both values give full access to your Slack account. Never paste them into a website, chat, issue or
-                screenshot. Stillgreen keeps them only on your computer and sends them only to Slack.
+                screenshot. Stillgreen keeps them only on your computer and sends them only to Slack. To end them,
+                remove the workspace in Stillgreen, then in Slack use <strong>Sign out of all other sessions</strong>.
               </Banner>
             </Step>
 
@@ -407,17 +452,47 @@ export function SetupGuide() {
                 </Button>
               </div>
               <p>
-                That&apos;s it. Your status stays green while Stillgreen runs. On a laptop, it stops when the computer
-                sleeps. To stay green with the lid closed, <a href="#cloud">run it in the cloud</a>.
+                That&apos;s it. While Stillgreen runs, it keeps a connection open like the Slack web app, which helps
+                keep you active. The dashboard shows when Slack confirms it. On a laptop, Stillgreen stops when the
+                computer sleeps.
+              </p>
+              <p className={docs.small}>
+                Slack&apos;s official API can&apos;t force a person to be active, so this uses your web session. It may
+                stop working if Slack changes, and your workspace may not allow it.
+              </p>
+              <h3 className={docs.h3}>Check my setup</h3>
+              <p>
+                If something isn&apos;t working, click <strong>Check my setup</strong> on the dashboard or the control
+                page. It tests Python, your settings, the network, the certificate check, your clock and each
+                workspace, and tells you what to do. In a terminal, run:
+              </p>
+              <div className={docs.commands}>
+                <Cmd code="./sg-local doctor" />
+                <Cmd code="./sg-local doctor --report stillgreen-report.txt" label="Copy the report command" />
+              </div>
+              <p className={docs.small}>
+                The report has no passwords, Slack tokens, cookies or access code. Read it before you share it.
               </p>
             </Step>
 
             <Step
               id="cloud"
               number="5"
-              title="Run it in the cloud"
-              lead="Keep Stillgreen on a small server that never sleeps. Google Cloud's e2-micro is free within its limits."
+              title="Run it in the cloud (advanced)"
+              lead="Optional. Keep Stillgreen on a small server that never sleeps. Only do this if you are comfortable looking after a server."
             >
+              <Banner tone="warning" title="Before you choose the cloud">
+                <ul className={docs.bullets}>
+                  <li>Google Cloud needs a card on file, even for the free e2-micro server.</li>
+                  <li>The free tier has limits. Going past them, or keeping a static IP address, can cost money.</li>
+                  <li>The server&apos;s address can change when it stops and starts.</li>
+                  <li>You keep the server updated and secure.</li>
+                  <li>
+                    Your Slack session lives on that server. If someone breaks into it, they can act as you in Slack.
+                    That is more risk than keeping it on your own computer.
+                  </li>
+                </ul>
+              </Banner>
               <p>
                 Stillgreen keeps one connection to Slack open all the time. This website can show the dashboard, but it
                 can&apos;t hold that connection, so Stillgreen needs an always-on server. Google Cloud asks for a card
@@ -512,6 +587,42 @@ export function SetupGuide() {
               </p>
             </Step>
 
+            <section id="remove" className={docs.section} aria-labelledby="remove-title">
+              <div className={docs.sectionHead}>
+                <span className={docs.stepNumber} aria-hidden="true">
+                  <Lock />
+                </span>
+                <h2 id="remove-title" className={docs.h2}>
+                  Remove Stillgreen
+                </h2>
+              </div>
+              <p className={docs.sectionLead}>Stop it, delete your saved Slack logins, and end the Slack sessions.</p>
+              <div className={`${docs.prose} ${styles.stepBody}`}>
+                <ol className={docs.list}>
+                  <li>
+                    <p>In the Stillgreen folder, run this. It stops Stillgreen and deletes its settings, logs and saved Slack logins. It asks first.</p>
+                    <Cmd code="./sg-local uninstall" />
+                  </li>
+                  <li>
+                    <p>
+                      In Slack, open your profile, then <strong>Settings</strong> (or your account page) and click{" "}
+                      <strong>Sign out of all other sessions</strong>. This ends the session Stillgreen used.
+                    </p>
+                  </li>
+                  <li>
+                    <p>
+                      In Chrome, open <code>chrome://extensions</code> and click <strong>Remove</strong> on Stillgreen.
+                      Then delete the <code>Still-Green</code> folder.
+                    </p>
+                  </li>
+                </ol>
+                <p className={docs.small}>
+                  On a cloud server, run <code>sudo docker compose down -v</code> in the folder, then delete the server.
+                  More in the <Link href="/privacy">privacy policy</Link>.
+                </p>
+              </div>
+            </section>
+
             <section id="troubleshooting" className={docs.section} aria-labelledby="troubleshooting-title">
               <div className={docs.sectionHead}>
                 <span className={docs.stepNumber} aria-hidden="true">
@@ -532,13 +643,18 @@ export function SetupGuide() {
                   ))}
                 </dl>
                 <h3 className={docs.h3}>Anything else</h3>
-                <p>Check the setup, then read the log:</p>
+                <p>
+                  Click <strong>Check my setup</strong> on the dashboard, or check the setup in a terminal and read the
+                  log:
+                </p>
                 <div className={docs.commands}>
                   <Cmd code="./sg-local doctor --check-tokens" />
                   <Cmd code="./sg-local logs -f" />
                 </div>
                 <p>
-                  Still stuck? <Ext href={ISSUES_URL}>Report a problem on GitHub</Ext>. Never include your tokens.
+                  Still stuck? <Ext href={ISSUES_URL}>Report a problem on GitHub</Ext> and attach the report from{" "}
+                  <strong>Download report</strong> (or <code>./sg-local doctor --report stillgreen-report.txt</code>).
+                  It leaves out your tokens and access code, but read it first. Never paste tokens.
                 </p>
               </div>
             </section>

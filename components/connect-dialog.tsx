@@ -7,13 +7,16 @@ import { Banner, Button, Dialog, Field, Input } from "./ui";
 import {
   DEFAULT_DAEMON_URL,
   connectBridge,
+  errorInfo,
   loadBridge,
   normalizeCode,
   normalizeUrl,
   saveBridge,
   type BridgeConfig,
   type DaemonState,
+  type ErrorInfo,
 } from "@/lib/bridge";
+import { ProblemBody } from "./dashboard-health";
 import styles from "./connect-dialog.module.css";
 
 type Props = {
@@ -30,7 +33,7 @@ export function ConnectDialog({ open, onClose, onConnected, initialUrl = "", rea
   const [url, setUrl] = useState(initialUrl || DEFAULT_DAEMON_URL);
   const [code, setCode] = useState("");
   const [codeError, setCodeError] = useState("");
-  const [error, setError] = useState("");
+  const [error, setError] = useState<ErrorInfo | null>(null);
   const [busy, setBusy] = useState(false);
 
   // Fill in what this browser already knows each time the dialog opens, so a
@@ -41,13 +44,13 @@ export function ConnectDialog({ open, onClose, onConnected, initialUrl = "", rea
     setUrl(initialUrl || saved?.url || DEFAULT_DAEMON_URL);
     setCode(reason === "code" ? "" : saved?.code || "");
     setCodeError("");
-    setError("");
+    setError(null);
     setBusy(false);
   }, [open, initialUrl, reason]);
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setError("");
+    setError(null);
     setCodeError("");
     const cleanUrl = normalizeUrl(url) || DEFAULT_DAEMON_URL;
     const cleanCode = normalizeCode(code);
@@ -65,11 +68,11 @@ export function ConnectDialog({ open, onClose, onConnected, initialUrl = "", rea
       onConnected(config, state);
       onClose();
     } catch (caught) {
-      const message = caught instanceof Error ? caught.message : "Could not connect.";
-      if (/access code was not accepted/i.test(message)) {
+      const info = errorInfo(caught);
+      if (info.code === "access_code_wrong") {
         setCodeError("That access code was not accepted. Copy it again from your control page.");
       } else {
-        setError(message);
+        setError(info);
       }
     } finally {
       setBusy(false);
@@ -143,14 +146,18 @@ export function ConnectDialog({ open, onClose, onConnected, initialUrl = "", rea
           />
         </Field>
         {error && (
-          <Banner tone="danger" title="Couldn't connect">
-            {error}
+          <Banner tone="danger" title={error.title}>
+            <ProblemBody info={error} />
           </Banner>
         )}
         <p className={styles.note}>
           <Lock aria-hidden="true" />
           <span>
-            Your Slack login stays on your Stillgreen. This website never sees it. Not set up yet?{" "}
+            Your Slack login stays on your Stillgreen. This website never sees it (
+            <Link href="/privacy" className={styles.link}>
+              privacy
+            </Link>
+            ). Not set up yet?{" "}
             <Link href="/setup" className={styles.link}>
               Read the setup guide
             </Link>

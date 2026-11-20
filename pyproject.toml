@@ -8,8 +8,14 @@ version = "0.1.0"
 description = "Personal, local Slack presence daemon (slack.green-style, self-hosted)"
 readme = "README.md"
 license = { text = "MIT" }
-requires-python = ">=3.11"
-dependencies = ["websockets>=14"]
+requires-python = ">=3.9"
+dependencies = [
+    "websockets>=14",
+    # Use the operating system's certificates (macOS Keychain, Windows store,
+    # Linux system bundle). Needs Python 3.10+; sg_local/tls.py falls back
+    # without it.
+    "truststore>=0.10; python_version >= '3.10'",
+]
 
 [project.urls]
 Homepage = "https://github.com/laxmideepak/Still-Green"

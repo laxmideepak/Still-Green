@@ -16,9 +16,11 @@ ENV PYTHONUNBUFFERED=1 \
     SG_LOCAL_RUN_AS=stillgreen
 
 WORKDIR /app
-COPY pyproject.toml README.md ./
+COPY pyproject.toml README.md requirements.lock ./
 COPY sg_local ./sg_local
-RUN pip install . \
+# Exact, hash-checked dependency versions first; then Stillgreen itself.
+RUN pip install --require-hashes -r requirements.lock \
+    && pip install --no-deps . \
     && useradd --create-home --uid 10001 stillgreen \
     && mkdir -p /data \
     && chown stillgreen /data

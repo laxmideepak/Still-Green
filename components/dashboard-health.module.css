@@ -1,0 +1,349 @@
+/* Status signals, Check my setup and the setup checklist. Tokens only (docs/design-system.md). */
+
+/* ---------- Signals (inside the status card) ---------- */
+.signals {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-top: 1px solid var(--border);
+}
+
+.signal {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-6);
+  border-right: 1px solid var(--border);
+}
+
+.signal:last-child {
+  border-right: 0;
+}
+
+.signalIcon {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--surface-2);
+  color: var(--text-subtle);
+}
+
+.signalIcon svg {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+}
+
+.signalIcon i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.signalIcon[data-tone="pass"] {
+  border-color: var(--success-border);
+  background: var(--success-soft);
+  color: var(--success-text);
+}
+
+.signalIcon[data-tone="warn"] {
+  border-color: var(--warning-border);
+  background: var(--warning-soft);
+  color: var(--warning-text);
+}
+
+.signalIcon[data-tone="fail"] {
+  border-color: var(--danger-border);
+  background: var(--danger-soft);
+  color: var(--danger-text);
+}
+
+.signalText {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.signalLabel {
+  color: var(--text-subtle);
+  font-size: var(--font-size-xs);
+  line-height: var(--line-height-xs);
+}
+
+.signalValue {
+  color: var(--text);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--line-height-base);
+  font-variant-numeric: tabular-nums;
+}
+
+.signal[data-tone="fail"] .signalValue {
+  color: var(--danger-text);
+}
+
+.signalDetail {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  line-height: var(--line-height-xs);
+}
+
+/* ---------- Problem text ---------- */
+.problem {
+  display: flex;
+  gap: var(--space-2);
+  color: var(--danger-text);
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-sm);
+}
+
+.problem > svg {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  flex-shrink: 0;
+  margin-top: 3px;
+}
+
+.problemTitle {
+  font-weight: var(--font-weight-medium);
+}
+
+.problemMessage,
+.problemAction {
+  color: var(--text-muted);
+}
+
+.problemNext {
+  color: var(--text);
+  font-weight: var(--font-weight-medium);
+}
+
+/* ---------- Check my setup ---------- */
+.diagError {
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--border);
+}
+
+.checks {
+  list-style: none;
+}
+
+.check {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-5);
+  border-bottom: 1px solid var(--border);
+}
+
+.check:last-child {
+  border-bottom: 0;
+}
+
+.checkText {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-sm);
+}
+
+.checkLabel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text);
+  font-weight: var(--font-weight-medium);
+}
+
+.checkBadge {
+  font-weight: var(--font-weight-medium);
+}
+
+.checkDetail {
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.checkAction {
+  color: var(--text-muted);
+}
+
+.muted {
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-sm);
+}
+
+.diagFoot {
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.privacyNote {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 220px;
+  gap: var(--space-2);
+}
+
+.privacyNote svg {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  flex-shrink: 0;
+  margin-top: 3px;
+  color: var(--accent);
+}
+
+.diagActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* ---------- Setup checklist ---------- */
+.checklist {
+  border-color: var(--info-border);
+}
+
+.steps {
+  list-style: none;
+}
+
+.step {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-5);
+  border-bottom: 1px solid var(--border);
+}
+
+.step:last-child {
+  border-bottom: 0;
+}
+
+.stepIcon {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  place-items: center;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+}
+
+.stepIcon svg {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+}
+
+.stepIcon[data-status="done"] {
+  border-color: var(--success-border);
+  background: var(--success-soft);
+  color: var(--success-text);
+}
+
+.stepIcon[data-status="problem"] {
+  border-color: var(--danger-border);
+  background: var(--danger-soft);
+  color: var(--danger-text);
+}
+
+.stepIcon[data-status="waiting"] {
+  border-color: var(--info-border);
+  background: var(--info-soft);
+  color: var(--info-text);
+}
+
+.stepText {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.stepTitle {
+  color: var(--text);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--line-height-base);
+}
+
+.step[data-status="done"] .stepTitle {
+  color: var(--text-muted);
+}
+
+.stepDetail {
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-sm);
+}
+
+.stepState {
+  flex-shrink: 0;
+  color: var(--text-subtle);
+  font-size: var(--font-size-xs);
+}
+
+.stepState[data-status="problem"] {
+  color: var(--danger-text);
+}
+
+/* ---------- Honesty note ---------- */
+.honesty {
+  display: flex;
+  gap: var(--space-2);
+  color: var(--text-subtle);
+  font-size: var(--font-size-xs);
+  line-height: var(--line-height-xs);
+}
+
+.honesty svg {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+@media (max-width: 767px) {
+  .signals {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .signal {
+    padding: var(--space-3) var(--space-4);
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .signal:last-child {
+    border-bottom: 0;
+  }
+
+  .step {
+    flex-wrap: wrap;
+    padding: var(--space-3) var(--space-4);
+  }
+
+  .step > a,
+  .step > button {
+    margin-left: 40px;
+  }
+
+  .check {
+    padding: var(--space-3) var(--space-4);
+  }
+}

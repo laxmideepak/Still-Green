@@ -62,6 +62,17 @@
   background: var(--warning);
 }
 
+/* Preview: sample data must never look like a live, connected Stillgreen. */
+.hostPill[data-tone="demo"] {
+  border-color: var(--violet-border);
+  background: var(--violet-soft);
+  color: var(--violet-text);
+}
+
+.hostPill[data-tone="demo"] .hostDot {
+  background: var(--violet);
+}
+
 .hostName {
   overflow: hidden;
   color: var(--text);
@@ -190,6 +201,24 @@
     var(--surface);
 }
 
+.status[data-preview] {
+  border-style: dashed;
+  border-color: var(--violet-border);
+  background: var(--surface);
+}
+
+.demoStrip {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-6);
+  border-bottom: 1px dashed var(--violet-border);
+  background: var(--violet-soft);
+  color: var(--violet-text);
+  font-size: var(--font-size-xs);
+  line-height: var(--line-height-xs);
+}
+
 .statusMain {
   display: flex;
   align-items: center;
@@ -243,6 +272,15 @@
 
 .pulse[data-tone="danger"] i {
   background: var(--danger);
+}
+
+.pulse[data-tone="info"] {
+  border-color: var(--info-border);
+  background: var(--info-soft);
+}
+
+.pulse[data-tone="info"] i {
+  background: var(--info);
 }
 
 @keyframes breathe {
@@ -462,6 +500,12 @@
   height: 3px;
   border-radius: 50%;
   background: var(--border-strong);
+}
+
+.wsProblem {
+  margin-top: var(--space-2);
+  font-size: var(--font-size-xs);
+  line-height: var(--line-height-xs);
 }
 
 .wsError {
@@ -766,6 +810,27 @@
   font-size: var(--font-size-xs);
 }
 
+.facts dd :global(.mono) {
+  font-size: var(--font-size-xs);
+}
+
+/* A short plain sentence under a fact, e.g. how to turn on start at login. */
+.factNote {
+  display: block;
+  max-width: 34ch;
+  margin-top: 2px;
+  margin-left: auto;
+  color: var(--text-subtle);
+  font-size: var(--font-size-xs);
+  line-height: var(--line-height-xs);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.factNote code {
+  color: var(--text);
+}
+
 .codeWrap {
   display: flex;
   flex-direction: column;
@@ -890,6 +955,11 @@
 }
 
 /* ---------- Footer ---------- */
+.honesty {
+  margin-top: var(--space-6);
+  max-width: 72ch;
+}
+
 .footer {
   display: flex;
   flex-wrap: wrap;

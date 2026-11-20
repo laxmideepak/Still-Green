@@ -28,18 +28,19 @@ import os
 import re
 import secrets
 import socket
+import sys
 import threading
 import time
 from collections import deque
-from datetime import datetime
+from datetime import datetime, timezone
 from functools import lru_cache
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib import resources
 from typing import Any
-from urllib.parse import unquote, urlparse, urlsplit
+from urllib.parse import parse_qs, unquote, urlparse, urlsplit
 
-from . import __version__, config, schedule, state
+from . import __version__, config, diagnostics, errors, launchd, schedule, state
 from .slack import SlackAPIError, SlackClient, redact
 
 BRIDGE_PATH = config.CONFIG_DIR / "bridge.json"
@@ -248,11 +249,13 @@ def _safe_workspace(
 ) -> dict[str, Any]:
     live = live or {}
     paused = bool(workspace.get("paused"))
+    last_error_code = None
     if live:
         status = str(live.get("status") or "starting")
         connected = bool(live.get("connected"))
         reason = str(live.get("reason") or "")
         last_error = live.get("last_error")
+        last_error_code = live.get("last_error_code")
         stats = live.get("stats") or {}
     elif not daemon_running:
         status = "paused" if paused else "daemon_stopped"
@@ -266,6 +269,24 @@ def _safe_workspace(
         reason = "connecting to Slack"
         last_error = None
         stats = {}
+    # Three separate questions: is Slack accepting the login (auth), what
+    # does Slack show right now (presence), and when did Slack last confirm
+    # "active" (presence_verified_at). Only a running daemon knows the first
+    # two; a rejected login stays rejected until it is captured again.
+    auth = live.get("auth") if live.get("auth") in {"ok", "rejected"} else "unknown"
+    if status == "invalid_token":
+        auth = "rejected"
+    presence = live.get("presence") if live.get("presence") in PRESENCE_VALUES else "unknown"
+    if not daemon_running:
+        auth = "rejected" if auth == "rejected" else "unknown"
+        presence = "unknown"
+    if not connected:
+        presence = "unknown"
+    info = None
+    if last_error:
+        if last_error_code not in errors.CATALOGUE:
+            last_error_code = "workspace_invalid" if status == "invalid_config" else errors.classify_text(str(last_error))
+        info = errors.entry(str(last_error_code))
     return {
         "team_id": str(workspace.get("team_id") or ""),
         "name": str(workspace.get("name") or workspace.get("team_id") or "Workspace"),
@@ -276,8 +297,76 @@ def _safe_workspace(
         "reason": reason,
         "last_presence": live.get("last_presence"),
         "last_error": redact(str(last_error)) if last_error else None,
+        "last_error_info": info,
+        "auth": auth,
+        "presence": presence,
+        "presence_verified_at": live.get("presence_verified_at") or None,
         "stats": stats if isinstance(stats, dict) else {},
         "added_at": workspace.get("added_at"),
+    }
+
+
+PRESENCE_VALUES = frozenset({"active", "away", "manual_away", "unknown"})
+
+
+def _moment(value: Any) -> datetime | None:
+    try:
+        parsed = config.parse_iso(str(value))
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
+def build_health(pid: int | None, runtime: dict[str, Any] | None) -> dict[str, Any]:
+    """Is the daemon running, and could Slack be reached on the last try?
+
+    Uses the daemon's own traffic to Slack and the last diagnostics run,
+    whichever is newer. Never contacts Slack itself.
+    """
+    candidates = []
+    slack = (runtime or {}).get("slack")
+    if isinstance(slack, dict) and isinstance(slack.get("reachable"), bool):
+        candidates.append(slack)
+    cached = diagnostics.load_network_result()
+    if cached:
+        candidates.append(cached)
+    dated = [(item, _moment(item.get("checked_at"))) for item in candidates]
+    dated = [(item, moment) for item, moment in dated if moment is not None]
+    latest = max(dated, key=lambda pair: pair[1])[0] if dated else None
+    return {
+        "daemon": bool(pid),
+        "slack_reachable": latest["reachable"] if latest else None,
+        "checked_at": latest.get("checked_at") if latest else None,
+        "slack_error_code": (latest.get("code") or None) if latest and not latest["reachable"] else None,
+    }
+
+
+def autostart_status() -> dict[str, Any]:
+    """Does Stillgreen start by itself when the person logs in?
+
+    Only macOS has a login item today (``./sg-local install-launchd``). On a
+    server the container's restart policy starts it again instead.
+    """
+    if sys.platform == "darwin":
+        enabled = launchd.installed()
+        return {
+            "supported": True,
+            "enabled": enabled,
+            "command": "./sg-local uninstall-launchd" if enabled else "./sg-local install-launchd",
+            "note": (
+                "Stillgreen starts by itself when you log in to this Mac."
+                if enabled
+                else "Stillgreen does not start by itself when you log in. To turn that on, run this on the Mac:"
+            ),
+        }
+    return {
+        "supported": False,
+        "enabled": None,
+        "command": None,
+        "note": (
+            "Only built in on macOS. On a server, Docker starts Stillgreen again by itself. "
+            "Elsewhere, run ./sg-local start after you log in."
+        ),
     }
 
 
@@ -310,15 +399,15 @@ _SUMMARIES: list[tuple[re.Pattern[str], Any]] = [
     (re.compile(r"^presence is active", re.I), "Slack shows you as active"),
     (re.compile(r"^presence is manually away", re.I), "You set yourself away, so it was left alone"),
     (re.compile(r"^presence is (\S+); reconnecting", re.I), "Slack showed you as away, so Stillgreen reconnected"),
-    (re.compile(r"^reconnecting to reset presence", re.I), "Reconnecting to turn you green again"),
+    (re.compile(r"^reconnecting to reset presence", re.I), "Reconnecting so Slack can show you as active"),
     (re.compile(r"^slack asked the client to reconnect", re.I), "Slack asked for a fresh connection"),
     (re.compile(r"^websocket closed", re.I), "The connection to Slack closed. Reconnecting"),
     (re.compile(r"^websocket connection failed", re.I), "Couldn't connect to Slack. Trying again"),
     (re.compile(r"^connection failed; retrying in (\d+)s", re.I), lambda wait: f"Couldn't connect to Slack. Trying again in {wait} s"),
     (re.compile(r"^connection lasted \S+; retrying in (\d+)s", re.I), lambda wait: f"Connection dropped. Trying again in {wait} s"),
-    (re.compile(r"^starting presence session", re.I), "Started keeping you green"),
+    (re.compile(r"^starting presence session", re.I), "Opened the Slack connection"),
     (re.compile(r"^presence session stopped \((.+)\)", re.I),
-     lambda why: "Stopped keeping you green" if why.lower() == "stopped" else f"Stopped keeping you green ({why.replace('_', ' ')})"),
+     lambda why: "Closed the Slack connection" if why.lower() == "stopped" else f"Closed the Slack connection ({why.replace('_', ' ')})"),
     (re.compile(r"^starting session for (.+)", re.I), lambda name: f"Starting {name}"),
     (re.compile(r"^stopping session for (.+?) \((.+)\)", re.I), lambda name, why: f"Stopped {name} ({why})"),
     (re.compile(r"^stopping \d+ session", re.I), "Stopping all workspaces"),
@@ -448,9 +537,14 @@ def build_state() -> dict[str, Any]:
             "started_at": (runtime or {}).get("started_at"),
             "updated_at": (runtime or {}).get("updated_at"),
             "stopped_at": (runtime or {}).get("stopped_at"),
+            # The daemon runs older program files than the ones on disk.
+            "update_pending": bool(pid) and state.update_pending(runtime),
         },
         "schedule": {
             **{key: current_schedule.get(key) for key in ("mode", "active_days", "start_time", "end_time", "timezone")},
+            # The person picked or confirmed their hours at least once (a
+            # scheduled config from before this field counts as chosen).
+            "saved": bool(current_schedule.get("saved_at")) or current_schedule.get("mode") == "scheduled",
             "summary": summary,
             "active": active,
             "next_change": boundary.isoformat(timespec="seconds") if boundary else None,
@@ -459,6 +553,8 @@ def build_state() -> dict[str, Any]:
         "pause_until": (pause or {}).get("until"),
         "stay_active": stay is not None,
         "stay_until": (stay or {}).get("until"),
+        "health": build_health(pid, runtime),
+        "autostart": autostart_status(),
         "workspaces": workspaces,
         "connected_count": active_workspaces,
         "activity": _activity(),
@@ -487,6 +583,7 @@ def update_schedule(payload: dict[str, Any]) -> dict[str, Any]:
                 "timezone": payload.get("timezone") or current.get("timezone") or "local",
             }
             schedule.resolve_timezone(updated["timezone"])
+            updated["saved_at"] = config.now_iso()
         else:
             updated = schedule.make_schedule(
                 payload.get("active_days"),
@@ -494,6 +591,7 @@ def update_schedule(payload: dict[str, Any]) -> dict[str, Any]:
                 payload.get("end_time") or "17:00",
                 payload.get("timezone") or "local",
             )
+            updated["saved_at"] = config.now_iso()
         cfg["schedule"] = updated
 
     config.update_config(change)
@@ -567,10 +665,16 @@ def verify_tokens(xoxc: str, xoxd: str) -> dict[str, Any]:
         return SlackClient(xoxc, xoxd).auth_test()
     except SlackAPIError as exc:
         if exc.token_invalid:
-            raise config.ConfigError("Slack rejected these tokens; capture both values again") from None
-        raise config.ConfigError(f"could not verify the tokens: {redact(exc.error, xoxc, xoxd)}") from None
+            raise config.ConfigError(
+                "Slack rejected these tokens; capture both values again", code="slack_auth_rejected"
+            ) from None
+        info = errors.explain(exc)
+        raise config.ConfigError(errors.summary(info), code=info["code"]) from None
     except Exception as exc:
-        raise config.ConfigError(redact(f"could not reach Slack: {exc}", xoxc, xoxd)) from None
+        # The words come from the error catalogue, never from the exception,
+        # so no token can reach the message.
+        info = errors.explain(exc)
+        raise config.ConfigError(errors.summary(info), code=info["code"]) from None
 
 
 def add_workspace(payload: dict[str, Any]) -> dict[str, Any]:
@@ -631,8 +735,28 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def _error(self, status: int, message: str) -> None:
-        self._json({"ok": False, "error": redact(message)}, status)
+    def _error(self, status: int, message: str, code: str = "unknown", **extra: Any) -> None:
+        # "error" keeps the short text older pages show; "error_code" and
+        # "error_info" carry the plain-English catalogue entry (sg_local.errors).
+        info = errors.entry(code)
+        if code == "invalid_input":
+            info = {**info, "message": redact(message)}
+        payload = {"ok": False, "error": redact(message), "error_code": info["code"], "error_info": info}
+        self._json(payload, status, **extra)
+
+    def _text(self, body: str, filename: str) -> None:
+        raw = body.encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.send_header("Content-Length", str(len(raw)))
+        self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self._cors()
+        if self.headers.get("Origin"):
+            self.send_header("Access-Control-Expose-Headers", "Content-Disposition")
+        self.end_headers()
+        self.wfile.write(raw)
 
     def _static(self, name: str, content_type: str, *, page: bool = False, body: str | None = None) -> None:
         # No CORS headers here: the control page holds the access code and must
@@ -695,7 +819,7 @@ class Handler(BaseHTTPRequestHandler):
     def _host_ok(self) -> bool:
         if host_allowed(self.headers.get("Host"), self.server.server_address[0]):
             return True
-        self._error(HTTPStatus.MISDIRECTED_REQUEST, "unknown host name")
+        self._error(HTTPStatus.MISDIRECTED_REQUEST, "unknown host name", "host_not_allowed")
         return False
 
     def _guard(self) -> bool:
@@ -705,19 +829,20 @@ class Handler(BaseHTTPRequestHandler):
         if not self._same_origin() and not origin_allowed(self.headers.get("Origin")):
             # Readable by that origin so the dashboard can explain the fix;
             # the response carries no data.
-            self._json(
-                {"ok": False, "error": "origin is not allowed; add it to SG_LOCAL_WEB_ORIGIN on the daemon"},
+            self._error(
                 HTTPStatus.FORBIDDEN,
+                "origin is not allowed; add it to SG_LOCAL_WEB_ORIGIN on the daemon",
+                "origin_not_allowed",
                 any_origin=True,
             )
             return False
         client = client_key(self.client_address[0], self.headers)
         if THROTTLE.blocked(client):
-            self._error(HTTPStatus.TOO_MANY_REQUESTS, "too many wrong access codes; wait a minute")
+            self._error(HTTPStatus.TOO_MANY_REQUESTS, "too many wrong access codes; wait a minute", "too_many_attempts")
             return False
         if not self._authorized():
             THROTTLE.fail(client)
-            self._error(HTTPStatus.UNAUTHORIZED, "access code is required")
+            self._error(HTTPStatus.UNAUTHORIZED, "access code is required", "access_code_wrong")
             return False
         return True
 
@@ -725,9 +850,11 @@ class Handler(BaseHTTPRequestHandler):
         try:
             self._json(action())
         except config.ConfigError as exc:
-            self._error(HTTPStatus.BAD_REQUEST, str(exc))
+            self._error(HTTPStatus.BAD_REQUEST, str(exc), errors.explain(exc)["code"])
         except Exception as exc:
-            self._error(HTTPStatus.INTERNAL_SERVER_ERROR, str(exc))
+            # A raw exception means little to a person; send the catalogue's words.
+            info = errors.explain(exc)
+            self._error(HTTPStatus.INTERNAL_SERVER_ERROR, errors.summary(info), info["code"])
 
     # -------------------------------------------------------------------- GET
 
@@ -772,8 +899,30 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/api/state":
             if self._guard():
                 self._run(build_state)
+        elif path == "/api/diagnostics":
+            if self._guard():
+                max_age = self._diagnostics_age()
+                try:
+                    result = diagnostics.cached_checks(max_age=max_age)
+                except diagnostics.DiagnosticsBusy:
+                    self._busy()
+                    return
+                self._run(lambda: result)
+        elif path == "/api/diagnostics/report":
+            if self._guard():
+                try:
+                    # Reuse the run the page just showed; never start a second one.
+                    report = diagnostics.report_text(diagnostics.cached_checks())
+                except diagnostics.DiagnosticsBusy:
+                    self._busy()
+                    return
+                except Exception as exc:
+                    info = errors.explain(exc)
+                    self._error(HTTPStatus.INTERNAL_SERVER_ERROR, errors.summary(info), info["code"])
+                    return
+                self._text(report, "stillgreen-diagnostics.txt")
         else:
-            self._error(HTTPStatus.NOT_FOUND, "not found")
+            self._error(HTTPStatus.NOT_FOUND, "not found", "not_found")
 
     # ------------------------------------------------------------------- POST
 
@@ -782,7 +931,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         path = urlparse(self.path).path
         if not path.startswith("/api/"):
-            self._error(HTTPStatus.NOT_FOUND, "not found")
+            self._error(HTTPStatus.NOT_FOUND, "not found", "not_found")
             return
         if not self._guard():
             return
@@ -796,13 +945,13 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/code/rotate":
             # Browsers may rotate only from the local page itself.
             if self.headers.get("Origin") and not self._same_origin():
-                self._error(HTTPStatus.FORBIDDEN, "rotate the code from the local page")
+                self._error(HTTPStatus.FORBIDDEN, "rotate the code from the local page", "origin_not_allowed")
                 return
             self._run(lambda: {"ok": True, "code": rotate_code()})
         elif path in routes:
             self._run(lambda: routes[path](self._body()))
         else:
-            self._error(HTTPStatus.NOT_FOUND, "not found")
+            self._error(HTTPStatus.NOT_FOUND, "not found", "not_found")
 
     # ----------------------------------------------------------------- DELETE
 
@@ -811,17 +960,29 @@ class Handler(BaseHTTPRequestHandler):
             return
         path = urlparse(self.path).path
         if not path.startswith("/api/"):
-            self._error(HTTPStatus.NOT_FOUND, "not found")
+            self._error(HTTPStatus.NOT_FOUND, "not found", "not_found")
             return
         if not self._guard():
             return
         match = re.fullmatch(r"/api/workspaces/([^/]+)/?", path)
         if not match:
-            self._error(HTTPStatus.NOT_FOUND, "not found")
+            self._error(HTTPStatus.NOT_FOUND, "not found", "not_found")
             return
         self._run(lambda: remove_workspace(unquote(match.group(1))))
 
     # ------------------------------------------------------------------ misc
+
+    def _diagnostics_age(self) -> float:
+        """How old a cached diagnostics result may be. ?fresh=1 (the "Check
+        again" button) asks for a new run, but never more than one every few
+        seconds."""
+        query = parse_qs(urlparse(self.path).query)
+        if (query.get("fresh") or [""])[0] in {"1", "true", "yes"}:
+            return diagnostics.FRESH_SECONDS
+        return diagnostics.CACHE_SECONDS
+
+    def _busy(self) -> None:
+        self._error(HTTPStatus.TOO_MANY_REQUESTS, "diagnostics are already running; try again soon", "diagnostics_busy")
 
     def _same_origin(self) -> bool:
         origin = (self.headers.get("Origin") or "").rstrip("/")

@@ -6,6 +6,8 @@ __pycache__/
 build/
 dist/
 .venv/
+.venv.lock/
+.venv-setup.log
 venv/
 .pytest_cache/
 .mypy_cache/

@@ -6,6 +6,7 @@ import argparse
 import getpass
 import json
 import os
+import re
 import stat
 import sys
 import threading
@@ -13,10 +14,22 @@ import time
 import urllib.request
 import webbrowser
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
-from . import __version__, config, launchd, schedule, state, web
-from .slack import SlackAPIError, SlackClient, redact
+from . import __version__, config, diagnostics, errors, launchd, schedule, state, web
+from .slack import SlackClient
+
+HONESTY_NOTE = (
+    "Stillgreen keeps a Slack connection open the way the Slack web app does. "
+    "Slack decides your final status."
+)
+
+REVOKE_TIP = """To make sure the saved Slack login can no longer be used:
+  - Sign out of Slack in the browser you captured it from, or
+  - In Slack, open Account settings (https://slack.com/account/settings) and
+    click "Sign out of all other sessions". Do this from the Slack app or
+    another browser, not from the browser you captured the login from."""
 
 TOKEN_HELP = """\
 How to get the two Slack values
@@ -52,6 +65,26 @@ def _fail(message: str) -> int:
     return 1
 
 
+def _print_problem(exc: BaseException, *, local: bool = False) -> None:
+    """Explain an exception in plain words (from sg_local.errors)."""
+    info = errors.explain(exc, local=local)
+    _eprint(errors.format_text(info))
+    # Stillgreen's own words for a settings problem say which file or value;
+    # for an unknown problem the redacted text is the only clue.
+    own_words = isinstance(exc, config.ConfigError) and not getattr(exc, "code", None)
+    if (own_words and info["code"] != "invalid_input") or info["code"] == "unknown":
+        detail = diagnostics.redact_report(str(exc), secrets=[])
+        if detail:
+            _eprint(f"Details: {detail}")
+
+
+def _explain_from_log() -> None:
+    """After a failed start, explain a known problem found in the log."""
+    code = errors.classify_text(state.tail_log(15), default="")
+    if code:
+        _eprint(errors.format_text(errors.entry(code)))
+
+
 def _workspaces(cfg: dict[str, Any]) -> list[dict[str, Any]]:
     return [w for w in cfg.get("workspaces", []) if isinstance(w, dict)]
 
@@ -73,7 +106,7 @@ def _parse_iso(value: Any) -> datetime | None:
     if not value:
         return None
     try:
-        parsed = datetime.fromisoformat(str(value))
+        parsed = config.parse_iso(str(value))
     except ValueError:
         return None
     if parsed.tzinfo is None:
@@ -214,9 +247,11 @@ def cmd_remove(args: argparse.Namespace) -> int:
 
     workspace = config.update_config(change)
     name = workspace.get("name") or workspace.get("team_id")
-    print(f"Removed {name}.")
+    print(f"Removed {name}. Its saved Slack login was deleted from this computer.")
     if _daemon_running():
         print("The daemon will stop that workspace's session within a few seconds.")
+    print()
+    print(REVOKE_TIP)
     return 0
 
 
@@ -243,7 +278,7 @@ def cmd_schedule(args: argparse.Namespace) -> int:
         return 0
 
     if action == "always":
-        config.update_config(lambda cfg: cfg["schedule"].update(mode="always"))
+        config.update_config(lambda cfg: cfg["schedule"].update(mode="always", saved_at=config.now_iso()))
         print("Schedule set to always on.")
         if _daemon_running():
             print("The daemon will apply it within a few seconds.")
@@ -269,7 +304,7 @@ def cmd_schedule(args: argparse.Namespace) -> int:
             start = args.start or (current.get("start_time") if currently_scheduled else None) or "09:00"
             end = args.end or (current.get("end_time") if currently_scheduled else None) or "17:00"
             tz = args.timezone_value or current.get("timezone") or "local"
-            cfg["schedule"] = schedule.make_schedule(days, start, end, tz)
+            cfg["schedule"] = {**schedule.make_schedule(days, start, end, tz), "saved_at": config.now_iso()}
             return cfg["schedule"]
 
         updated = config.update_config(change)
@@ -285,10 +320,18 @@ def cmd_schedule(args: argparse.Namespace) -> int:
 # ---------------------------------------------------------- daemon control
 
 
+def _update_note(pid: int | None) -> None:
+    """Say so when the running daemon is older than the files on disk."""
+    runtime = state.read_state() if pid else None
+    if runtime and runtime.get("pid") in (None, pid) and state.update_pending(runtime):
+        print(state.UPDATE_MESSAGE)
+
+
 def cmd_start(_: argparse.Namespace) -> int:
     pid = _daemon_running()
     if pid:
         print(f"Daemon is already running (pid {pid}).")
+        _update_note(pid)
         return 0
 
     if launchd.loaded():
@@ -301,10 +344,12 @@ def cmd_start(_: argparse.Namespace) -> int:
         ok, message = state.start_daemon()
         print(message)
         if not ok:
+            _explain_from_log()
             return 1
         pid = _wait_for_daemon()
 
     if not pid:
+        _explain_from_log()
         return _fail(f"daemon is not running; check: {config.LOG_PATH}")
 
     cfg = config.load_config()
@@ -340,10 +385,12 @@ def cmd_restart(_: argparse.Namespace) -> int:
         ok, message = state.start_daemon()
         print(message)
         if not ok:
+            _explain_from_log()
             return 1
         pid = _wait_for_daemon()
 
     if not pid:
+        _explain_from_log()
         return _fail(f"daemon is not running; check: {config.LOG_PATH}")
     print(f"Daemon running (pid {pid}).")
     return 0
@@ -360,6 +407,8 @@ def cmd_status(_: argparse.Namespace) -> int:
 
     if pid and runtime and runtime.get("pid") not in (None, pid):
         runtime = None
+    if pid and runtime and state.update_pending(runtime):
+        print(f"Update:   {state.UPDATE_MESSAGE}")
 
     if pid and runtime:
         started = _parse_iso(runtime.get("started_at"))
@@ -410,41 +459,66 @@ def cmd_status(_: argparse.Namespace) -> int:
         if isinstance(entry, dict)
     }
     rows: list[list[str]] = []
+    problems: list[tuple[str, dict[str, str]]] = []
     for workspace in workspaces:
         team_id = str(workspace.get("team_id") or "?")
+        name = str(workspace.get("name") or "?")
         entry = live.get(team_id, {})
+        # Login and Slack status are only known while the daemon runs; a
+        # rejected login stays rejected until it is captured again.
+        login = str(entry.get("auth") or "unknown")
+        presence = str(entry.get("presence") or "unknown")
+        confirmed = _ago(entry.get("presence_verified_at"))
         if pid and runtime:
             status_text = str(entry.get("status") or "starting")
             detail = str(entry.get("reason") or "")
             if entry.get("last_error"):
-                detail = redact(str(entry["last_error"]))
+                code = entry.get("last_error_code") or errors.classify_text(str(entry["last_error"]))
+                info = errors.entry(str(code))
+                detail = info["title"]
+                problems.append((name, info))
             stats = entry.get("stats") or {}
-            if stats and entry.get("connected"):
+            if stats and entry.get("connected") and not entry.get("last_error"):
                 detail = (
                     f"pings={stats.get('pings', 0)} tickles={stats.get('tickles', 0)} "
                     f"checks={stats.get('presence_checks', 0)} "
                     f"reconnects={stats.get('reconnects', 0)}"
                 )
+            if not entry.get("connected"):
+                presence = "unknown"
         elif pid:
             status_text = "starting"
             detail = "waiting for daemon state"
+            presence = "unknown"
         else:
             status_text = "stopped" if not workspace.get("paused") else "paused"
             detail = "daemon not running"
-        rows.append(
-            [
-                str(workspace.get("name") or "?"),
-                team_id,
-                status_text,
-                detail,
-            ]
-        )
-    _table(["NAME", "TEAM", "STATUS", "DETAIL"], rows)
+            login = "rejected" if login == "rejected" else "unknown"
+            presence = "unknown"
+        rows.append([name, team_id, status_text, login, presence.replace("_", " "), confirmed, detail])
+    _table(["NAME", "TEAM", "STATUS", "LOGIN", "SLACK SHOWS", "LAST CONFIRMED", "DETAIL"], rows)
     if pid and runtime and not runtime.get("workspaces"):
         print("Runtime state has no workspace entries yet; waiting for the daemon.")
+    for name, info in problems:
+        print()
+        print(f"{name}: {info['title']}")
+        print(f"  {info['message']}")
+        print(f"  What to do: {info['action']}")
     print()
+    print(HONESTY_NOTE)
+    print("LAST CONFIRMED is the last time Slack itself said you were active.")
     print(f"Config: {config.CONFIG_PATH}")
     return 0
+
+
+def _ago(value: Any) -> str:
+    moment = _parse_iso(value)
+    if not moment:
+        return "never"
+    seconds = (datetime.now(timezone.utc) - moment).total_seconds()
+    if seconds < 60:
+        return "just now"
+    return f"{_human_duration(seconds)} ago"
 
 
 # ---------------------------------------------------------- pause / resume
@@ -534,115 +608,58 @@ def cmd_stay(args: argparse.Namespace) -> int:
 # ------------------------------------------------------------------ doctor
 
 
+DOCTOR_MARKS = {"pass": "[ok]  ", "warn": "[warn]", "fail": "[fail]", "skip": "[skip]"}
+
+
 def cmd_doctor(args: argparse.Namespace) -> int:
     failures = 0
     warnings = 0
-    config.ensure_dirs()
-
-    def ok(label: str, detail: str = "") -> None:
-        print(f"[ok]   {label}" + (f" - {detail}" if detail else ""))
-
-    def warn(label: str, detail: str = "") -> None:
-        nonlocal warnings
-        warnings += 1
-        print(f"[warn] {label}" + (f" - {detail}" if detail else ""))
-
-    def fail(label: str, detail: str = "") -> None:
-        nonlocal failures
-        failures += 1
-        print(f"[fail] {label}" + (f" - {detail}" if detail else ""))
-
-    print("slack-green-local doctor")
-    print(f"Python: {sys.version.split()[0]} ({sys.executable})")
-    if sys.version_info >= (3, 11):
-        ok("Python version")
-    else:
-        fail("Python version", "3.11 or newer is required")
-
     try:
-        import websockets
+        config.ensure_dirs()
+    except config.ConfigError:
+        pass  # the permission and settings checks below explain it
 
-        version = getattr(websockets, "__version__", "unknown")
-        major = int(str(version).split(".")[0])
-        if major >= 14:
-            ok("websockets", version)
-        else:
-            fail("websockets", f"{version}; version 14 or newer is required")
-    except Exception as exc:
-        fail("websockets", redact(str(exc)))
+    def line(status: str, label: str, detail: str = "", action: str = "") -> None:
+        nonlocal failures, warnings
+        if status == "fail":
+            failures += 1
+        elif status == "warn":
+            warnings += 1
+        print(f"{DOCTOR_MARKS.get(status, '[info]')} {label}" + (f" - {detail}" if detail else ""))
+        if action and status in {"warn", "fail"}:
+            print(f"       What to do: {action}")
 
-    if config.CONFIG_PATH.exists():
-        good, message = config.config_security()
-        if good:
-            ok("config permissions", message)
-        else:
-            fail("config permissions", f"{message} (run: chmod 600 {config.CONFIG_PATH})")
-    else:
-        warn("config file", f"not created yet ({config.CONFIG_PATH}); run './sg-local add'")
+    print("Stillgreen doctor")
+    print(f"Python: {sys.version.split()[0]} ({sys.executable})")
+    if not args.offline:
+        print("Checking the connection to Slack (no login is sent)...")
+    result = diagnostics.run_checks(network=not args.offline)
+    for check in result["checks"]:
+        line(check["status"], check["label"], check["detail"], check.get("action", ""))
 
     try:
         cfg = config.load_config()
-        ok("config file", str(config.CONFIG_PATH))
-    except config.ConfigError as exc:
-        fail("config file", str(exc))
+    except config.ConfigError:
         cfg = config.default_config()
-
     cfg_ok, cfg_message = schedule.validate_schedule(cfg.get("schedule", {}))
     if cfg_ok:
-        ok("schedule", schedule.schedule_summary(cfg["schedule"]))
+        line("pass", "Schedule", schedule.schedule_summary(cfg["schedule"]))
     else:
-        fail("schedule", cfg_message)
-
-    workspaces = _workspaces(cfg)
-    if not workspaces:
-        warn("workspaces", "none configured; run './sg-local add'")
-    else:
-        seen: list[str] = []
-        for workspace in workspaces:
-            valid, message = config.validate_workspace(workspace)
-            name = workspace.get("name") or workspace.get("team_id") or "workspace"
-            if valid:
-                ok(f"workspace {name}", f"team {workspace.get('team_id')}")
-            else:
-                fail(f"workspace {name}", message)
-            team_id = str(workspace.get("team_id") or "")
-            if team_id:
-                seen.append(team_id)
-        duplicates = sorted({team for team in seen if seen.count(team) > 1})
-        if duplicates:
-            warn("duplicate workspaces", ", ".join(duplicates))
-
-    mode = stat.S_IMODE(config.STATE_DIR.stat().st_mode)
-    if mode & 0o077:
-        warn("state directory permissions", f"{mode:04o}; expected 0700")
-    else:
-        ok("state directory permissions", f"{mode:04o}")
-
-    if os.access(config.STATE_DIR, os.W_OK) and os.access(config.CONFIG_DIR, os.W_OK):
-        ok("storage writable")
-    else:
-        fail("storage writable", f"check {config.CONFIG_DIR} and {config.STATE_DIR}")
-
-    pid = state.daemon_pid()
-    if pid:
-        ok("daemon", f"running (pid {pid})")
-    elif state.lock_held():
-        warn("daemon", "lock is held but PID is unavailable; try stopping it")
-    else:
-        warn("daemon", "not running; use './sg-local start'")
+        line("fail", "Schedule", cfg_message, "Set it again with ./sg-local schedule set, or use ./sg-local schedule always.")
 
     if sys.platform == "darwin":
         if launchd.installed() and launchd.loaded():
-            ok("launchd auto-start", str(launchd.PLIST_PATH))
+            line("pass", "Start at login", str(launchd.PLIST_PATH))
         elif launchd.installed():
-            warn("launchd auto-start", "plist exists but is not loaded; reinstall it")
+            line("warn", "Start at login", "installed but not loaded", "Run ./sg-local install-launchd again.")
         else:
-            print("[info] launchd auto-start is not installed (optional)")
-        print("[info] macOS sleep pauses the daemon; for 24/7 presence keep the Mac awake or use a server")
+            print("[info] Start at login is not set up (optional: ./sg-local install-launchd)")
+        print("[info] Stillgreen stops while the Mac sleeps. To stay connected, keep the Mac awake or use a server.")
 
     if args.check_tokens:
+        workspaces = _workspaces(cfg)
         if not workspaces:
-            warn("token check", "no workspaces to check")
+            line("warn", "Token check", "no workspaces to check", "Add one with ./sg-local add.")
         for workspace in workspaces:
             valid, _ = config.validate_workspace(workspace)
             if not valid:
@@ -654,20 +671,31 @@ def cmd_doctor(args: argparse.Namespace) -> int:
             try:
                 identity = client.auth_test()
                 if str(identity.get("team_id")) != str(workspace.get("team_id")):
-                    warn(f"token check: {name}", "token belongs to a different team than configured")
+                    line("warn", f"Token check: {name}", "the login belongs to a different workspace", "Add it again with ./sg-local add.")
                 elif str(identity.get("user_id")) != str(workspace.get("user_id")):
-                    warn(f"token check: {name}", "token belongs to a different user than configured")
+                    line("warn", f"Token check: {name}", "the login belongs to a different person", "Add it again with ./sg-local add.")
                 else:
-                    ok(f"token check: {name}", "tokens are valid")
-            except SlackAPIError as exc:
-                if exc.token_invalid:
-                    fail(f"token check: {name}", f"Slack rejected the tokens ({exc.error})")
-                else:
-                    warn(f"token check: {name}", f"could not verify ({exc.error})")
+                    line("pass", f"Token check: {name}", "Slack accepts the saved login")
             except Exception as exc:
-                warn(f"token check: {name}", f"could not verify ({redact(str(exc))})")
+                info = errors.explain(exc)
+                status = "fail" if info["code"] == "slack_auth_rejected" else "warn"
+                line(status, f"Token check: {name}", f"{info['title']}. {info['message']}", info["action"])
+
+    if args.report:
+        target = Path(args.report).expanduser()
+        try:
+            text = diagnostics.report_text(result)
+            config.atomic_write(target, text, mode=0o600)
+        except OSError as exc:
+            print()
+            _print_problem(exc)
+            return 1
+        print()
+        print(f"Saved a diagnostics report to {target}")
+        print("It has no tokens, cookies or access codes. Read it before you share it.")
 
     print()
+    print(HONESTY_NOTE)
     if failures:
         print(f"Result: {failures} problem(s), {warnings} warning(s).")
         return 1
@@ -872,6 +900,9 @@ def cmd_cloud(args: argparse.Namespace) -> int:
     }
     # Replace this process with the daemon, so the container's main process is
     # the daemon itself and is recognised as one (see state.DAEMON_MARKER).
+    # Start from the program folder: "-m" puts the current folder first on
+    # the module search path, so never let it be some other folder.
+    os.chdir(config.PROJECT_ROOT)
     os.execve(sys.executable, [sys.executable, "-m", state.DAEMON_MARKER], env)
     return 0  # not reached
 
@@ -913,18 +944,223 @@ def cmd_uninstall_launchd(_: argparse.Namespace) -> int:
     return 0
 
 
+# --------------------------------------------------------------- uninstall
+
+
+# The files Stillgreen writes. uninstall deletes only these (never a whole
+# folder it was pointed at), then removes the folder if it is empty.
+CONFIG_FILES = ("config.json", "bridge.json", ".config.lock")
+STATE_FILES = (
+    "state.json",
+    "daemon.pid",
+    "daemon.lock",
+    "daemon.log",
+    "pause.json",
+    "stay.json",
+    "network.json",
+)
+# Rotated logs (daemon.log.1 ...) and the temporary files atomic_write makes
+# next to each file (".config.json.k3j_x9a2").
+_ROTATED_LOG = re.compile(r"^daemon\.log\.\d{1,3}$")
+
+
+def _is_temp_of(name: str, known: tuple[str, ...]) -> bool:
+    return any(
+        name.startswith(f".{base}.") and re.fullmatch(r"[A-Za-z0-9_]{6,16}", name[len(base) + 2:])
+        for base in known
+    )
+
+
+def _stillgreen_file(name: str, known: tuple[str, ...]) -> bool:
+    if name in known or _is_temp_of(name, known):
+        return True
+    return "daemon.log" in known and bool(_ROTATED_LOG.match(name))
+
+
+def _shared_folders() -> set[Path]:
+    """Folders other programs use too. Never treat one as Stillgreen's own."""
+    home = Path.home()
+    names = [
+        "", ".config", ".local", ".local/state", ".local/share", ".cache", "Library",
+        "Library/Application Support", "Library/Preferences", "Library/LaunchAgents",
+        "Documents", "Desktop", "Downloads", ".ssh",
+    ]
+    shared = {(home / name) for name in names}
+    shared |= {Path(p) for p in ("/", "/etc", "/tmp", "/var", "/var/tmp", "/usr", "/opt", "/private", "/private/tmp", "/Users", "/home")}
+    resolved = set()
+    for path in shared:
+        resolved.add(path)
+        try:
+            resolved.add(path.resolve())
+        except OSError:
+            pass
+    return resolved
+
+
+def _unsafe_to_delete(path: Path) -> str | None:
+    """Why Stillgreen must not delete files in ``path``, or None.
+
+    Guards against odd settings such as SG_LOCAL_CONFIG_DIR=$HOME.
+    """
+    try:
+        resolved = path.resolve()
+    except OSError as exc:
+        return f"cannot check {path}: {exc}"
+    if path.is_symlink():
+        return f"{path} is a symbolic link"
+    home = Path.home().resolve()
+    if resolved == Path(resolved.anchor) or resolved == home or resolved in home.parents:
+        return f"{path} is not a Stillgreen folder"
+    if resolved in _shared_folders() or path in _shared_folders():
+        return f"{path} is a shared folder that other programs use"
+    program = config.PROJECT_ROOT.resolve()
+    if resolved == program or resolved in program.parents or program in resolved.parents:
+        return f"{path} holds the Stillgreen program"
+    try:
+        info = os.lstat(path)
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        return f"cannot check {path}: {exc.strerror or exc}"
+    if not stat.S_ISDIR(info.st_mode):
+        return f"{path} is not a folder"
+    if info.st_uid != os.getuid():
+        return f"{path} belongs to another user"
+    return None
+
+
+def _remove_stillgreen_files(folder: Path, known: tuple[str, ...]) -> tuple[list[str], list[str]]:
+    """Delete Stillgreen's own files in ``folder``, then the folder if empty.
+
+    Returns (problems, names left in place). Links are removed as links and
+    never followed; other folders inside are never entered.
+    """
+    problems: list[str] = []
+    try:
+        names = sorted(os.listdir(folder))
+    except OSError as exc:
+        return [f"could not read {folder}: {exc.strerror or exc}"], []
+    left: list[str] = []
+    for name in names:
+        target = folder / name
+        if not _stillgreen_file(name, known):
+            left.append(name)
+            continue
+        try:
+            info = os.lstat(target)
+        except FileNotFoundError:
+            continue
+        except OSError as exc:
+            problems.append(f"could not check {target}: {exc.strerror or exc}")
+            continue
+        if stat.S_ISDIR(info.st_mode):
+            left.append(name)
+            continue
+        try:
+            os.unlink(target)
+        except OSError as exc:
+            problems.append(f"could not delete {target}: {exc.strerror or exc}")
+    if not left and not problems:
+        try:
+            os.rmdir(folder)
+        except OSError as exc:
+            problems.append(f"could not delete {folder}: {exc.strerror or exc}")
+    return problems, left
+
+
+def cmd_uninstall(args: argparse.Namespace) -> int:
+    folders = [
+        (config.CONFIG_DIR, "your saved Slack logins (config.json) and the access code (bridge.json)"),
+        (config.STATE_DIR, "logs, status, and pause and stay settings"),
+    ]
+    agent = sys.platform == "darwin" or launchd.installed()
+    print("This removes Stillgreen's data from this computer:")
+    print()
+    for path, what in folders:
+        print(f"  - {path}")
+        print(f"      {what}")
+    if agent:
+        print(f"  - {launchd.PLIST_PATH}")
+        print("      the login item that starts Stillgreen when you log in (launchd agent)")
+    print()
+    print("Stillgreen is stopped first if it is running.")
+    print(f"The program folder is not deleted: {config.PROJECT_ROOT}")
+    print("The browser extension is not removed: do that in Chrome (steps below).")
+    print()
+
+    for path, _ in folders:
+        problem = _unsafe_to_delete(path)
+        if problem:
+            return _fail(f"{problem}; nothing was deleted. Delete Stillgreen's files by hand.")
+
+    if not args.yes:
+        try:
+            answer = input('Type "delete" to remove all of this: ')
+        except EOFError:
+            answer = ""
+        if answer.strip().lower() != "delete":
+            print("Nothing was deleted.")
+            if not answer:
+                print("To confirm without typing, run: ./sg-local uninstall --yes")
+            return 1
+
+    if agent:
+        ok, message = launchd.uninstall()
+        print(f"Login item: {message}")
+        if not ok:
+            return _fail("could not remove the login item; nothing else was deleted")
+    ok, message = state.stop_daemon()
+    print(f"Stillgreen: {message}")
+    if not ok:
+        return _fail("could not stop Stillgreen; nothing else was deleted. Stop it and try again.")
+
+    failed = False
+    for path, known in ((config.CONFIG_DIR, CONFIG_FILES), (config.STATE_DIR, STATE_FILES)):
+        if not os.path.lexists(path):
+            print(f"Already gone: {path}")
+            continue
+        problems, left = _remove_stillgreen_files(path, known)
+        for problem in problems:
+            failed = True
+            _eprint(f"error: {problem}")
+        if left:
+            print(f"Deleted Stillgreen's files in {path}, but kept the folder.")
+            print("  These files were not made by Stillgreen, so they were left in place:")
+            for name in left[:20]:
+                print(f"    {name}")
+            if len(left) > 20:
+                print(f"    ... and {len(left) - 20} more")
+        elif not problems:
+            print(f"Deleted: {path}")
+
+    print()
+    if web.env_code():
+        print("Note: SG_LOCAL_BRIDGE_CODE is set in your environment. Remove it there too.")
+    print("Last steps, which Stillgreen cannot do for you:")
+    print("  1. Remove the browser extension: open chrome://extensions and click Remove")
+    print("     on Stillgreen.")
+    print("  2. " + REVOKE_TIP.replace("\n", "\n     "))
+    print(f"  3. To remove the program too, delete this folder: {config.PROJECT_ROOT}")
+    return 1 if failed else 0
+
+
 # -------------------------------------------------------------------- main
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="sg-local",
-        description="Self-hosted, personal Slack presence daemon (slack.green-style).",
+        description=(
+            "Stillgreen keeps a Slack connection open the way the Slack web app does,\n"
+            "so Slack can show you as active. Slack decides your final status;\n"
+            "Stillgreen cannot promise it."
+        ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
-            "Your tokens are stored only in the local config file. Nothing is sent\n"
-            "anywhere except Slack. Use this only on workspaces where you have\n"
-            "permission; automating presence may violate your employer's policy."
+            "Your Slack login is stored only in the local settings file. Nothing is\n"
+            "sent anywhere except Slack. Use this only on workspaces where you have\n"
+            "permission; your employer's rules may not allow it.\n"
+            "Something wrong? Run: ./sg-local doctor"
         ),
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
@@ -950,7 +1186,7 @@ def build_parser() -> argparse.ArgumentParser:
     sched = sub.add_parser("schedule", help="show or change the presence schedule")
     sched_sub = sched.add_subparsers(dest="schedule_action")
     sched_sub.add_parser("show", help="show the schedule")
-    sched_sub.add_parser("always", help="keep presence on all the time")
+    sched_sub.add_parser("always", help="help all the time (no schedule)")
     sched_set = sched_sub.add_parser("set", help="set a weekly schedule")
     sched_set.add_argument(
         "--days",
@@ -971,7 +1207,9 @@ def build_parser() -> argparse.ArgumentParser:
     stop.set_defaults(func=cmd_stop)
     restart = sub.add_parser("restart", help="restart the background daemon")
     restart.set_defaults(func=cmd_restart)
-    status = sub.add_parser("status", help="show daemon, schedule, and workspace status")
+    status = sub.add_parser(
+        "status", help="show the service, schedule, login and Slack status of each workspace"
+    )
     status.set_defaults(func=cmd_status)
 
     pause = sub.add_parser("pause", help="pause presence (globally or one workspace)")
@@ -983,17 +1221,32 @@ def build_parser() -> argparse.ArgumentParser:
     resume.add_argument("--workspace", help="resume only this workspace")
     resume.set_defaults(func=cmd_resume)
 
-    stay = sub.add_parser("stay", help="stay online for a while, overriding pause/schedule")
+    stay = sub.add_parser(
+        "stay", help="keep helping you look active for a while, even when paused or outside your schedule"
+    )
     stay.add_argument("duration", nargs="?", help="e.g. 30m, 2h, 1d, 1w")
-    stay.add_argument("--until", metavar="HH:MM", help="stay online until this time today, e.g. 17:00")
+    stay.add_argument("--until", metavar="HH:MM", help="keep helping until this time today, e.g. 17:00")
     stay.add_argument("--cancel", action="store_true", help="cancel an active stay window")
     stay.set_defaults(func=cmd_stay)
 
-    doctor = sub.add_parser("doctor", help="check configuration and runtime health")
+    doctor = sub.add_parser(
+        "doctor",
+        help="check settings, the connection to Slack, and status; explain any problem",
+    )
     doctor.add_argument(
         "--check-tokens",
         action="store_true",
-        help="verify each workspace's tokens with Slack (network call)",
+        help="also check each saved login with Slack (sends the login to Slack only)",
+    )
+    doctor.add_argument(
+        "--report",
+        metavar="FILE",
+        help="save a report to share when you ask for help (no tokens, cookies or access codes)",
+    )
+    doctor.add_argument(
+        "--offline",
+        action="store_true",
+        help="skip the checks that contact Slack",
     )
     doctor.set_defaults(func=cmd_doctor)
 
@@ -1028,6 +1281,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     uninstall.set_defaults(func=cmd_uninstall_launchd)
 
+    remove_all = sub.add_parser(
+        "uninstall",
+        help="stop Stillgreen and delete its settings, saved logins, logs and login item",
+    )
+    remove_all.add_argument("--yes", action="store_true", help='do not ask; delete at once (no "delete" prompt)')
+    remove_all.set_defaults(func=cmd_uninstall)
+
     return parser
 
 
@@ -1044,7 +1304,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         return int(args.func(args))
     except config.ConfigError as exc:
-        _eprint(f"error: {exc}")
+        _print_problem(exc)
         return 2
     except KeyboardInterrupt:
         _eprint("interrupted")
@@ -1054,7 +1314,7 @@ def main(argv: list[str] | None = None) -> int:
     except Exception as exc:
         if os.environ.get("SG_LOCAL_DEBUG"):
             raise
-        _eprint(f"error: {redact(str(exc))}")
+        _print_problem(exc)
         return 1
 
 

@@ -45,7 +45,16 @@ import {
   useToast,
   type BannerTone,
 } from "./ui";
-import { scheduleTimezone, todayAt, type DaemonState, type WorkspaceState } from "@/lib/bridge";
+import {
+  errorInfo,
+  saveBlob,
+  scheduleTimezone,
+  todayAt,
+  type DaemonState,
+  type Diagnostics,
+  type WorkspaceState,
+} from "@/lib/bridge";
+import { DiagnosticsCard, HonestyNote, ProblemText, SetupChecklist, StatusSignals, type DiagnosticsView } from "./dashboard-health";
 import {
   DAYS,
   STAY_CHOICES,
@@ -57,7 +66,6 @@ import {
   atWhen,
   avatarTone,
   browserTimezone,
-  capitalize,
   clock,
   clockFromHHMM,
   dayHeading,
@@ -69,14 +77,18 @@ import {
   knownTimezone,
   longDate,
   modeLabel,
+  needsSetupHelp,
   nextChangeText,
   onlineCount,
   presenceSummary,
+  setupSteps,
   since,
+  statusSignals,
   weeklyHours,
   when,
   workspaceBadge,
   workspaceNote,
+  workspaceProblem,
   type StayChoice,
 } from "@/lib/dashboard";
 import { GITHUB_URL } from "@/lib/site";
@@ -97,6 +109,10 @@ export type DashboardApi = {
   stay: (choice: string | { until: Date } | null) => Promise<DaemonState>;
   saveSchedule: (payload: SchedulePayload) => Promise<DaemonState>;
   removeWorkspace: (teamId: string) => Promise<DaemonState>;
+  /** Check my setup (GET /api/diagnostics). */
+  diagnostics: () => Promise<Diagnostics>;
+  /** The redacted setup report as a file. */
+  report: () => Promise<{ blob: Blob; filename: string }>;
 };
 
 export type DashboardNotice = {
@@ -129,9 +145,6 @@ type ViewProps = {
 
 // ------------------------------------------------------------------ helpers
 
-function errorMessage(caught: unknown, fallback = "Something went wrong. Try again.") {
-  return caught instanceof Error && caught.message ? caught.message : fallback;
-}
 
 /** A ticking clock for countdowns and "12 s ago" labels. */
 function useNow(intervalMs = 10000) {
@@ -181,9 +194,9 @@ function TopBar({
         </span>
         <span className={styles.crumb}>Dashboard</span>
         {preview ? (
-          <span className={styles.hostPill} data-tone="neutral">
+          <span className={styles.hostPill} data-tone="demo">
             <span className={styles.hostDot} aria-hidden="true" />
-            Not connected
+            Demo · sample data
           </span>
         ) : (
           <span
@@ -226,6 +239,7 @@ function StatusCard({
   busy,
   run,
   api,
+  preview,
 }: {
   state: DaemonState;
   unreachable: boolean;
@@ -234,8 +248,10 @@ function StatusCard({
   busy: string;
   run: Runner;
   api: DashboardApi;
+  preview?: boolean;
 }) {
   const summary = presenceSummary(state, unreachable, now);
+  const signals = statusSignals(state, { unreachable, now, lastOkAt });
   const total = state.workspaces.length;
 
   const pauseFor = () =>
@@ -256,11 +272,17 @@ function StatusCard({
   const resumeAll = () =>
     run("resume-all", () => api.resume({}), () => ({
       title: "Resumed",
-      description: "Stillgreen is keeping you green again.",
+      description: "Stillgreen is helping keep you active again.",
     }));
 
   return (
-    <Card className={styles.status} data-tone={summary.tone} aria-labelledby="status-title">
+    <Card className={styles.status} data-tone={summary.tone} data-preview={preview || undefined} aria-labelledby="status-title">
+      {preview && (
+        <p className={styles.demoStrip}>
+          <Badge tone="violet">Demo</Badge>
+          <span>Sample data, not your real Slack status.</span>
+        </p>
+      )}
       <div className={styles.statusMain}>
         <span className={styles.pulse} data-tone={summary.tone} aria-hidden="true">
           <i />
@@ -314,6 +336,7 @@ function StatusCard({
           </div>
         )}
       </div>
+      <StatusSignals signals={signals} />
       <dl className={styles.stats}>
         <div>
           <dt>Online now</dt>
@@ -429,7 +452,7 @@ function KeepOnlineCard({
       <CardHeader
         titleId="keep-title"
         title="Keep me online"
-        description="Stay green past your schedule or a pause, just for now. It ends on its own."
+        description="Keep helping past your schedule or a pause, just for now. It ends on its own."
         actions={active ? <Badge tone="success" dot>On</Badge> : undefined}
       />
       <CardBody>
@@ -476,17 +499,17 @@ function KeepOnlineCard({
         <span className={styles.keepNote}>
           {active && state.stay_until ? (
             <>
-              You&apos;re staying online until <strong>{when(state.stay_until, now)}</strong>
+              Stillgreen is helping until <strong>{when(state.stay_until, now)}</strong>
               {Number.isFinite(left) && left > 0 && <> · {duration(left)} left</>}.
             </>
           ) : active ? (
             <>Keep me online is on.</>
           ) : endsAt ? (
             <>
-              You&apos;ll stay online until <strong>{clock(endsAt)}</strong>, {afterStay(state)}.
+              Stillgreen keeps helping until <strong>{clock(endsAt)}</strong>, {afterStay(state)}.
             </>
           ) : (
-            <>Pick how long to stay online.</>
+            <>Pick how long to keep helping.</>
           )}
         </span>
         <div className={styles.footActions}>
@@ -538,6 +561,7 @@ function WorkspaceRow({
 }) {
   const nameId = useId();
   const badge = workspaceBadge(workspace, state, unreachable);
+  const problem = workspace.status === "active" && !workspace.last_error_info ? null : workspaceProblem(workspace);
   const pauseKey = `pause-${workspace.team_id}`;
   const resumeKey = `resume-${workspace.team_id}`;
   return (
@@ -555,12 +579,7 @@ function WorkspaceRow({
         <div className={styles.wsMeta}>
           <span>{workspaceNote(workspace)}</span>
         </div>
-        {workspace.last_error && workspace.status !== "active" && (
-          <p className={styles.wsError}>
-            <AlertTriangle aria-hidden="true" />
-            <span>{capitalize(workspace.last_error)}</span>
-          </p>
-        )}
+        {problem && <ProblemText info={problem} className={styles.wsProblem} />}
       </div>
       <div className={styles.wsActions}>
         {workspace.paused ? (
@@ -639,7 +658,7 @@ function WorkspacesCard({
           title="Workspaces"
           description={
             total === 0
-              ? "Slack workspaces Stillgreen keeps green."
+              ? "Slack workspaces Stillgreen helps keep active."
               : `${unreachable ? "?" : online} of ${total} online. Your Slack login stays on your Stillgreen.`
           }
           actions={total > 0 ? <Badge className="tnum">{total}</Badge> : undefined}
@@ -700,7 +719,7 @@ function WorkspacesCard({
         open={removing !== null}
         destructive
         title={`Remove ${removing?.name ?? "this workspace"}?`}
-        description="Stillgreen will stop keeping you green there and delete its saved Slack login. You can add it again any time."
+        description="Stillgreen will stop working there and delete its saved Slack login. To end that login in Slack too, use Sign out of all other sessions in Slack. You can add the workspace again any time."
         confirmLabel="Remove workspace"
         loading={Boolean(removing) && busy === `remove-${removing?.team_id}`}
         returnFocus={() =>
@@ -780,6 +799,9 @@ function ScheduleCard({
         : "";
   const zoneError = timezone.trim() && !knownTimezone(timezone) ? "Unknown time zone. Use a name like America/New_York." : "";
   const invalid = Boolean(daysError || timeError || zoneError);
+  // The person has not saved or confirmed hours yet (first run): saving the
+  // current choice as it is counts, so the setup checklist can mark it done.
+  const unconfirmed = state.schedule.saved === false;
   const hours = weeklyHours(days.length, start, end);
   const hoursText = Number.isInteger(hours) ? `${hours}` : hours.toFixed(1);
 
@@ -817,7 +839,7 @@ function ScheduleCard({
       <CardHeader
         titleId="schedule-title"
         title="Schedule"
-        description="When Stillgreen keeps you green."
+        description="When Stillgreen helps keep you active."
         actions={
           <SegmentedControl
             label="Schedule mode"
@@ -910,15 +932,15 @@ function ScheduleCard({
             </>
           ) : (
             <p className={styles.alwaysNote}>
-              Stillgreen keeps you green all day, every day, until you pause it. Pick
+              Stillgreen helps keep you active all day, every day, until you pause it. Pick
               <strong> Scheduled </strong>
-              to keep you green only during work hours.
+              to limit it to your work hours.
             </p>
           )}
         </CardBody>
         <CardFooter>
-          <span className={styles.saveState} data-dirty={dirty || undefined}>
-            {dirty ? "Unsaved changes" : "All changes saved"}
+          <span className={styles.saveState} data-dirty={dirty || unconfirmed || undefined}>
+            {dirty ? "Unsaved changes" : unconfirmed ? "Not saved yet" : "All changes saved"}
           </span>
           <div className={styles.footActions}>
             {dirty && (
@@ -928,10 +950,10 @@ function ScheduleCard({
             )}
             <Button
               type="submit"
-              variant={dirty ? "primary" : "secondary"}
+              variant={dirty || unconfirmed ? "primary" : "secondary"}
               size="sm"
               loading={busy === "schedule"}
-              disabled={!dirty || (Boolean(busy) && busy !== "schedule")}
+              disabled={!(dirty || unconfirmed) || (Boolean(busy) && busy !== "schedule")}
             >
               {busy === "schedule" ? "Saving" : "Save schedule"}
             </Button>
@@ -1075,7 +1097,12 @@ function ConnectionCard({
           </div>
           <div>
             <dt>Version</dt>
-            <dd className="mono">{state.version}</dd>
+            <dd>
+              <span className="mono">{state.version}</span>
+              {state.daemon.update_pending && (
+                <span className={styles.factNote}>Updated files are waiting. Run ./sg-local restart to finish the update.</span>
+              )}
+            </dd>
           </div>
           <div>
             <dt>Running for</dt>
@@ -1085,6 +1112,23 @@ function ConnectionCard({
             <dt>Last update</dt>
             <dd>{lastOkAt ? ago(lastOkAt, now) : "Sample"}</dd>
           </div>
+          {state.autostart && (
+            <div>
+              <dt>Start at login</dt>
+              <dd>
+                {state.autostart.supported ? (state.autostart.enabled ? "On" : "Off") : "Not built in here"}
+                <span className={styles.factNote}>
+                  {state.autostart.note}
+                  {state.autostart.command && (
+                    <>
+                      {" "}
+                      <code className="mono">{state.autostart.command}</code>
+                    </>
+                  )}
+                </span>
+              </dd>
+            </div>
+          )}
         </dl>
         {!preview && accessCode && (
           <div className={styles.codeWrap}>
@@ -1216,8 +1260,60 @@ export function DashboardView({
   const [busy, setBusy] = useState("");
   const [adding, setAdding] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
+  const [diagnostics, setDiagnostics] = useState<Omit<DiagnosticsView, "run" | "download">>({
+    result: null,
+    error: null,
+    running: false,
+    downloading: false,
+  });
   const now = useNow();
   const zone = useMemo(() => browserTimezone(), []);
+
+  async function runDiagnostics() {
+    setDiagnostics((current) => ({ ...current, running: true, error: null }));
+    try {
+      const result = await api.diagnostics();
+      setDiagnostics((current) => ({ ...current, result, error: null, running: false }));
+    } catch (caught) {
+      setDiagnostics((current) => ({ ...current, error: errorInfo(caught), running: false }));
+    }
+  }
+
+  async function downloadReport() {
+    setDiagnostics((current) => ({ ...current, downloading: true }));
+    try {
+      const { blob, filename } = await api.report();
+      saveBlob(blob, filename);
+      toast({
+        tone: "success",
+        title: "Report saved",
+        description: `${filename} is in your downloads. It has no passwords, tokens or access code.`,
+      });
+    } catch (caught) {
+      const info = errorInfo(caught);
+      toast({ tone: "danger", title: info.title, description: [info.message, info.action].filter(Boolean).join(" "), duration: 10000 });
+    } finally {
+      setDiagnostics((current) => ({ ...current, downloading: false }));
+    }
+  }
+
+  const diagnosticsView: DiagnosticsView = {
+    ...diagnostics,
+    run: () => void runDiagnostics(),
+    download: () => void downloadReport(),
+  };
+  const steps = setupSteps(state, { unreachable, diagnostics: diagnostics.result });
+  const showChecklist = !preview && needsSetupHelp(steps);
+
+  function stepAction(action: "check" | "add" | "schedule") {
+    if (action === "add") {
+      setAdding(true);
+      return;
+    }
+    const target = document.getElementById(action === "check" ? "check-setup" : "schedule-title");
+    target?.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (action === "check") void runDiagnostics();
+  }
 
   const run: Runner = async (key, call, success) => {
     setBusy(key);
@@ -1232,7 +1328,13 @@ export function DashboardView({
       });
       return next;
     } catch (caught) {
-      toast({ tone: "danger", title: "That didn't work", description: errorMessage(caught), duration: 8000 });
+      const info = errorInfo(caught);
+      toast({
+        tone: "danger",
+        title: info.code === "unknown" ? "That didn't work" : info.title,
+        description: [info.message, info.action].filter(Boolean).join(" "),
+        duration: 10000,
+      });
       return null;
     } finally {
       setBusy("");
@@ -1282,7 +1384,9 @@ export function DashboardView({
             </Button>
           </div>
 
-          <StatusCard {...shared} unreachable={unreachable} lastOkAt={lastOkAt} now={now} />
+          <StatusCard {...shared} unreachable={unreachable} lastOkAt={lastOkAt} now={now} preview={preview} />
+
+          {showChecklist && <SetupChecklist steps={steps} onAction={stepAction} />}
 
           <div className={styles.grid}>
             <div className={styles.col}>
@@ -1302,8 +1406,11 @@ export function DashboardView({
                 accessCode={accessCode}
                 daemonUrl={daemonUrl}
               />
+              <DiagnosticsCard view={diagnosticsView} preview={preview} />
             </div>
           </div>
+
+          <HonestyNote className={styles.honesty} />
 
           <footer className={styles.footer}>
             <span>
@@ -1312,6 +1419,7 @@ export function DashboardView({
             </span>
             <span className={styles.footerLinks}>
               <Link href="/setup">Setup guide</Link>
+              <Link href="/privacy">Privacy</Link>
               <a href={GITHUB_URL} target="_blank" rel="noreferrer">
                 GitHub
               </a>
@@ -1330,7 +1438,7 @@ export function DashboardView({
       <ConfirmDialog
         open={disconnecting}
         title="Disconnect this browser?"
-        description="This browser forgets your Stillgreen address and access code. Stillgreen keeps running and keeps you green."
+        description="This browser forgets your Stillgreen address and access code. Stillgreen keeps running on your computer or server."
         confirmLabel="Disconnect"
         icon={<Signal />}
         onConfirm={() => {

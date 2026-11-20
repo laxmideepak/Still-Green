@@ -1,7 +1,7 @@
 // Presentation helpers for the web dashboard (live and preview). Nothing here
 // talks to the daemon; lib/bridge.ts does that.
 
-import type { ActivityEntry, DaemonState, WorkspaceState } from "./bridge";
+import type { ActivityEntry, AuthState, DaemonState, Diagnostics, ErrorInfo, WorkspaceState } from "./bridge";
 
 export type DayKey =
   | "monday"
@@ -238,7 +238,7 @@ export const STAY_CHOICES: ReadonlyArray<{ value: StayChoice; label: string; lon
 /** Status badge for one workspace: words plus a tone. */
 export function workspaceBadge(
   workspace: WorkspaceState,
-  state: Pick<DaemonState, "paused" | "stay_active">,
+  state: Pick<DaemonState, "paused" | "stay_active"> & Partial<Pick<DaemonState, "server_time">>,
   unreachable = false,
 ): { tone: StatusTone; label: string } {
   if (unreachable) return { tone: "neutral", label: "Unknown" };
@@ -246,7 +246,10 @@ export function workspaceBadge(
   if (state.paused && !state.stay_active) return { tone: "warning", label: "Paused" };
   switch (workspace.status) {
     case "active":
-      return { tone: "success", label: "Active" };
+      // "Active" only once Slack's own check confirmed it recently.
+      return presenceConfirmed(workspace, state)
+        ? { tone: "success", label: "Active" }
+        : { tone: "info", label: "Connected" };
     case "manual_away":
       return { tone: "violet", label: "Away (set by you)" };
     case "away":
@@ -296,7 +299,7 @@ export function capitalize(text: string): string {
 }
 
 export type PresenceSummary = {
-  tone: "success" | "warning" | "neutral" | "danger";
+  tone: "success" | "warning" | "neutral" | "danger" | "info";
   title: string;
   /** Shown after a dot, quieter. */
   detail?: string;
@@ -308,19 +311,297 @@ export type PresenceSummary = {
  * still be reported as connected until the daemon drops it, so paused ones
  * never count, and nothing counts during a pause of everything.
  */
-export function onlineCount(state: Pick<DaemonState, "workspaces" | "paused" | "stay_active">): number {
+export function onlineCount(
+  state: Pick<DaemonState, "workspaces" | "paused" | "stay_active"> & Partial<Pick<DaemonState, "server_time">>,
+): number {
   if (state.paused && !state.stay_active) return 0;
-  return state.workspaces.filter((item) => item.connected && item.status === "active" && !item.paused).length;
+  return state.workspaces.filter(
+    (item) => item.connected && item.status === "active" && !item.paused && presenceConfirmed(item, state),
+  ).length;
+}
+
+// ------------------------------------------------------------------ verified presence
+
+/**
+ * How long a "Slack says you are active" check counts as fresh. The daemon
+ * asks Slack about once a minute, so this allows a few missed checks.
+ */
+export const PRESENCE_FRESH_MS = 5 * 60000;
+
+/** Whether this daemon sends the presence fields (newer daemons do). */
+export function reportsPresence(workspace: WorkspaceState): boolean {
+  return workspace.presence_verified_at !== undefined || workspace.presence !== undefined;
+}
+
+/** Milliseconds between Slack's last "active" answer and the daemon's clock, or null. */
+export function presenceAge(
+  workspace: WorkspaceState,
+  state: Partial<Pick<DaemonState, "server_time">>,
+): number | null {
+  const verified = asDate(workspace.presence_verified_at);
+  if (!verified) return null;
+  const server = asDate(state.server_time);
+  const reference = server ? server.getTime() : Date.now();
+  return Math.max(0, reference - verified.getTime());
+}
+
+/**
+ * Slack itself recently said this workspace shows you as active. Older
+ * daemons don't send the time; they only report "active" after Slack said so,
+ * so a live "active" counts there.
+ */
+export function presenceConfirmed(
+  workspace: WorkspaceState,
+  state: Partial<Pick<DaemonState, "server_time">>,
+): boolean {
+  if (workspace.paused) return false;
+  if (!reportsPresence(workspace)) return workspace.connected && workspace.status === "active";
+  if (workspace.presence === "away" || workspace.presence === "manual_away") return false;
+  const age = presenceAge(workspace, state);
+  return age !== null && age <= PRESENCE_FRESH_MS;
+}
+
+/** Workspaces where Slack recently confirmed you as active. */
+export function confirmedCount(
+  state: Pick<DaemonState, "workspaces" | "paused" | "stay_active" | "server_time">,
+): number {
+  if (state.paused && !state.stay_active) return 0;
+  return state.workspaces.filter((item) => presenceConfirmed(item, state)).length;
+}
+
+/** Did Slack accept the saved login? Older daemons: worked out from the status. */
+export function workspaceAuth(workspace: WorkspaceState): AuthState {
+  if (workspace.auth === "ok" || workspace.auth === "rejected" || workspace.auth === "unknown") return workspace.auth;
+  if (workspace.status === "invalid_token") return "rejected";
+  if (workspace.connected || ["active", "away", "auto_away", "manual_away", "connected"].includes(workspace.status)) {
+    return "ok";
+  }
+  return "unknown";
+}
+
+/** The workspace's problem in plain words: the daemon's own words when it sends them. */
+export function workspaceProblem(workspace: WorkspaceState): ErrorInfo | null {
+  if (workspace.last_error_info && workspace.last_error_info.title) return workspace.last_error_info;
+  if (workspace.status === "invalid_token" || workspace.auth === "rejected") {
+    return {
+      code: "slack_auth_rejected",
+      title: "Slack signed you out here",
+      message: "Slack no longer accepts the saved login for this workspace.",
+      action: "Open Slack in Chrome, sign in, and click Capture from Slack in the extension again.",
+    };
+  }
+  if (workspace.last_error && workspace.status !== "active") {
+    return {
+      code: "unknown",
+      title: "Problem talking to Slack",
+      message: `${capitalize(workspace.last_error.replace(/[.]+$/, ""))}.`,
+      action: "Stillgreen keeps trying. If it doesn't clear, use Check my setup.",
+    };
+  }
+  return null;
+}
+
+/** When Slack last confirmed you as active anywhere, as a moment in this browser's clock. */
+function latestConfirmation(state: DaemonState, now: number, lastOkAt: number | null): number | null {
+  let best: number | null = null;
+  for (const workspace of state.workspaces) {
+    const age = presenceAge(workspace, state);
+    if (age === null) continue;
+    const at = (lastOkAt ?? now) - age;
+    if (best === null || at > best) best = at;
+  }
+  return best;
+}
+
+export type SignalTone = "pass" | "warn" | "fail" | "off";
+
+/** One of the three lines in the status card. */
+export type StatusSignal = {
+  id: "running" | "login" | "presence";
+  label: string;
+  tone: SignalTone;
+  /** Short state, e.g. "Running", "Valid", "Confirmed 2 min ago". */
+  value: string;
+  /** One plain line that explains it. */
+  detail: string;
+};
+
+/**
+ * The three things that must all be true before Slack shows you as active:
+ * Stillgreen is running, Slack accepts your login, and Slack has confirmed
+ * your status. Kept apart so a working connection never looks like a
+ * confirmed green dot.
+ */
+export function statusSignals(
+  state: DaemonState,
+  options: { unreachable?: boolean; now?: number; lastOkAt?: number | null } = {},
+): StatusSignal[] {
+  const { unreachable = false, now = Date.now(), lastOkAt = null } = options;
+  const running = state.health ? state.health.daemon : state.daemon.running;
+  const total = state.workspaces.length;
+
+  // 1. Stillgreen running
+  let runningSignal: StatusSignal;
+  if (unreachable) {
+    runningSignal = {
+      id: "running",
+      label: "Stillgreen running",
+      tone: "warn",
+      value: "Can't reach it",
+      detail: "This page can't reach your Stillgreen right now. It keeps trying.",
+    };
+  } else if (!running) {
+    runningSignal = {
+      id: "running",
+      label: "Stillgreen running",
+      tone: "fail",
+      value: "Stopped",
+      detail: "Start it with ./sg-local start (on a server: docker compose up -d).",
+    };
+  } else if (state.config_error) {
+    runningSignal = {
+      id: "running",
+      label: "Stillgreen running",
+      tone: "fail",
+      value: "Settings problem",
+      detail: "It is running but can't read its settings file. Run ./sg-local doctor.",
+    };
+  } else {
+    const uptime = since(state.daemon.started_at, now);
+    runningSignal = {
+      id: "running",
+      label: "Stillgreen running",
+      tone: "pass",
+      value: "Running",
+      detail: uptime ? `Running for ${uptime}.` : "It just started.",
+    };
+  }
+
+  // 2. Slack login valid
+  let loginSignal: StatusSignal;
+  const auths = state.workspaces.map(workspaceAuth);
+  const rejected = state.workspaces.filter((_, index) => auths[index] === "rejected");
+  const accepted = auths.filter((auth) => auth === "ok").length;
+  if (total === 0) {
+    loginSignal = {
+      id: "login",
+      label: "Slack login valid",
+      tone: "off",
+      value: "No workspace yet",
+      detail: "Add your Slack with the Stillgreen browser extension.",
+    };
+  } else if (rejected.length) {
+    loginSignal = {
+      id: "login",
+      label: "Slack login valid",
+      tone: "fail",
+      value: rejected.length === total ? "Signed out" : `Signed out in ${rejected.length} of ${total}`,
+      detail: `Slack signed you out of ${rejected.map((item) => item.name).join(", ")}. Open Slack in Chrome and click Capture from Slack again.`,
+    };
+  } else if (state.health && state.health.slack_reachable === false) {
+    const problem = state.workspaces.map(workspaceProblem).find(Boolean);
+    loginSignal = {
+      id: "login",
+      label: "Slack login valid",
+      tone: "fail",
+      value: "Can't reach Slack",
+      detail: problem ? `${problem.title}. ${problem.action}` : "Your Stillgreen can't reach Slack. Use Check my setup to find out why.",
+    };
+  } else if (accepted === total) {
+    loginSignal = {
+      id: "login",
+      label: "Slack login valid",
+      tone: "pass",
+      value: "Valid",
+      detail: total === 1 ? "Slack accepts your saved login." : `Slack accepts your saved login in all ${total} workspaces.`,
+    };
+  } else if (!running || unreachable) {
+    loginSignal = {
+      id: "login",
+      label: "Slack login valid",
+      tone: "off",
+      value: "Not checked",
+      detail: "Stillgreen checks your login when it connects to Slack.",
+    };
+  } else {
+    loginSignal = {
+      id: "login",
+      label: "Slack login valid",
+      tone: accepted ? "warn" : "off",
+      value: accepted ? `Valid in ${accepted} of ${total}` : "Not checked yet",
+      detail: "Stillgreen checks your login each time it connects to Slack.",
+    };
+  }
+
+  // 3. Presence confirmed
+  const presence = (tone: SignalTone, value: string, detail: string): StatusSignal => ({
+    id: "presence",
+    label: "Presence confirmed",
+    tone,
+    value,
+    detail,
+  });
+  let presenceSignal: StatusSignal;
+  const pausedAll = state.paused && !state.stay_active;
+  const live = state.workspaces.filter((item) => !item.paused && workspaceAuth(item) !== "rejected");
+  const wanted = live.filter((item) => item.status !== "manual_away" && item.presence !== "manual_away");
+  const confirmed = wanted.filter((item) => presenceConfirmed(item, state));
+  const latest = latestConfirmation(state, now, lastOkAt);
+  const agoText = latest ? ago(latest, now) : "";
+  if (unreachable) {
+    presenceSignal = presence("warn", "Unknown", "Shown again when this page can reach your Stillgreen.");
+  } else if (!running) {
+    presenceSignal = presence("off", "Not checked", "Needs Stillgreen to be running.");
+  } else if (total === 0) {
+    presenceSignal = presence("off", "Nothing to check yet", "Add a workspace first.");
+  } else if (pausedAll || state.workspaces.every((item) => item.paused)) {
+    presenceSignal = presence("off", "Paused", "Stillgreen is paused, so Slack shows your normal status.");
+  } else if (live.length === 0) {
+    presenceSignal = presence("fail", "Not confirmed", "No workspace can connect until you capture it again.");
+  } else if (state.schedule.mode === "scheduled" && !state.schedule.active && !state.stay_active) {
+    presenceSignal = presence("off", "Off schedule", "Outside your hours, so Slack shows your normal status.");
+  } else if (wanted.length === 0) {
+    presenceSignal = presence("off", "Away (set by you)", "You set yourself away in Slack, so Stillgreen leaves it alone.");
+  } else if (confirmed.length === wanted.length) {
+    const where = wanted.length === 1 ? "" : ` in all ${wanted.length} workspaces`;
+    presenceSignal = presence(
+      "pass",
+      agoText ? `Confirmed ${agoText}` : "Confirmed",
+      `Slack's own status check shows you as active${where}.`,
+    );
+  } else if (confirmed.length > 0) {
+    presenceSignal = presence(
+      "warn",
+      `Confirmed in ${confirmed.length} of ${wanted.length}`,
+      "Slack has not confirmed the other workspaces yet. Stillgreen keeps trying.",
+    );
+  } else if (wanted.some((item) => item.presence === "away" || ["away", "auto_away"].includes(item.status))) {
+    presenceSignal = presence("warn", "Slack shows you away", "Stillgreen is reconnecting to try again. Slack decides your final status.");
+  } else if (latest) {
+    presenceSignal = presence(
+      "warn",
+      `Last confirmed ${agoText}`,
+      "Slack has not confirmed you as active lately. Stillgreen keeps trying.",
+    );
+  } else if (wanted.some((item) => item.connected)) {
+    presenceSignal = presence("warn", "Waiting for Slack", "Connected. Stillgreen asks Slack about once a minute.");
+  } else if (wanted.some((item) => workspaceProblem(item))) {
+    presenceSignal = presence("fail", "Not confirmed", "Stillgreen can't connect to Slack. See the workspace below.");
+  } else {
+    presenceSignal = presence("warn", "Waiting for Slack", "Stillgreen is connecting to Slack. This usually takes a few seconds.");
+  }
+
+  return [runningSignal, loginSignal, presenceSignal];
 }
 
 /**
  * What happens when Keep me online ends: the end of the sentence
- * "You'll stay online until 5:00 PM, …". Same words on the control page.
+ * "Stillgreen keeps helping until 5:00 PM, …". Same words on the control page.
  */
 export function afterStay(state: Pick<DaemonState, "paused" | "schedule">): string {
   if (state.paused) return "then your pause carries on";
   if (state.schedule.mode === "scheduled") return "then your schedule takes over";
-  return "then Stillgreen goes back to always on";
+  return "then it goes back to always on";
 }
 
 /** "at 5:00 PM" today, otherwise "tomorrow 9:00 AM" or "Mon 9:00 AM". */
@@ -370,11 +651,24 @@ export function activityDate(entry: Pick<ActivityEntry, "at" | "date" | "time">)
   return asDate(entry.at) ?? asDate(entry.date && entry.time ? `${entry.date}T${entry.time}` : null);
 }
 
-/** The big line at the top of the dashboard, in plain words. */
+/**
+ * The big line at the top of the dashboard, in plain words. It says "Active"
+ * only when Slack itself recently confirmed it; a live connection alone is
+ * "Connected · waiting for Slack to confirm".
+ */
 export function presenceSummary(state: DaemonState, unreachable: boolean, now = Date.now()): PresenceSummary {
   const total = state.workspaces.length;
   const online = onlineCount(state);
-  const greenIn = `Your Slack status is green in ${online} of ${total} ${total === 1 ? "workspace" : "workspaces"}.`;
+  const confirmed = confirmedCount(state);
+  const connected = state.workspaces.filter((item) => item.connected && !item.paused).length;
+  const confirmedIn = `Slack confirmed you as active in ${confirmed} of ${total} ${total === 1 ? "workspace" : "workspaces"}.`;
+  const waiting: PresenceSummary = {
+    tone: "info",
+    title: "Connected",
+    detail: "waiting for Slack to confirm",
+    description:
+      "Stillgreen has a live connection, like the Slack web app. Slack decides your final status; Stillgreen asks it about once a minute.",
+  };
 
   if (unreachable) {
     return {
@@ -387,14 +681,14 @@ export function presenceSummary(state: DaemonState, unreachable: boolean, now = 
     return {
       tone: "danger",
       title: "Settings file problem",
-      description: "Stillgreen can't read its settings file, so it isn't keeping anyone green.",
+      description: "Stillgreen can't read its settings file, so it isn't keeping you active.",
     };
   }
   if (!state.daemon.running) {
     return {
       tone: "warning",
       title: "Stopped",
-      description: "Stillgreen isn't running, so it isn't keeping you green.",
+      description: "Stillgreen isn't running, so it isn't keeping you active.",
     };
   }
   if (total === 0) {
@@ -402,15 +696,27 @@ export function presenceSummary(state: DaemonState, unreachable: boolean, now = 
       tone: "neutral",
       title: "Ready",
       detail: "Add a workspace to start",
-      description: "Stillgreen starts keeping your Slack status green as soon as you add a workspace.",
+      description: "Stillgreen starts helping as soon as you add a Slack workspace.",
     };
   }
   if (state.stay_active) {
+    const after = `When it ends, ${afterStay(state).replace(/^then /, "")}.`;
+    if (confirmed > 0) {
+      return {
+        tone: "success",
+        title: "Active",
+        detail: state.stay_until ? `Staying online until ${when(state.stay_until, now)}` : "Staying online",
+        description: `${confirmedIn} ${after}`,
+      };
+    }
+    if (online > 0 || connected > 0) {
+      return { ...waiting, description: `Keep me online is on. Stillgreen is connected and waiting for Slack to confirm. ${after}` };
+    }
     return {
-      tone: online > 0 ? "success" : "warning",
-      title: online > 0 ? "Active" : "Connecting",
+      tone: "warning",
+      title: "Connecting",
       detail: state.stay_until ? `Staying online until ${when(state.stay_until, now)}` : "Staying online",
-      description: `${online > 0 ? greenIn : "Stillgreen is connecting to Slack."} When it ends, ${afterStay(state).replace(/^then /, "")}.`,
+      description: `Stillgreen is connecting to Slack. ${after}`,
     };
   }
   if (state.paused) {
@@ -418,7 +724,7 @@ export function presenceSummary(state: DaemonState, unreachable: boolean, now = 
       tone: "warning",
       title: "Paused",
       detail: state.pause_until ? `Until ${when(state.pause_until, now)}` : "Until you resume",
-      description: "Stillgreen isn't keeping you green right now. Slack will set you away as usual.",
+      description: "Stillgreen isn't keeping you active right now. Slack will set you away as usual.",
     };
   }
   if (state.workspaces.every((item) => item.paused)) {
@@ -438,12 +744,13 @@ export function presenceSummary(state: DaemonState, unreachable: boolean, now = 
       description: "You're outside your schedule, so Slack shows your normal status.",
     };
   }
-  if (online === 0) {
+  if (confirmed === 0) {
+    if (online > 0 || connected > 0) return waiting;
     return {
       tone: "warning",
-      title: "Not green yet",
+      title: "Not active yet",
       detail: "Connecting to Slack",
-      description: "No workspace is active right now. This usually takes a few seconds. Check the workspaces below.",
+      description: "No workspace is connected right now. This usually takes a few seconds. Check the workspaces below.",
     };
   }
   const next = state.schedule.mode === "scheduled" && state.schedule.next_change ? when(state.schedule.next_change, now) : "";
@@ -451,8 +758,171 @@ export function presenceSummary(state: DaemonState, unreachable: boolean, now = 
     tone: "success",
     title: "Active",
     detail: state.schedule.mode === "always" ? "Always on" : next ? `Until ${next}` : "On schedule",
-    description: greenIn + (state.schedule.mode === "always" ? " You stay green until you pause." : " Your schedule ends it on its own."),
+    description:
+      confirmedIn + (state.schedule.mode === "always" ? " Stillgreen keeps helping until you pause it." : " Your schedule ends it on its own."),
   };
+}
+
+// ------------------------------------------------------------------ setup checklist
+
+export type StepStatus = "done" | "todo" | "problem" | "waiting";
+
+export type SetupStep = {
+  id: "running" | "tls" | "slack" | "hours" | "startup" | "presence";
+  title: string;
+  status: StepStatus;
+  /** What it means now, or the next thing to do. */
+  detail: string;
+};
+
+/**
+ * The setup steps, worked out from live state each time (nothing is stored
+ * here), so the list picks up where the person left off. A step is "done"
+ * only when Stillgreen reports it: hours count once the person saved or
+ * confirmed them, and presence only when Slack confirmed every workspace
+ * that should be active right now.
+ */
+export function setupSteps(
+  state: DaemonState,
+  options: { unreachable?: boolean; diagnostics?: Diagnostics | null } = {},
+): SetupStep[] {
+  const { unreachable = false, diagnostics = null } = options;
+  const running = !unreachable && (state.health ? state.health.daemon : state.daemon.running);
+  const total = state.workspaces.length;
+  const tls = diagnostics?.checks.find((check) => check.id === "tls");
+  const reachable = state.health?.slack_reachable;
+  const tlsProblem = state.workspaces
+    .map((item) => item.last_error_info)
+    .find((info) => info && /^(tls_|dns_|proxy_|network_)/.test(info.code));
+
+  const steps: SetupStep[] = [];
+  steps.push({
+    id: "running",
+    title: "Stillgreen running",
+    status: running ? "done" : "problem",
+    detail: running
+      ? "Stillgreen is running and this page can reach it."
+      : unreachable
+        ? "This page can't reach Stillgreen. Start it with ./sg-local start, then check the address."
+        : "Start it with ./sg-local start (on a server: docker compose up -d).",
+  });
+
+  let tlsStep: SetupStep;
+  if (tls && tls.status === "fail") {
+    tlsStep = { id: "tls", title: "Secure connection to Slack", status: "problem", detail: tls.action || tls.detail };
+  } else if (tlsProblem) {
+    tlsStep = { id: "tls", title: "Secure connection to Slack", status: "problem", detail: `${tlsProblem.title}. ${tlsProblem.action}` };
+  } else if (reachable === false) {
+    tlsStep = {
+      id: "tls",
+      title: "Secure connection to Slack",
+      status: "problem",
+      detail: "Your Stillgreen can't reach Slack. Use Check my setup to see why.",
+    };
+  } else if ((tls && tls.status === "pass") || reachable === true || state.workspaces.some((item) => workspaceAuth(item) === "ok")) {
+    tlsStep = { id: "tls", title: "Secure connection to Slack", status: "done", detail: "Stillgreen can reach Slack over a secure connection." };
+  } else if (tls && tls.status === "warn") {
+    tlsStep = { id: "tls", title: "Secure connection to Slack", status: "waiting", detail: tls.action || tls.detail };
+  } else {
+    tlsStep = {
+      id: "tls",
+      title: "Secure connection to Slack",
+      status: running ? "todo" : "waiting",
+      detail: "Not tested yet. Click Check my setup to test it.",
+    };
+  }
+  steps.push(tlsStep);
+
+  const rejected = state.workspaces.filter((item) => workspaceAuth(item) === "rejected");
+  steps.push({
+    id: "slack",
+    title: "Add your Slack",
+    status: total === 0 ? "todo" : rejected.length ? "problem" : "done",
+    detail:
+      total === 0
+        ? "Open Slack in Chrome, then click Capture from Slack in the Stillgreen extension."
+        : rejected.length
+          ? `Slack signed you out of ${rejected.map((item) => item.name).join(", ")}. Capture it again with the extension.`
+          : `${total} ${total === 1 ? "workspace" : "workspaces"} added.`,
+  });
+
+  const scheduled = state.schedule.mode === "scheduled";
+  // Older daemons do not say; a schedule someone picked counts as chosen.
+  const hoursChosen = state.schedule.saved ?? scheduled;
+  const hoursNow = scheduled
+    ? `Scheduled: ${state.schedule.summary || daysSummary(state.schedule.active_days)}.`
+    : "Always on.";
+  steps.push({
+    id: "hours",
+    title: "Choose your hours",
+    status: hoursChosen ? "done" : "todo",
+    detail: hoursChosen
+      ? `${hoursNow} Change it under Schedule any time.`
+      : `Now: ${hoursNow} Pick Always on or Scheduled under Schedule and save, so Stillgreen helps only when you want.`,
+  });
+
+  const autostart = state.autostart;
+  if (autostart && autostart.supported) {
+    steps.push({
+      id: "startup",
+      title: "Start at login (optional)",
+      status: autostart.enabled ? "done" : "todo",
+      detail: autostart.enabled
+        ? "Stillgreen starts by itself when you log in to this Mac."
+        : `To start Stillgreen when you log in to this Mac, run ${autostart.command || "./sg-local install-launchd"}`,
+    });
+  }
+
+  // The same checks as the "Presence confirmed" signal (statusSignals).
+  const pausedAll = state.paused && !state.stay_active;
+  const offSchedule = scheduled && !state.schedule.active && !state.stay_active;
+  const wanted = state.workspaces.filter(
+    (item) =>
+      !item.paused &&
+      workspaceAuth(item) !== "rejected" &&
+      item.status !== "manual_away" &&
+      item.presence !== "manual_away",
+  );
+  const confirmed = pausedAll || offSchedule ? 0 : wanted.filter((item) => presenceConfirmed(item, state)).length;
+  const wantedNow = !pausedAll && !offSchedule && wanted.length > 0;
+  let presenceStep: SetupStep;
+  if (!running || total === 0) {
+    presenceStep = { id: "presence", title: "Presence confirmed", status: "todo", detail: "Finish the steps above first." };
+  } else if (!wantedNow) {
+    presenceStep = {
+      id: "presence",
+      title: "Presence confirmed",
+      status: "todo",
+      detail: "Paused, outside your hours, or set away by you, so there is nothing to confirm right now.",
+    };
+  } else if (confirmed === wanted.length) {
+    presenceStep = {
+      id: "presence",
+      title: "Presence confirmed",
+      status: "done",
+      detail:
+        wanted.length === 1
+          ? "Slack's own status check shows you as active."
+          : `Slack's own status check shows you as active in all ${wanted.length} workspaces.`,
+    };
+  } else {
+    presenceStep = {
+      id: "presence",
+      title: "Presence confirmed",
+      status: "waiting",
+      detail:
+        confirmed > 0
+          ? `Confirmed in ${confirmed} of ${wanted.length}. Waiting for Slack to confirm the others. Stillgreen asks about once a minute.`
+          : "Waiting for Slack to confirm. Stillgreen asks about once a minute.",
+    };
+  }
+  steps.push(presenceStep);
+  return steps;
+}
+
+/** Show the checklist when there is nothing set up yet or something is failing. */
+export function needsSetupHelp(steps: SetupStep[]): boolean {
+  return steps.some((step) => step.status === "problem" || (step.id === "slack" && step.status === "todo"));
 }
 
 /** "Weekdays", "Every day", "Mon, Wed, Fri" */
@@ -483,11 +953,11 @@ const ACTIVITY_PHRASES: ReadonlyArray<[RegExp, string | ((...groups: string[]) =
   [/^presence is active/i, "Slack shows you as active"],
   [/^presence is manually away/i, "You set yourself away, so it was left alone"],
   [/^presence is (\S+); reconnecting/i, "Slack showed you as away, so Stillgreen reconnected"],
-  [/^reconnecting to reset presence/i, "Reconnecting to turn you green again"],
+  [/^reconnecting to reset presence/i, "Reconnecting so Slack can see you as active again"],
   [/^slack asked the client to reconnect/i, "Slack asked for a fresh connection"],
   [/^sent activity tickle/i, "Sent a small sign of activity"],
-  [/^starting presence session/i, "Started keeping you green"],
-  [/^presence session stopped \((.+)\)/i, (why) => (/^stopped$/i.test(why) ? "Stopped keeping you green" : `Stopped keeping you green (${why})`)],
+  [/^starting presence session/i, "Started the Slack connection"],
+  [/^presence session stopped \((.+)\)/i, (why) => (/^stopped$/i.test(why) ? "Stopped the Slack connection" : `Stopped the Slack connection (${why})`)],
   [/^starting session for (.+)/i, (name) => `Starting ${name}`],
   [/^stopping session for (.+?) \((.+)\)/i, (name, why) => `Stopped ${name} (${why})`],
   [/^connection lasted \S+; retrying in (\S+?)s?$/i, (wait) => `Connection dropped. Trying again in ${wait} s`],

@@ -395,7 +395,8 @@ class SecurityTests(WebTestCase):
         status, body, headers = self.request("/api/state", code=self.code, origin="https://evil.example")
         self.assertEqual(status, 403)
         self.assertEqual(headers.get("Access-Control-Allow-Origin"), "https://evil.example")
-        self.assertEqual(set(body), {"ok", "error"})
+        self.assertEqual(set(body), {"ok", "error", "error_code", "error_info"})
+        self.assertEqual(body["error_code"], "origin_not_allowed")
         self.assertIn("SG_LOCAL_WEB_ORIGIN", body["error"])
 
     def test_wrong_codes_are_rate_limited(self) -> None:

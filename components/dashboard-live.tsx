@@ -2,9 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Code, DashboardView, type DashboardApi, type DashboardNotice } from "./dashboard-kit";
+import { ProblemBody } from "./dashboard-health";
 import { Button } from "./ui";
 import {
   clearBridge,
+  errorInfo,
+  fetchDiagnostics,
+  fetchDiagnosticsReport,
   fetchState,
   pausePresence,
   removeWorkspace,
@@ -13,6 +17,7 @@ import {
   stayOnline,
   type BridgeConfig,
   type DaemonState,
+  type ErrorInfo,
 } from "@/lib/bridge";
 import { clock } from "@/lib/dashboard";
 
@@ -26,13 +31,13 @@ type Props = {
 
 const POLL_MS = 12000;
 
-function isCodeError(message: string) {
-  return /access code was not accepted/i.test(message);
+function isCodeError(info: ErrorInfo | null) {
+  return info?.code === "access_code_wrong";
 }
 
 export function DashboardLive({ config, initialState, onDisconnect, onReconnect }: Props) {
   const [state, setState] = useState<DaemonState>(initialState);
-  const [pollError, setPollError] = useState("");
+  const [pollError, setPollError] = useState<ErrorInfo | null>(null);
   const [unreachableSince, setUnreachableSince] = useState<number | null>(null);
   const [lastOkAt, setLastOkAt] = useState(() => Date.now());
   const [checking, setChecking] = useState(false);
@@ -59,13 +64,13 @@ export function DashboardLive({ config, initialState, onDisconnect, onReconnect 
       const next = await fetchState(config);
       if (seq !== mutationSeq.current) return;
       setState(next);
-      setPollError("");
+      setPollError(null);
       setUnreachableSince(null);
       setLastOkAt(Date.now());
     } catch (caught) {
-      const message = caught instanceof Error ? caught.message : "Could not refresh from your Stillgreen.";
-      setPollError(message);
-      if (!isCodeError(message)) setUnreachableSince((since) => since ?? Date.now());
+      const info = errorInfo(caught);
+      setPollError(info);
+      if (!isCodeError(info)) setUnreachableSince((since) => since ?? Date.now());
     } finally {
       polling.current = false;
     }
@@ -93,13 +98,13 @@ export function DashboardLive({ config, initialState, onDisconnect, onReconnect 
         mutationSeq.current += 1;
         try {
           const next = await call(...args);
-          setPollError("");
+          setPollError(null);
           setUnreachableSince(null);
           setLastOkAt(Date.now());
           return next;
         } catch (caught) {
-          const message = caught instanceof Error ? caught.message : "";
-          if (isCodeError(message)) setPollError(message);
+          const info = errorInfo(caught);
+          if (isCodeError(info)) setPollError(info);
           throw caught;
         } finally {
           mutationSeq.current += 1;
@@ -112,6 +117,8 @@ export function DashboardLive({ config, initialState, onDisconnect, onReconnect 
       stay: wrap((choice: string | { until: Date } | null) => stayOnline(config, choice)),
       saveSchedule: wrap((payload: Parameters<typeof saveSchedule>[1]) => saveSchedule(config, payload)),
       removeWorkspace: wrap((teamId: string) => removeWorkspace(config, teamId)),
+      diagnostics: () => fetchDiagnostics(config),
+      report: () => fetchDiagnosticsReport(config),
     };
   }, [config]);
 
@@ -126,7 +133,7 @@ export function DashboardLive({ config, initialState, onDisconnect, onReconnect 
     notices.push({
       tone: "danger",
       title: "Access code not accepted",
-      body: "Your Stillgreen access code changed, or it was typed wrong. Enter the current code to keep using this page.",
+      body: "Your Stillgreen access code changed, or it was typed wrong. Enter the current code to keep using this page. Copy it from your control page, or run ./sg-local web --show-code.",
       actions: (
         <Button size="sm" onClick={() => onReconnect("code")}>
           Re-enter access code
@@ -136,11 +143,11 @@ export function DashboardLive({ config, initialState, onDisconnect, onReconnect 
   } else if (unreachable) {
     notices.push({
       tone: "warning",
-      title: "Can't reach your Stillgreen",
-      body: (
-        <>
-          {pollError} Showing what it last sent at {clock(lastOkAt)}. This page keeps trying.
-        </>
+      title: pollError?.title || "Can't reach your Stillgreen",
+      body: pollError ? (
+        <ProblemBody info={pollError} extra={<> Showing what it last sent at {clock(lastOkAt)}. This page keeps trying.</>} />
+      ) : (
+        <>Showing what it last sent at {clock(lastOkAt)}. This page keeps trying.</>
       ),
       actions: (
         <>

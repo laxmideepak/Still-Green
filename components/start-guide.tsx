@@ -18,7 +18,7 @@ const navItems: DocsNavItem[] = [
   { id: "cmd-daemon", label: "Start and stop", sub: true },
   { id: "cmd-workspaces", label: "Workspaces", sub: true },
   { id: "cmd-schedule", label: "Schedule", sub: true },
-  { id: "cmd-pause", label: "Pause and stay online", sub: true },
+  { id: "cmd-pause", label: "Pause and keep helping", sub: true },
   { id: "cmd-check", label: "Check and fix", sub: true },
   { id: "formats", label: "Times and days" },
   { id: "files", label: "Your files" },
@@ -98,7 +98,7 @@ const groups: Array<{
       },
       {
         command: "./sg-local schedule set --days mon-fri --start 09:00 --end 17:00",
-        description: "Stay green only on these days, between these times.",
+        description: "Only run on these days, between these times.",
       },
       {
         command: "./sg-local schedule set --timezone America/New_York",
@@ -106,14 +106,14 @@ const groups: Array<{
       },
       {
         command: "./sg-local schedule always",
-        description: "Stay green all the time.",
+        description: "Help all the time, until you pause it.",
       },
     ],
   },
   {
     id: "cmd-pause",
-    title: "Pause and stay online",
-    intro: "Staying online wins over a pause and over your schedule. It never overrides an away you set in Slack.",
+    title: "Pause and keep helping",
+    intro: "Keep me online wins over a pause and over your schedule. It never overrides an away you set in Slack.",
     rows: [
       {
         command: "./sg-local pause",
@@ -134,15 +134,15 @@ const groups: Array<{
       },
       {
         command: "./sg-local stay 2h",
-        description: "Stay online for a while, even when paused or outside your schedule.",
+        description: "Keep helping you look active for a while, even when paused or outside your schedule.",
       },
       {
         command: "./sg-local stay --until 17:00",
-        description: "Stay online until a time today.",
+        description: "Keep helping until a time today.",
       },
       {
         command: "./sg-local stay --cancel",
-        description: "Stop staying online.",
+        description: "Stop Keep me online.",
       },
     ],
   },
@@ -150,10 +150,14 @@ const groups: Array<{
     id: "cmd-check",
     title: "Check and fix",
     rows: [
-      { command: "./sg-local doctor", description: "Check your setup." },
+      { command: "./sg-local doctor", description: "Check your setup and say what to do about each problem." },
       {
         command: "./sg-local doctor --check-tokens",
         description: "Also check each workspace's login with Slack.",
+      },
+      {
+        command: "./sg-local doctor --report stillgreen-report.txt",
+        description: "Save a report to share when you ask for help. It has no tokens, cookies or access code.",
       },
       {
         command: "./sg-local logs",
@@ -228,15 +232,19 @@ export function StartGuide() {
                 Quick start
               </h2>
               <p className={docs.sectionLead}>
-                Four steps on a Mac or Linux computer with Python 3.11 or newer and Chrome.
+                Four steps on a Mac or Linux computer with Python 3.9 or newer (Macs already have it) and Chrome.
               </p>
 
               <ol className={styles.quick}>
                 <QuickStep number="1" title="Download">
                   <CodeBlock
-                    code={`git clone ${GITHUB_URL}.git\ncd Still-Green\npython3 -m pip install --user websockets`}
+                    code={`git clone ${GITHUB_URL}.git\ncd Still-Green\n./sg-local --version`}
                     copyLabel="Copy the download commands"
                   />
+                  <p className={docs.small}>
+                    The first run sets itself up in a private <code>.venv</code> folder. No <code>pip</code>, no{" "}
+                    <code>sudo</code>.
+                  </p>
                 </QuickStep>
                 <QuickStep number="2" title="Start">
                   <CodeBlock prompt="$" code="./sg-local web --daemon --open" copyLabel="Copy the start command" />
@@ -248,7 +256,8 @@ export function StartGuide() {
                   <p>
                     Open <code>chrome://extensions</code>, turn on <strong>Developer mode</strong>, click{" "}
                     <strong>Load unpacked</strong> and choose the <code>extension</code> folder. Paste your access code
-                    in the extension, open app.slack.com, and click <strong>Capture from Slack</strong>.
+                    in the extension, open app.slack.com, and click <strong>Capture from Slack</strong>. The first time,
+                    read what it shares and agree.
                   </p>
                   <p className={docs.small}>
                     No extension? Run <code>./sg-local add</code>.{" "}
@@ -278,7 +287,7 @@ export function StartGuide() {
                       </span>
                       <span>
                         <strong>Stillgreen</strong>
-                        <span>Your computer, or your own cloud server. It holds the Slack connection.</span>
+                        <span>Your computer (or, advanced, your own cloud server). It holds the Slack connection.</span>
                       </span>
                     </li>
                     <li>
@@ -310,8 +319,8 @@ export function StartGuide() {
               <p className={`${docs.small} ${styles.cloudNote}`}>
                 <Cloud aria-hidden="true" />
                 <span>
-                  Want to stay green when your laptop sleeps? <Link href="/setup#cloud">Run it in the cloud</Link> on a
-                  free Google Cloud server.
+                  Want it to keep running when your laptop sleeps? Advanced: <Link href="/setup#cloud">run it in the
+                  cloud</Link>. It needs a card on file and some upkeep, and your Slack session then lives on that server.
                 </span>
               </p>
             </section>
@@ -404,17 +413,17 @@ export function StartGuide() {
                 </div>
               </dl>
               <div className={`${docs.prose} ${styles.sectionBody}`}>
-                <p>To remove everything, stop Stillgreen, then delete both folders:</p>
+                <p>
+                  To remove everything, run this. It stops Stillgreen and deletes both folders (and the login item on
+                  a Mac). It asks first.
+                </p>
                 <div className={docs.commands}>
-                  <CodeBlock prompt="$" code="./sg-local stop" copyLabel="Copy the stop command" />
-                  <CodeBlock
-                    prompt="$"
-                    code="rm -rf ~/.config/slack-green-local ~/.local/state/slack-green-local"
-                    copyLabel="Copy the delete command"
-                  />
+                  <CodeBlock prompt="$" code="./sg-local uninstall" copyLabel="Copy the uninstall command" />
                 </div>
                 <p>
-                  Then remove the extension at <code>chrome://extensions</code>.
+                  Then, in Slack, use <strong>Sign out of all other sessions</strong> to end the session Stillgreen
+                  used, and remove the extension at <code>chrome://extensions</code>. See the{" "}
+                  <Link href="/privacy">privacy policy</Link>.
                 </p>
               </div>
             </section>

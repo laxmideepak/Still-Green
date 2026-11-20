@@ -1,5 +1,14 @@
 #!/bin/sh
-# Wrapper for running the local tool without installing it system-wide.
+# Start Stillgreen from this folder. No system-wide install, no sudo.
+#
+# The first time, this sets up a private Python environment in .venv (inside
+# this folder) with the exact packages in requirements.lock, using the Python
+# that is already on this computer (3.9 or newer). After that it starts at
+# once and prints nothing extra.
+#
+#   SG_LOCAL_PYTHON=/path/to/python ./sg-local ...   use that Python as it is
+#
+# Plain POSIX sh: it must run on a fresh Mac and on any Linux.
 set -eu
 
 SOURCE=$0
@@ -13,15 +22,267 @@ while [ -h "$SOURCE" ]; do
 done
 SCRIPT_DIR=$(CDPATH= cd -P -- "$(dirname -- "$SOURCE")" && pwd)
 
-if [ -n "${SG_LOCAL_PYTHON:-}" ]; then
-    PYTHON=$SG_LOCAL_PYTHON
-elif command -v python3 >/dev/null 2>&1; then
-    PYTHON=$(command -v python3)
-else
-    echo "error: python3 not found; set SG_LOCAL_PYTHON" >&2
-    exit 1
-fi
+VENV=$SCRIPT_DIR/.venv
+VENV_PY=$VENV/bin/python
+LOCK=$SCRIPT_DIR/requirements.lock
+# Marks a .venv that this script made (so it may rebuild it), and records
+# which requirements.lock it was built from.
+OWNED=$VENV/.stillgreen
+BUILT_FROM=$VENV/stillgreen-requirements.lock
+SETUP_LOG=$SCRIPT_DIR/.venv-setup.log
+SETUP_LOCK=$SCRIPT_DIR/.venv.lock
 
 PYTHONPATH="$SCRIPT_DIR${PYTHONPATH:+:$PYTHONPATH}"
 export PYTHONPATH
-exec "$PYTHON" -m sg_local "$@"
+
+# Python normally looks for modules in the current folder first, so a file
+# such as websockets.py in the folder you run this from would be run as code.
+# Every Python call below avoids that: the checks and the setup run in
+# isolated mode (-I) from this script's folder, and Stillgreen itself starts
+# through BOOT, which removes the current folder from the module search path
+# before anything is imported. Relative paths you type (for example
+# ./sg-local doctor --report report.txt) still work, because the working
+# folder itself does not change.
+BOOT='import sys
+if sys.path and sys.path[0] in ("", "."):
+    del sys.path[0]
+sys.path.insert(0, sys.argv.pop(1))
+import runpy
+runpy.run_module("sg_local", run_name="__main__", alter_sys=True)'
+
+say() {
+    printf 'Stillgreen: %s\n' "$*" >&2
+}
+
+fail() {
+    printf '\n' >&2
+    printf '%s\n' "$@" >&2
+    exit 1
+}
+
+# Does this Python already have everything Stillgreen needs?
+has_packages() {
+    (cd "$SCRIPT_DIR" && "$1" -I - <<'PY') >/dev/null 2>&1
+import sys
+import websockets
+if int(websockets.__version__.split(".")[0]) < 14:
+    sys.exit(1)
+if sys.version_info >= (3, 10):
+    import truststore  # noqa: F401
+PY
+}
+
+venv_ready() {
+    [ -x "$VENV_PY" ] && [ -f "$OWNED" ] && [ -f "$BUILT_FROM" ] && cmp -s "$LOCK" "$BUILT_FROM"
+}
+
+run() {
+    PY=$1
+    shift
+    exec "$PY" -c "$BOOT" "$SCRIPT_DIR" "$@"
+}
+
+# Run a Stillgreen command and come back (used around an update).
+run_quietly() {
+    PY=$1
+    shift
+    "$PY" -c "$BOOT" "$SCRIPT_DIR" "$@" >/dev/null 2>&1
+}
+
+# Is the background service running? Read its process id file the same way
+# sg_local/config.py finds it.
+daemon_running() {
+    state_dir=${SG_LOCAL_STATE_DIR:-$HOME/.local/state/slack-green-local}
+    case $state_dir in
+        "~"/*) state_dir=$HOME/${state_dir#"~"/} ;;
+    esac
+    [ -f "$state_dir/daemon.pid" ] || return 1
+    pid=$(cat "$state_dir/daemon.pid" 2>/dev/null) || return 1
+    case $pid in
+        ''|*[!0-9]*) return 1 ;;
+    esac
+    kill -0 "$pid" 2>/dev/null
+}
+
+# 1. An explicit Python always wins, used exactly as it is.
+if [ -n "${SG_LOCAL_PYTHON:-}" ]; then
+    run "$SG_LOCAL_PYTHON" "$@"
+fi
+
+# 2. Normal runs: the private environment is ready. Print nothing extra.
+if venv_ready; then
+    run "$VENV_PY" "$@"
+fi
+
+# 3. A .venv this script did not make (a developer's own): use it if it has
+#    what Stillgreen needs, and never delete it.
+if [ -d "$VENV" ] && [ ! -f "$OWNED" ]; then
+    if [ -x "$VENV_PY" ] && has_packages "$VENV_PY"; then
+        run "$VENV_PY" "$@"
+    fi
+    fail "Stillgreen: the folder $VENV already exists, but Stillgreen did not make it" \
+         "and it does not have the packages Stillgreen needs." \
+         "What to do: move that folder somewhere else and run ./sg-local again," \
+         "or run with SG_LOCAL_PYTHON=/path/to/your/python."
+fi
+
+# Find a Python 3.9 or newer. Prefer 3.10+, which can use the computer's own
+# certificate store through the truststore package.
+python_version() {
+    (cd "$SCRIPT_DIR" && "$1" -I -c 'import sys; print("%d.%d.%d" % sys.version_info[:3])') 2>/dev/null
+}
+
+BASE=
+BASE_VERSION=
+FALLBACK=
+FALLBACK_VERSION=
+OLD=
+OLD_VERSION=
+NO_DEV_TOOLS=
+for name in python3 python3.14 python3.13 python3.12 python3.11 python3.10 python3.9; do
+    candidate=$(command -v "$name" 2>/dev/null) || continue
+    [ -n "$candidate" ] || continue
+    # On a Mac without the developer tools, /usr/bin/python3 only opens an
+    # install window. Say so in words instead of running it.
+    if [ "$candidate" = /usr/bin/python3 ] && [ "$(uname -s)" = Darwin ] \
+        && ! /usr/bin/xcode-select -p >/dev/null 2>&1; then
+        NO_DEV_TOOLS=1
+        continue
+    fi
+    version=$(python_version "$candidate") || continue
+    major=${version%%.*}
+    rest=${version#*.}
+    minor=${rest%%.*}
+    if [ "$major" -eq 3 ] && [ "$minor" -ge 10 ]; then
+        BASE=$candidate
+        BASE_VERSION=$version
+        break
+    elif [ "$major" -eq 3 ] && [ "$minor" -ge 9 ]; then
+        if [ -z "$FALLBACK" ]; then
+            FALLBACK=$candidate
+            FALLBACK_VERSION=$version
+        fi
+    elif [ -z "$OLD" ]; then
+        OLD=$candidate
+        OLD_VERSION=$version
+    fi
+done
+if [ -z "$BASE" ] && [ -n "$FALLBACK" ]; then
+    BASE=$FALLBACK
+    BASE_VERSION=$FALLBACK_VERSION
+fi
+
+if [ -z "$BASE" ]; then
+    if [ -n "$OLD" ]; then
+        fail "Problem: Python is too old" \
+             "Stillgreen needs Python 3.9 or newer, but this computer has Python $OLD_VERSION ($OLD)." \
+             "What to do: install a newer Python from https://www.python.org/downloads/ and run ./sg-local again."
+    fi
+    if [ -n "$NO_DEV_TOOLS" ]; then
+        fail "Problem: Python is not installed yet" \
+             "This Mac does not have Python yet." \
+             "What to do: run  xcode-select --install  and click Install (it adds Python)," \
+             "or install Python from https://www.python.org/downloads/. Then run ./sg-local again."
+    fi
+    fail "Problem: Python is not installed" \
+         "Stillgreen needs Python 3.9 or newer, and none was found." \
+         "What to do: install Python from https://www.python.org/downloads/ and run ./sg-local again." \
+         "(If Python is installed in an unusual place, run with SG_LOCAL_PYTHON=/path/to/python3.)"
+fi
+
+# 4. This Python already has the packages (for example a developer setup).
+if has_packages "$BASE"; then
+    run "$BASE" "$@"
+fi
+
+# 5. First run: make the private environment.
+if [ ! -f "$LOCK" ]; then
+    fail "Stillgreen: $LOCK is missing. Download Stillgreen again."
+fi
+
+# Only one setup at a time (two terminals, or install.sh and a command).
+waited=0
+while ! mkdir "$SETUP_LOCK" 2>/dev/null; do
+    if [ "$waited" -eq 0 ]; then
+        say "another setup is running; waiting for it to finish..."
+    fi
+    if [ "$waited" -ge 600 ]; then
+        fail "Stillgreen: waited 10 minutes for another setup to finish." \
+             "If no other setup is running, delete the folder $SETUP_LOCK and run ./sg-local again."
+    fi
+    sleep 2
+    waited=$((waited + 2))
+done
+trap 'rmdir "$SETUP_LOCK" 2>/dev/null || true' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+# The other setup may have just finished it.
+if venv_ready; then
+    rmdir "$SETUP_LOCK" 2>/dev/null || true
+    trap - EXIT INT TERM
+    run "$VENV_PY" "$@"
+fi
+
+# Why the setup failed, in plain words (sg_local/errors.py). Runs from this
+# script's folder, which is where sg_local is.
+explain_install() {
+    (cd "$SCRIPT_DIR" && "$BASE" -s -E -m sg_local.errors --install <"$SETUP_LOG") >&2 || true
+}
+
+say "first-time setup. This takes about a minute and happens only once."
+say "using Python $BASE_VERSION ($BASE)"
+
+: >"$SETUP_LOG"
+chmod 600 "$SETUP_LOG" 2>/dev/null || true
+
+RESTART_AFTER=
+if [ -d "$VENV" ]; then
+    # Only reached for a .venv this script made: requirements.lock changed
+    # (after an update) or the setup was interrupted. A running Stillgreen
+    # still uses the old packages, so stop it first (with the old setup) and
+    # start it again when the new one is ready.
+    if [ -x "$VENV_PY" ] && daemon_running; then
+        say "this update needs new packages. Stopping Stillgreen while they install..."
+        if run_quietly "$VENV_PY" stop; then
+            RESTART_AFTER=1
+        else
+            say "could not stop Stillgreen. Run ./sg-local restart when this finishes."
+        fi
+    fi
+    rm -rf "$VENV"
+fi
+
+say "making a private Python environment in $VENV ..."
+# Mark the folder as ours first, so an interrupted setup is simply redone.
+mkdir -p "$VENV"
+: >"$OWNED"
+if ! (cd "$SCRIPT_DIR" && "$BASE" -I -m venv "$VENV") >>"$SETUP_LOG" 2>&1; then
+    rm -rf "$VENV"
+    printf '\n' >&2
+    explain_install
+    fail "Details are in $SETUP_LOG"
+fi
+
+say "downloading and installing the packages it needs from pypi.org ..."
+if ! (cd "$SCRIPT_DIR" && "$VENV_PY" -I -m pip install --disable-pip-version-check --no-input --quiet \
+        --prefer-binary --require-hashes -r "$LOCK") >>"$SETUP_LOG" 2>&1; then
+    printf '\n' >&2
+    explain_install
+    fail "Details are in $SETUP_LOG"
+fi
+
+cp "$LOCK" "$BUILT_FROM"
+say "setup finished."
+rmdir "$SETUP_LOCK" 2>/dev/null || true
+trap - EXIT INT TERM
+if [ -n "$RESTART_AFTER" ]; then
+    case ${1:-} in
+        start|restart|stop|uninstall) ;;
+        *)
+            say "starting Stillgreen again with the new version..."
+            run_quietly "$VENV_PY" start || say "could not start Stillgreen. Run ./sg-local start."
+            ;;
+    esac
+fi
+run "$VENV_PY" "$@"

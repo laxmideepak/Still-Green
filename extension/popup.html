@@ -19,7 +19,52 @@
         <span id="status" class="badge badge-neutral" role="status" aria-live="polite"><span class="dot" aria-hidden="true"></span><span id="statusText">Not connected yet</span></span>
       </header>
 
-      <main class="body">
+      <!-- Shown before the first capture, again when CONSENT_VERSION changes, and
+           again for a new Stillgreen address (popup.js, background.js). -->
+      <section id="consent" class="body consent" aria-labelledby="consentTitle" hidden>
+        <div class="intro">
+          <h1 class="title" id="consentTitle" tabindex="-1">Before you capture</h1>
+          <p class="lede">Please read what the extension does with your Slack login. You see this again if you change the Stillgreen address.</p>
+        </div>
+        <div class="banner banner-info consent-changed" id="consentChanged" role="note" hidden>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>
+          <p class="banner-description" id="consentChangedText">You changed the Stillgreen address.</p>
+        </div>
+        <dl class="consent-list">
+          <div>
+            <dt>What it reads</dt>
+            <dd>Your Slack session token and the &ldquo;d&rdquo; cookie, for the Slack workspaces open in Chrome.</dd>
+          </div>
+          <div>
+            <dt>What they allow</dt>
+            <dd>Anyone who has them can act as you in Slack, like being signed in.</dd>
+          </div>
+          <div>
+            <dt>Where they go</dt>
+            <dd>Only to the Stillgreen address you set (<span class="mono" id="consentHost">127.0.0.1:8765</span>). Never to the website or anyone else.
+              <span id="consentRemote" hidden>This address is not this computer, so your Slack login will be kept on that server. Only use a server you control.</span></dd>
+          </div>
+          <div>
+            <dt>Where they are kept</dt>
+            <dd>On your computer or your server, in a file only your user can read.</dd>
+          </div>
+          <div>
+            <dt>How to remove them</dt>
+            <dd>Click Remove in Stillgreen. Then in Slack go to Settings and click &ldquo;Sign out of all other sessions&rdquo;.</dd>
+          </div>
+        </dl>
+        <div class="banner banner-warning consent-warning">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.3 4.2 2.6 17.5A2 2 0 0 0 4.3 20.5h15.4a2 2 0 0 0 1.7-3L13.7 4.2a2 2 0 0 0-3.4 0Z"/><path d="M12 9.5v4M12 17h.01"/></svg>
+          <p class="banner-description">Slack does not officially support keeping you active, and your employer may not allow it. Slack decides your final status.</p>
+        </div>
+        <p class="consent-more">More in the <a href="https://stillgreen.vercel.app/privacy" target="_blank" rel="noreferrer">privacy policy</a>.</p>
+        <div class="consent-actions">
+          <button id="consentCancel" class="btn btn-secondary" type="button">Cancel</button>
+          <button id="consentAccept" class="btn btn-primary" type="button">I understand, continue</button>
+        </div>
+      </section>
+
+      <main class="body" id="mainView">
         <div class="intro">
           <h1 class="title">Add your Slack</h1>
           <p class="lede">Adds every Slack workspace this browser is signed in to, in one click.</p>
@@ -70,6 +115,10 @@
         <nav class="foot-links" aria-label="More">
           <a href="https://stillgreen.vercel.app/dashboard" target="_blank" rel="noreferrer">
             Open dashboard
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7"/><path d="M7 7h10v10"/></svg>
+          </a>
+          <a href="https://stillgreen.vercel.app/privacy" target="_blank" rel="noreferrer">
+            Privacy
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7"/><path d="M7 7h10v10"/></svg>
           </a>
           <a href="https://stillgreen.vercel.app/setup#add-slack" target="_blank" rel="noreferrer">

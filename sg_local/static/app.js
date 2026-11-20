@@ -55,6 +55,11 @@
     clock: [["circle", { cx: 12, cy: 12, r: 9 }], ["path", { d: "M12 7v5l3.2 2" }]],
   };
 
+  // How long Slack's "you are active" answer counts as fresh. The daemon asks
+  // about once a minute. Same rule as lib/dashboard.ts PRESENCE_FRESH_MS.
+  const PRESENCE_FRESH_MS = 5 * 60000;
+  const REPORT_FILENAME = "stillgreen-diagnostics.txt";
+
   // ------------------------------------------------------------------ state
 
   const boot = readBootstrap();
@@ -75,6 +80,7 @@
     stay: { kind: "duration", value: "1h" },
     stayWasActive: null,
     activityExpanded: false,
+    diag: { result: null, error: null, running: false },
     sched: { base: null, draft: null, serverLocal: false, touched: false },
   };
 
@@ -234,13 +240,64 @@
 
   // ------------------------------------------------------------------- api
 
+  // `info` is the problem in plain words: { code, title, message, action }.
   class ApiError extends Error {
-    constructor(message, status, kind) { super(message); this.status = status; this.kind = kind; }
+    constructor(message, status, kind, info) {
+      super(message);
+      this.status = status;
+      this.kind = kind;
+      this.info = info || { code: kind || "unknown", title: "That didn't work", message, action: "" };
+    }
   }
 
-  async function api(path, { method = "GET", body, code = S.code } = {}) {
+  function apiError(status, payload) {
+    const text = payload && payload.error ? String(payload.error) : "";
+    if (status === 401) {
+      return new ApiError("The access code was not accepted.", 401, "auth", {
+        code: "access_code_wrong", title: "Access code not accepted", message: "The access code was not accepted.",
+        action: "Copy it again, or run ./sg-local web --show-code.",
+      });
+    }
+    if (status === 429) {
+      return new ApiError("Too many wrong codes from this network. Wait a minute, then try again.", 429, "throttle", {
+        code: "too_many_attempts", title: "Too many wrong codes", message: "Stillgreen saw too many wrong access codes from this network.",
+        action: "Wait one minute, then try again.",
+      });
+    }
+    if (status === 421) {
+      return new ApiError("Stillgreen doesn't know this address.", 421, "request", {
+        code: "wrong_host", title: "Stillgreen doesn't know this address", message: "It only accepts the host names it was set up with.",
+        action: "Use the address Stillgreen showed when it started, or add this name to SG_LOCAL_WEB_HOSTS and restart it.",
+      });
+    }
+    if (status === 404) {
+      return new ApiError("This Stillgreen is too old for that.", 404, "request", {
+        code: "not_supported", title: "This Stillgreen can't do that yet", message: "Your Stillgreen does not know this request.",
+        action: "Update Stillgreen (git pull in its folder), then restart it. You can also run ./sg-local doctor in a terminal.",
+      });
+    }
+    const kind = status >= 500 || status === 0 ? "server" : "request";
+    // Newer daemons explain the problem themselves (shared error catalogue).
+    const own = payload && payload.error_info && typeof payload.error_info === "object" ? payload.error_info : null;
+    if (own && own.title) {
+      const info = { code: own.code || "unknown", title: String(own.title), message: String(own.message || ""), action: String(own.action || "") };
+      return new ApiError(info.message || info.title, status, kind, info);
+    }
+    const message = sentence(text) || `Request failed (${status}).`;
+    return new ApiError(message, status, kind, {
+      code: kind === "server" ? "server_error" : "request_refused",
+      title: kind === "server" ? "Stillgreen had a problem" : "That didn't work",
+      message,
+      action: kind === "server" ? "Try again. If it keeps happening, run ./sg-local doctor." : "",
+    });
+  }
+
+  // fetch with the access code. `raw` returns the Response (for files).
+  async function api(path, { method = "GET", body, code = S.code, raw = false, timeout = 15000 } = {}) {
     if (!/^[\x21-\x7e]+$/.test(code || "")) throw new ApiError("That access code isn't valid.", 401, "auth");
     let response;
+    const controller = typeof AbortController === "function" ? new AbortController() : null;
+    const timer = controller ? setTimeout(() => controller.abort(), timeout) : 0;
     try {
       response = await fetch(path, {
         method,
@@ -251,18 +308,20 @@
         body: body !== undefined ? JSON.stringify(body) : undefined,
         cache: "no-store",
         credentials: "omit",
+        signal: controller ? controller.signal : undefined,
       });
-    } catch {
-      throw new ApiError("Can't reach Stillgreen.", 0, "network");
+    } catch (error) {
+      const slow = error && error.name === "AbortError";
+      throw new ApiError(slow ? "Stillgreen took too long to answer." : "Can't reach Stillgreen.", 0, "network", slow
+        ? { code: "network_timeout", title: "Stillgreen took too long to answer", message: "It did not answer in time.", action: "Check that it is running, then try again." }
+        : { code: "daemon_not_running", title: "Can't reach Stillgreen", message: "Nothing answered at this address.", action: "Check that Stillgreen is running (./sg-local start, or docker compose up -d on a server)." });
+    } finally {
+      clearTimeout(timer);
     }
+    if (raw && response.ok) return response;
     let payload = {};
     try { payload = await response.json(); } catch { /* empty or non-JSON body */ }
-    if (response.status === 401) throw new ApiError("The access code was not accepted.", 401, "auth");
-    if (response.status === 429) throw new ApiError("Too many wrong codes from this network. Wait a minute, then try again.", 429, "throttle");
-    if (!response.ok || payload.ok === false) {
-      const kind = response.status >= 500 || response.status === 0 ? "server" : "request";
-      throw new ApiError(sentence(payload.error) || `Request failed (${response.status}).`, response.status, kind);
-    }
+    if (!response.ok || payload.ok === false) throw apiError(response.status, payload);
     return payload;
   }
 
@@ -328,6 +387,11 @@
   function handleError(error) {
     if (error && error.kind === "auth") { sessionExpired(); return; }
     if (error && error.kind === "network") { markOffline(error.message); }
+    const info = error && error.info;
+    if (info && info.title && info.code !== "request_refused") {
+      toast(info.title, "danger", { description: [info.message, info.action].filter(Boolean).join(" ") });
+      return;
+    }
     toast(error && error.message ? error.message : "Something went wrong.", "danger");
   }
 
@@ -493,6 +557,8 @@
     S.sigs = {};
     S.revealCode = false;
     S.rotated = false;
+    S.diag = { result: null, error: null, running: false };
+    renderDiag();
   }
 
   function sessionExpired() {
@@ -517,7 +583,7 @@
     S.offlineReason = reason || "";
     renderTop();
     renderBanners();
-    if (S.data) renderUpdated();
+    if (S.data) { renderUpdated(); renderSignals(); renderSetup(); }
   }
 
   // ----------------------------------------------------------------- render
@@ -537,6 +603,8 @@
     renderTop();
     renderBanners();
     renderOverview();
+    renderSignals();
+    renderSetup();
     renderStay();
     renderWorkspaces();
     renderSchedule();
@@ -563,7 +631,12 @@
     let label = "Connecting";
     if (S.offline) { tone = "warning"; label = "Offline, retrying"; }
     else if (d && (!d.daemon || !d.daemon.running)) { tone = "danger"; label = "Stopped"; }
-    else if (d) { const n = onlineCount(d); tone = n ? "success" : "neutral"; label = n ? `${n} online` : "Running"; }
+    else if (d) {
+      const n = confirmedCount(d);
+      const live = d.workspaces.filter((w) => w.connected && !w.paused).length;
+      tone = n ? "success" : live ? "info" : "neutral";
+      label = n ? `${n} active` : live ? "Connected" : "Running";
+    }
     setBadge(pill, tone, label, text);
     $("#hostDot").dataset.tone = tone;
   }
@@ -594,10 +667,10 @@
           d ? `${why}Showing what we last saw${since}. Trying again by itself.` : `${why}Trying again by itself.`, retry);
       }
       if (kind === "config") {
-        return banner("danger", "alert", "There's a problem with the settings file", [sentence(extra), " Changes are blocked until the file is fixed."]);
+        return banner("danger", "alert", "There's a problem with the settings file", [sentence(extra), " Changes are blocked until the file is fixed. Run ", h("code", { text: "./sg-local doctor" }), " to see why."]);
       }
       return banner("warning", "warn", "Stillgreen isn't running",
-        ["Nothing is kept green until it starts. On a computer, run ", h("code", { text: "./sg-local start" }),
+        ["It can't help keep you active until it starts. On a computer, run ", h("code", { text: "./sg-local start" }),
           ". On a server, run ", h("code", { text: "sudo docker compose up -d" }), "."]);
     });
     $("#banners").replaceChildren(...nodes);
@@ -608,14 +681,14 @@
   // lib/dashboard.ts onlineCount.
   function onlineCount(d) {
     if (d.paused && !d.stay_active) return 0;
-    return d.workspaces.filter((w) => w.connected && w.status === "active" && !w.paused).length;
+    return d.workspaces.filter((w) => w.connected && w.status === "active" && !w.paused && presenceConfirmed(w, d)).length;
   }
 
-  // The end of "You'll stay online until 5:00 PM, …" (lib/dashboard.ts afterStay).
+  // The end of "Stillgreen keeps helping until 5:00 PM, …" (lib/dashboard.ts afterStay).
   function afterStay(d) {
     if (d.paused) return "then your pause carries on";
     if (d.schedule && d.schedule.mode === "scheduled") return "then your schedule takes over";
-    return "then Stillgreen goes back to always on";
+    return "then it goes back to always on";
   }
 
   function modeLabel(d) {
@@ -632,30 +705,168 @@
     return "Nothing planned";
   }
 
+  // ------------------------------------------------------ verified presence
+  // Same rules as lib/dashboard.ts (reportsPresence, presenceConfirmed, ...).
+
+  function reportsPresence(w) { return w.presence_verified_at !== undefined || w.presence !== undefined; }
+
+  function dateMs(value) {
+    if (!value) return NaN;
+    const ms = new Date(value).getTime();
+    return Number.isNaN(ms) ? NaN : ms;
+  }
+
+  // Milliseconds between Slack's last "active" answer and the daemon's clock.
+  function presenceAge(w, d) {
+    const verified = dateMs(w.presence_verified_at);
+    if (Number.isNaN(verified)) return null;
+    const server = dateMs(d.server_time);
+    return Math.max(0, (Number.isNaN(server) ? Date.now() : server) - verified);
+  }
+
+  // Slack itself recently said you are active here. Older daemons only say
+  // "active" after Slack did, so a live "active" counts there.
+  function presenceConfirmed(w, d) {
+    if (w.paused) return false;
+    if (!reportsPresence(w)) return Boolean(w.connected && w.status === "active");
+    if (w.presence === "away" || w.presence === "manual_away") return false;
+    const age = presenceAge(w, d);
+    return age !== null && age <= PRESENCE_FRESH_MS;
+  }
+
+  function confirmedCount(d) {
+    if (d.paused && !d.stay_active) return 0;
+    return d.workspaces.filter((w) => presenceConfirmed(w, d)).length;
+  }
+
+  function workspaceAuth(w) {
+    if (["ok", "rejected", "unknown"].includes(w.auth)) return w.auth;
+    if (w.status === "invalid_token") return "rejected";
+    if (w.connected || ["active", "away", "auto_away", "manual_away", "connected"].includes(w.status)) return "ok";
+    return "unknown";
+  }
+
+  // The workspace's problem in plain words; the daemon's own words when sent.
+  function workspaceProblem(w) {
+    if (w.last_error_info && w.last_error_info.title) return w.last_error_info;
+    if (w.status === "invalid_token" || w.auth === "rejected") {
+      return { code: "slack_auth_rejected", title: "Slack signed you out here", message: "Slack no longer accepts the saved login for this workspace.", action: "Open Slack in Chrome, sign in, and click Capture from Slack in the extension again." };
+    }
+    if (w.last_error && w.status !== "active") {
+      return { code: "unknown", title: "Problem talking to Slack", message: sentence(w.last_error), action: "Stillgreen keeps trying. If it doesn't clear, use Check my setup." };
+    }
+    return null;
+  }
+
+  // When Slack last confirmed you anywhere, in this browser's clock.
+  function latestConfirmation(d) {
+    let best = null;
+    for (const w of d.workspaces) {
+      const age = presenceAge(w, d);
+      if (age === null) continue;
+      const at = (S.lastOk || Date.now()) - age;
+      if (best === null || at > best) best = at;
+    }
+    return best;
+  }
+
+  // The three signals (lib/dashboard.ts statusSignals): running, login, presence.
+  function statusSignals(d) {
+    const running = d.health ? Boolean(d.health.daemon) : Boolean(d.daemon && d.daemon.running);
+    const total = d.workspaces.length;
+    const sig = (id, label, tone, value, detail) => ({ id, label, tone, value, detail });
+
+    let one;
+    if (S.offline) one = sig("running", "Stillgreen running", "warn", "Can't reach it", "This page can't reach Stillgreen right now. It keeps trying.");
+    else if (!running) one = sig("running", "Stillgreen running", "fail", "Stopped", "Start it with ./sg-local start (on a server: docker compose up -d).");
+    else if (d.config_error) one = sig("running", "Stillgreen running", "fail", "Settings problem", "It is running but can't read its settings file. Run ./sg-local doctor.");
+    else {
+      const started = dateMs(d.daemon && d.daemon.started_at);
+      one = sig("running", "Stillgreen running", "pass", "Running", Number.isNaN(started) ? "It just started." : `Running for ${fmtSpan(Date.now() - started)}.`);
+    }
+
+    let two;
+    const auths = d.workspaces.map(workspaceAuth);
+    const rejected = d.workspaces.filter((_, i) => auths[i] === "rejected");
+    const accepted = auths.filter((a) => a === "ok").length;
+    if (!total) two = sig("login", "Slack login valid", "off", "No workspace yet", "Add your Slack with the Stillgreen browser extension.");
+    else if (rejected.length) {
+      two = sig("login", "Slack login valid", "fail", rejected.length === total ? "Signed out" : `Signed out in ${rejected.length} of ${total}`,
+        `Slack signed you out of ${rejected.map((w) => w.name).join(", ")}. Open Slack in Chrome and click Capture from Slack again.`);
+    } else if (d.health && d.health.slack_reachable === false) {
+      const problem = d.workspaces.map(workspaceProblem).find(Boolean);
+      two = sig("login", "Slack login valid", "fail", "Can't reach Slack",
+        problem ? `${problem.title}. ${problem.action}` : "Stillgreen can't reach Slack. Use Check my setup to find out why.");
+    } else if (accepted === total) {
+      two = sig("login", "Slack login valid", "pass", "Valid", total === 1 ? "Slack accepts your saved login." : `Slack accepts your saved login in all ${total} workspaces.`);
+    } else if (!running || S.offline) {
+      two = sig("login", "Slack login valid", "off", "Not checked", "Stillgreen checks your login when it connects to Slack.");
+    } else {
+      two = sig("login", "Slack login valid", accepted ? "warn" : "off", accepted ? `Valid in ${accepted} of ${total}` : "Not checked yet",
+        "Stillgreen checks your login each time it connects to Slack.");
+    }
+
+    const p = (tone, value, detail) => sig("presence", "Presence confirmed", tone, value, detail);
+    let three;
+    const sched = d.schedule || {};
+    const pausedAll = d.paused && !d.stay_active;
+    const live = d.workspaces.filter((w) => !w.paused && workspaceAuth(w) !== "rejected");
+    const wanted = live.filter((w) => w.status !== "manual_away" && w.presence !== "manual_away");
+    const confirmed = wanted.filter((w) => presenceConfirmed(w, d));
+    const latest = latestConfirmation(d);
+    const agoText = latest ? ago(latest) : "";
+    if (S.offline) three = p("warn", "Unknown", "Shown again when this page can reach Stillgreen.");
+    else if (!running) three = p("off", "Not checked", "Needs Stillgreen to be running.");
+    else if (!total) three = p("off", "Nothing to check yet", "Add a workspace first.");
+    else if (pausedAll || d.workspaces.every((w) => w.paused)) three = p("off", "Paused", "Stillgreen is paused, so Slack shows your normal status.");
+    else if (!live.length) three = p("fail", "Not confirmed", "No workspace can connect until you capture it again.");
+    else if (sched.mode === "scheduled" && !sched.active && !d.stay_active) three = p("off", "Off schedule", "Outside your hours, so Slack shows your normal status.");
+    else if (!wanted.length) three = p("off", "Away (set by you)", "You set yourself away in Slack, so Stillgreen leaves it alone.");
+    else if (confirmed.length === wanted.length) {
+      three = p("pass", agoText ? `Confirmed ${agoText}` : "Confirmed",
+        `Slack's own status check shows you as active${wanted.length === 1 ? "" : ` in all ${wanted.length} workspaces`}.`);
+    } else if (confirmed.length) three = p("warn", `Confirmed in ${confirmed.length} of ${wanted.length}`, "Slack has not confirmed the other workspaces yet. Stillgreen keeps trying.");
+    else if (wanted.some((w) => w.presence === "away" || ["away", "auto_away"].includes(w.status))) three = p("warn", "Slack shows you away", "Stillgreen is reconnecting to try again. Slack decides your final status.");
+    else if (latest) three = p("warn", `Last confirmed ${agoText}`, "Slack has not confirmed you as active lately. Stillgreen keeps trying.");
+    else if (wanted.some((w) => w.connected)) three = p("warn", "Waiting for Slack", "Connected. Stillgreen asks Slack about once a minute.");
+    else if (wanted.some((w) => workspaceProblem(w))) three = p("fail", "Not confirmed", "Stillgreen can't connect to Slack. See the workspace below.");
+    else three = p("warn", "Waiting for Slack", "Stillgreen is connecting to Slack. This usually takes a few seconds.");
+    return [one, two, three];
+  }
+
   // The big line at the top, in plain words (lib/dashboard.ts presenceSummary).
-  // Tones: green, amber, blue (off schedule), red, muted.
+  // It says "Active" only when Slack itself recently confirmed it.
+  // Tones: green, amber, blue (off schedule, waiting), red, muted.
   function presenceSummary(d) {
     const total = d.workspaces.length;
     const online = onlineCount(d);
+    const confirmed = confirmedCount(d);
+    const connected = d.workspaces.filter((w) => w.connected && !w.paused).length;
     const sched = d.schedule || {};
-    const greenIn = `Your Slack status is green in ${online} of ${plural(total, "workspace", "workspaces")}.`;
-    if (d.config_error) return { tone: "red", title: "Settings file problem", description: "Stillgreen can't read its settings file, so it isn't keeping anyone green." };
-    if (!d.daemon || !d.daemon.running) return { tone: "amber", title: "Stopped", description: "Stillgreen isn't running, so it isn't keeping you green." };
-    if (!total) return { tone: "muted", title: "Ready", detail: "Add a workspace to start", description: "Stillgreen starts keeping your Slack status green as soon as you add a workspace." };
+    const confirmedIn = `Slack confirmed you as active in ${confirmed} of ${plural(total, "workspace", "workspaces")}.`;
+    const waiting = {
+      tone: "blue",
+      title: "Connected",
+      detail: "waiting for Slack to confirm",
+      description: "Stillgreen has a live connection, like the Slack web app. Slack decides your final status; Stillgreen asks it about once a minute.",
+    };
+    if (d.config_error) return { tone: "red", title: "Settings file problem", description: "Stillgreen can't read its settings file, so it isn't keeping you active." };
+    if (!d.daemon || !d.daemon.running) return { tone: "amber", title: "Stopped", description: "Stillgreen isn't running, so it isn't keeping you active." };
+    if (!total) return { tone: "muted", title: "Ready", detail: "Add a workspace to start", description: "Stillgreen starts helping as soon as you add a Slack workspace." };
     if (d.stay_active) {
-      return {
-        tone: online ? "green" : "amber",
-        title: online ? "Active" : "Connecting",
-        detail: d.stay_until ? `Staying online until ${fmtWhen(d.stay_until)}` : "Staying online",
-        description: `${online ? greenIn : "Stillgreen is connecting to Slack."} When it ends, ${afterStay(d).replace(/^then /, "")}.`,
-      };
+      const after = `When it ends, ${afterStay(d).replace(/^then /, "")}.`;
+      if (confirmed) {
+        return { tone: "green", title: "Active", detail: d.stay_until ? `Staying online until ${fmtWhen(d.stay_until)}` : "Staying online", description: `${confirmedIn} ${after}` };
+      }
+      if (online || connected) return { ...waiting, description: `Keep me online is on. Stillgreen is connected and waiting for Slack to confirm. ${after}` };
+      return { tone: "amber", title: "Connecting", detail: d.stay_until ? `Staying online until ${fmtWhen(d.stay_until)}` : "Staying online", description: `Stillgreen is connecting to Slack. ${after}` };
     }
     if (d.paused) {
       return {
         tone: "amber",
         title: "Paused",
         detail: d.pause_until ? `Until ${fmtWhen(d.pause_until)}` : "Until you resume",
-        description: "Stillgreen isn't keeping you green right now. Slack will set you away as usual.",
+        description: "Stillgreen isn't keeping you active right now. Slack will set you away as usual.",
       };
     }
     if (d.workspaces.every((w) => w.paused)) {
@@ -675,12 +886,13 @@
         description: "You're outside your schedule, so Slack shows your normal status.",
       };
     }
-    if (!online) {
+    if (!confirmed) {
+      if (online || connected) return waiting;
       return {
         tone: "amber",
-        title: "Not green yet",
+        title: "Not active yet",
         detail: "Connecting to Slack",
-        description: "No workspace is active right now. This usually takes a few seconds. Check the workspaces below.",
+        description: "No workspace is connected right now. This usually takes a few seconds. Check the workspaces below.",
       };
     }
     const next = sched.mode === "scheduled" && sched.next_change ? fmtWhen(sched.next_change) : "";
@@ -688,8 +900,211 @@
       tone: "green",
       title: "Active",
       detail: sched.mode === "always" || !sched.mode ? "Always on" : next ? `Until ${next}` : "On schedule",
-      description: greenIn + (sched.mode === "scheduled" ? " Your schedule ends it on its own." : " You stay green until you pause."),
+      description: confirmedIn + (sched.mode === "scheduled" ? " Your schedule ends it on its own." : " Stillgreen keeps helping until you pause it."),
     };
+  }
+
+  const SIGNAL_WORDS = { pass: "OK", warn: "Check", fail: "Problem", off: "Not needed now", skip: "Skipped" };
+  function signalGlyph(tone) {
+    if (tone === "pass") return icon("check", 2.4);
+    if (tone === "warn") return icon("warn", 2);
+    if (tone === "fail") return icon("alert", 2);
+    return h("i");
+  }
+
+  function renderSignals() {
+    const signals = statusSignals(S.data);
+    const sig = JSON.stringify(signals);
+    if (S.sigs.signals === sig) return;
+    S.sigs.signals = sig;
+    $("#signals").replaceChildren(...signals.map((item) => h("li", { className: "signal", dataset: { tone: item.tone, signal: item.id } },
+      h("span", { className: "signal-icon", dataset: { tone: item.tone }, attrs: { "aria-hidden": "true" } }, signalGlyph(item.tone)),
+      h("div", { className: "signal-text" },
+        h("span", { className: "signal-label", text: item.label }),
+        h("span", { className: "signal-value" }, h("span", { className: "visually-hidden", text: `${SIGNAL_WORDS[item.tone]}: ` }), item.value),
+        h("span", { className: "signal-detail", text: item.detail })))));
+  }
+
+  // ------------------------------------------------------- setup checklist
+  // Worked out from live state each time (lib/dashboard.ts setupSteps).
+
+  function setupSteps(d) {
+    const running = !S.offline && (d.health ? Boolean(d.health.daemon) : Boolean(d.daemon && d.daemon.running));
+    const total = d.workspaces.length;
+    const diag = S.diag.result;
+    const tls = diag && diag.checks ? diag.checks.find((c) => c.id === "tls") : null;
+    const reachable = d.health ? d.health.slack_reachable : undefined;
+    const netProblem = d.workspaces.map((w) => w.last_error_info).find((i) => i && /^(tls_|dns_|proxy_|network_)/.test(i.code || ""));
+    const steps = [];
+    steps.push({ id: "running", title: "Stillgreen running", status: running ? "done" : "problem",
+      detail: running ? "Stillgreen is running and this page can reach it." : "Start it with ./sg-local start (on a server: docker compose up -d)." });
+    let tlsStep;
+    if (tls && tls.status === "fail") tlsStep = { status: "problem", detail: tls.action || tls.detail };
+    else if (netProblem) tlsStep = { status: "problem", detail: `${netProblem.title}. ${netProblem.action}` };
+    else if (reachable === false) tlsStep = { status: "problem", detail: "Stillgreen can't reach Slack. Use Check my setup to see why." };
+    else if ((tls && tls.status === "pass") || reachable === true || d.workspaces.some((w) => workspaceAuth(w) === "ok")) tlsStep = { status: "done", detail: "Stillgreen can reach Slack over a secure connection." };
+    else if (tls && tls.status === "warn") tlsStep = { status: "waiting", detail: tls.action || tls.detail };
+    else tlsStep = { status: running ? "todo" : "waiting", detail: "Not tested yet. Click Check my setup to test it." };
+    steps.push({ id: "tls", title: "Secure connection to Slack", ...tlsStep });
+    const rejected = d.workspaces.filter((w) => workspaceAuth(w) === "rejected");
+    steps.push({ id: "slack", title: "Add your Slack", status: !total ? "todo" : rejected.length ? "problem" : "done",
+      detail: !total ? "Open Slack in Chrome, then click Capture from Slack in the Stillgreen extension."
+        : rejected.length ? `Slack signed you out of ${rejected.map((w) => w.name).join(", ")}. Capture it again with the extension.`
+          : `${plural(total, "workspace", "workspaces")} added.` });
+    const sched = d.schedule || {};
+    const scheduled = sched.mode === "scheduled";
+    // Done only once the person saved or confirmed their hours.
+    const chosen = typeof sched.saved === "boolean" ? sched.saved : scheduled;
+    const hoursNow = scheduled ? `Scheduled: ${sched.summary || daysLabel(sched.active_days)}.` : "Always on.";
+    steps.push({ id: "hours", title: "Choose your hours", status: chosen ? "done" : "todo",
+      detail: chosen ? `${hoursNow} Change it under Schedule any time.`
+        : `Now: ${hoursNow} Pick Always on or Scheduled under Schedule and save, so Stillgreen helps only when you want.` });
+    const auto = d.autostart;
+    if (auto && auto.supported) {
+      steps.push({ id: "startup", title: "Start at login (optional)", status: auto.enabled ? "done" : "todo",
+        detail: auto.enabled ? "Stillgreen starts by itself when you log in to this Mac."
+          : `To start Stillgreen when you log in to this Mac, run ${auto.command || "./sg-local install-launchd"}` });
+    }
+    // The same checks as the "Presence confirmed" signal.
+    const pausedAll = d.paused && !d.stay_active;
+    const offSchedule = scheduled && !sched.active && !d.stay_active;
+    const wanted = d.workspaces.filter((w) => !w.paused && workspaceAuth(w) !== "rejected" && w.status !== "manual_away" && w.presence !== "manual_away");
+    const confirmed = pausedAll || offSchedule ? 0 : wanted.filter((w) => presenceConfirmed(w, d)).length;
+    const wantedNow = !pausedAll && !offSchedule && wanted.length > 0;
+    let presence;
+    if (!running || !total) presence = { status: "todo", detail: "Finish the steps above first." };
+    else if (!wantedNow) presence = { status: "todo", detail: "Paused, outside your hours, or set away by you, so there is nothing to confirm right now." };
+    else if (confirmed === wanted.length) presence = { status: "done", detail: wanted.length === 1 ? "Slack's own status check shows you as active." : `Slack's own status check shows you as active in all ${wanted.length} workspaces.` };
+    else presence = { status: "waiting", detail: confirmed ? `Confirmed in ${confirmed} of ${wanted.length}. Waiting for Slack to confirm the others. Stillgreen asks about once a minute.` : "Waiting for Slack to confirm. Stillgreen asks about once a minute." };
+    steps.push({ id: "presence", title: "Presence confirmed", ...presence });
+    return steps;
+  }
+
+  const STEP_WORDS = { done: "Done", todo: "To do", problem: "Needs attention", waiting: "Waiting" };
+
+  function renderSetup() {
+    const steps = setupSteps(S.data);
+    const show = steps.some((s) => s.status === "problem" || (s.id === "slack" && s.status === "todo"));
+    const card = $("#setupCard");
+    card.hidden = !show;
+    if (!show) return;
+    const done = steps.filter((s) => s.status === "done").length;
+    $("#setupCount").textContent = `${done}/${steps.length}`;
+    $("#setupSub").textContent = `${done} of ${steps.length} steps done. This list follows what Stillgreen reports, so you can come back to it any time.`;
+    const sig = JSON.stringify(steps);
+    if (S.sigs.setup === sig) return;
+    S.sigs.setup = sig;
+    $("#setupSteps").replaceChildren(...steps.map((step, index) => {
+      const glyph = step.status === "done" ? icon("check", 2.4) : step.status === "problem" ? icon("alert", 2) : step.status === "waiting" ? icon("clock", 2) : h("span", { text: String(index + 1) });
+      let action = null;
+      if (step.id === "tls" && step.status !== "done") {
+        action = h("button", { className: "btn btn-secondary btn-sm", type: "button", dataset: { key: "setup-check" } }, h("span", { className: "btn-label", text: "Check my setup" }));
+        action.addEventListener("click", () => { $("#diagCard").scrollIntoView({ block: "start" }); runDiagnostics(); });
+      } else if (step.id === "slack" && step.status !== "done") {
+        action = h("button", { className: "btn btn-secondary btn-sm", type: "button", dataset: { key: "setup-add" } }, h("span", { className: "btn-label", text: step.status === "problem" ? "How to capture again" : "Add workspace" }));
+        action.addEventListener("click", () => openAdd());
+      } else if (step.id === "hours" && step.status !== "done") {
+        action = h("button", { className: "btn btn-secondary btn-sm", type: "button", dataset: { key: "setup-hours" } }, h("span", { className: "btn-label", text: "Choose hours" }));
+        action.addEventListener("click", () => $("#scheduleCard").scrollIntoView({ block: "start" }));
+      }
+      return h("li", { className: "setup-step", dataset: { status: step.status, step: step.id } },
+        h("span", { className: "step-icon", dataset: { status: step.status }, attrs: { "aria-hidden": "true" } }, glyph),
+        h("div", { className: "step-text" },
+          h("span", { className: "step-title" }, `${index + 1}. ${step.title}`, h("span", { className: "visually-hidden", text: `: ${STEP_WORDS[step.status]}.` })),
+          h("span", { className: "step-detail", text: step.detail })),
+        action || h("span", { className: "step-state", dataset: { status: step.status }, text: STEP_WORDS[step.status] }));
+    }));
+  }
+
+  // --------------------------------------------------------- check my setup
+
+  const CHECK_BADGE = { pass: ["OK", "success"], warn: ["Check", "warning"], fail: ["Problem", "danger"], skip: ["Skipped", "neutral"] };
+
+  function problemNodes(info) {
+    return [
+      icon("alert"),
+      h("div", {},
+        h("p", { className: "problem-title", text: info.title }),
+        info.message ? h("p", { className: "problem-message", text: info.message }) : null,
+        info.action ? h("p", { className: "problem-action" }, h("b", { text: "What to do: " }), info.action) : null),
+    ];
+  }
+
+  function renderDiag() {
+    const { result, error } = S.diag;
+    const run = $("#diagRun");
+    if (!isBusy(run)) $(".btn-label", run).textContent = result ? "Check again" : "Check my setup";
+    $("#diagIntro").hidden = Boolean(result || error);
+    const box = $("#diagError");
+    box.hidden = !error;
+    box.replaceChildren(...(error ? problemNodes(error) : []));
+    const list = $("#diagChecks");
+    list.hidden = !result;
+    $("#diagBody").classList.toggle("is-flush", Boolean(result));
+    const badge = $("#diagBadge");
+    badge.hidden = !result;
+    if (!result) { list.replaceChildren(); return; }
+    const fails = result.checks.filter((c) => c.status === "fail").length;
+    const warns = result.checks.filter((c) => c.status === "warn").length;
+    setBadge(badge, fails ? "danger" : warns ? "warning" : "success",
+      fails ? plural(fails, "problem", "problems") : warns ? `${warns} to check` : "All good", $("#diagBadgeText"));
+    list.replaceChildren(...result.checks.map((check) => {
+      const [word, tone] = CHECK_BADGE[check.status] || CHECK_BADGE.warn;
+      return h("li", { className: "check", dataset: { status: check.status, check: check.id } },
+        h("span", { className: "signal-icon", dataset: { tone: check.status === "skip" ? "off" : check.status }, attrs: { "aria-hidden": "true" } }, signalGlyph(check.status)),
+        h("div", { className: "check-text" },
+          h("span", { className: "check-label" }, check.label, h("span", { className: `badge badge-${tone}`, text: word })),
+          check.detail ? h("span", { className: "check-detail", text: check.detail }) : null,
+          check.action && check.status !== "pass" ? h("span", { className: "check-action" }, h("b", { text: "What to do: " }), check.action) : null));
+    }));
+    $("#diagNote").textContent = `The report has no passwords, Slack tokens, cookies or access code. Read it before you share it.${result.generated_at ? ` Checked at ${clockFmt.format(new Date(result.generated_at))}.` : ""}`;
+  }
+
+  async function runDiagnostics() {
+    const button = $("#diagRun");
+    if (isBusy(button) || !S.code) return;
+    setBusy(button, true);
+    $(".btn-label", button).textContent = "Checking";
+    S.diag.running = true;
+    try {
+      // fresh=1: a new run, not the copy the daemon keeps for 30 seconds.
+      const result = await api("/api/diagnostics?fresh=1", { timeout: 30000 });
+      S.diag.result = { generated_at: result.generated_at, checks: Array.isArray(result.checks) ? result.checks : [] };
+      S.diag.error = null;
+    } catch (error) {
+      if (error && error.kind === "auth") { sessionExpired(); return; }
+      S.diag.error = error && error.info ? error.info : { code: "unknown", title: "The check didn't run", message: String(error && error.message || ""), action: "Try again." };
+    } finally {
+      S.diag.running = false;
+      setBusy(button, false);
+      renderDiag();
+      if (S.data) renderSetup();
+    }
+  }
+
+  async function downloadReport() {
+    const button = $("#diagDownload");
+    if (isBusy(button) || !S.code) return;
+    setBusy(button, true);
+    $(".btn-label", button).textContent = "Preparing";
+    try {
+      const response = await api("/api/diagnostics/report", { raw: true, timeout: 30000 });
+      const text = await response.text();
+      const match = /filename="?([^";]+)"?/i.exec(response.headers.get("Content-Disposition") || "");
+      const filename = match && /^[\w.-]+$/.test(match[1]) ? match[1] : REPORT_FILENAME;
+      const href = URL.createObjectURL(new Blob([text], { type: "text/plain;charset=utf-8" }));
+      const link = h("a", { href, download: filename, attrs: { hidden: "" } });
+      document.body.append(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(href), 10000);
+      toast("Report saved", "success", { description: `${filename} is in your downloads. It has no passwords, tokens or access code.` });
+    } catch (error) {
+      handleError(error);
+    } finally {
+      setBusy(button, false);
+      $(".btn-label", button).textContent = "Download report";
+    }
   }
 
   function renderOverview() {
@@ -751,18 +1166,18 @@
     const preview = $("#stayPreview");
     if (active && d.stay_until) {
       const left = new Date(d.stay_until).getTime() - Date.now();
-      preview.replaceChildren("You're staying online until ", h("strong", { className: "tnum", text: fmtWhen(d.stay_until) }),
+      preview.replaceChildren("Stillgreen is helping until ", h("strong", { className: "tnum", text: fmtWhen(d.stay_until) }),
         left > 0 ? ` · ${fmtSpan(left)} left.` : ".");
       return;
     }
     if (active) { preview.replaceChildren("Keep me online is on."); return; }
     const target = stayTarget();
-    if (!target) { preview.replaceChildren("Pick how long to stay online."); return; }
+    if (!target) { preview.replaceChildren("Pick how long to keep helping."); return; }
     if (S.stay.kind === "until" && target.getTime() <= Date.now()) {
       preview.replaceChildren("Pick a time later today.");
       return;
     }
-    preview.replaceChildren("You'll stay online until ", h("strong", { className: "tnum", text: clockFmt.format(target) }),
+    preview.replaceChildren("Stillgreen keeps helping until ", h("strong", { className: "tnum", text: clockFmt.format(target) }),
       `, ${d ? afterStay(d) : "then it ends on its own"}.`);
   }
 
@@ -831,6 +1246,8 @@
   function wsTone(item) {
     if (item.paused) return ["Paused", "warning"];
     if (S.data && S.data.paused && !S.data.stay_active) return ["Paused", "warning"];
+    // "Active" only once Slack's own check confirmed it recently.
+    if (item.status === "active" && S.data && !presenceConfirmed(item, S.data)) return ["Connected", "info"];
     return STATUS[item.status] || [sentence(String(item.status || "Unknown").replace(/_/g, " ")).replace(/\.$/, ""), "neutral"];
   }
 
@@ -859,14 +1276,14 @@
     const d = S.data;
     const list = $("#workspaceList");
     const total = d.workspaces.length;
-    const sig = JSON.stringify([d.paused && !d.stay_active, d.workspaces.map((w) => [w.team_id, w.name, w.connected, w.paused, w.status, w.reason, w.last_error])]);
+    const sig = JSON.stringify([d.paused && !d.stay_active, d.workspaces.map((w) => [w.team_id, w.name, w.connected, w.paused, w.status, w.reason, w.last_error, w.last_error_info, w.auth, presenceConfirmed(w, d)])]);
     const count = $("#workspaceCount");
     count.hidden = !total;
     count.textContent = String(total);
     count.setAttribute("aria-label", plural(total, "workspace", "workspaces"));
     $("#workspacesSub").textContent = total
       ? `${onlineCount(d)} of ${total} online. Your Slack login stays on this ${LOOPBACK.has(location.hostname) ? "computer" : "server"}.`
-      : "Slack workspaces Stillgreen keeps green.";
+      : "Slack workspaces Stillgreen helps keep active.";
     if (S.sigs.ws === sig) return;
     S.sigs.ws = sig;
     const focusKey = list.contains(document.activeElement) ? document.activeElement.dataset.key : "";
@@ -917,14 +1334,19 @@
           h("span", { className: "ws-name", text: name, attrs: { title: name } }),
           h("span", { className: `badge badge-${tone}` }, h("span", { className: "dot", attrs: { "aria-hidden": "true" } }), label)),
         h("div", { className: "ws-meta" }, h("span", { text: workspaceNote(item) })),
-        item.last_error && item.status !== "active" ? h("p", { className: "ws-error" }, icon("alert"), h("span", { text: sentence(item.last_error).replace(/\.$/, "") })) : null),
+        wsProblem(item)),
       h("div", { className: "ws-actions" }, toggle, remove));
+  }
+
+  function wsProblem(item) {
+    const info = item.status === "active" && !item.last_error_info ? null : workspaceProblem(item);
+    return info ? h("div", { className: "ws-problem" }, ...problemNodes(info)) : null;
   }
 
   async function removeWorkspace(item, name) {
     const result = await confirmAction({
       title: `Remove ${name}?`,
-      body: "Stillgreen will stop keeping you green there and delete its saved Slack login. You can add it again any time.",
+      body: "Stillgreen will stop working there and delete its saved Slack login. To end that login in Slack too, use Sign out of all other sessions in Slack. You can add the workspace again any time.",
       confirmLabel: "Remove workspace",
       glyph: "trash",
       action: () => api(`/api/workspaces/${encodeURIComponent(item.team_id)}`, { method: "DELETE" }),
@@ -1022,14 +1444,17 @@
   function updateScheduleState() {
     const draft = S.sched.draft;
     const dirty = scheduleDirty();
-    const problem = dirty ? scheduleProblem(draft) : "";
+    // Not saved or confirmed yet (first run): saving it as it is counts.
+    const unconfirmed = Boolean(S.data && S.data.schedule && S.data.schedule.saved === false);
+    const problem = dirty || unconfirmed ? scheduleProblem(draft) : "";
     $("#scheduleDirty").hidden = !dirty;
     $("#scheduleDiscard").hidden = !dirty;
     $("#scheduleSummary").hidden = dirty;
+    $("#scheduleSummary").textContent = unconfirmed ? "Not saved yet" : "All changes saved";
     const save = $("#scheduleSave");
-    if (!isBusy(save)) save.disabled = !dirty || Boolean(problem);
-    save.classList.toggle("btn-primary", dirty);
-    save.classList.toggle("btn-secondary", !dirty);
+    if (!isBusy(save)) save.disabled = !(dirty || unconfirmed) || Boolean(problem);
+    save.classList.toggle("btn-primary", dirty || unconfirmed);
+    save.classList.toggle("btn-secondary", !(dirty || unconfirmed));
     $("#scheduleError").replaceChildren(...(problem ? [icon("alert"), h("span", { text: problem })] : []));
     $("#timezone").setAttribute("aria-invalid", String(Boolean(problem) && /time zone/i.test(problem)));
     const zone = browserZone();
@@ -1165,6 +1590,14 @@
     setBadge($("#daemonBadge"), running ? "success" : "danger", running ? "Running" : "Stopped", $("#daemonBadgeText"));
     $("#factHost").textContent = location.host;
     $("#factVersion").textContent = d.version || "—";
+    $("#factUpdate").hidden = !(d.daemon && d.daemon.update_pending);
+    const auto = d.autostart;
+    $("#factStartupRow").hidden = !auto;
+    if (auto) {
+      $("#factStartup").textContent = auto.supported ? (auto.enabled ? "On" : "Off") : "Not built in here";
+      $("#factStartupNote").replaceChildren(String(auto.note || ""),
+        ...(auto.command ? [" ", h("code", { className: "mono", text: auto.command })] : []));
+    }
     const started = running && d.daemon.started_at ? new Date(d.daemon.started_at).getTime() : NaN;
     $("#factUptime").textContent = running ? (Number.isNaN(started) ? "Running" : fmtSpan(Date.now() - started)) : "Not running";
     const tz = d.schedule && d.schedule.timezone;
@@ -1271,8 +1704,12 @@
       $("#addCancel").disabled = false;
       if (err.kind === "auth") { dismissAdd(); sessionExpired(); return; }
       // Slack checks the two values together, so a refusal marks both.
-      const refused = err.kind === "request" && /reject|invalid|token|cookie|xox/i.test(err.message);
-      addError(refused ? "Slack didn't accept these values. Copy both again from the same signed-in tab." : err.message);
+      const code = err.info && err.info.code;
+      const refused = err.kind === "request" && (code === "slack_auth_rejected" || /reject|invalid|token|cookie|xox/i.test(err.message));
+      const known = err.info && err.info.title && code !== "request_refused" && code !== "invalid_input";
+      addError(refused ? "Slack didn't accept these values. Copy both again from the same signed-in tab."
+        : known ? [err.info.title + ".", err.info.message, err.info.action ? "What to do: " + err.info.action : ""].filter(Boolean).join(" ")
+          : err.message);
       if (refused) {
         $("#xoxc").setAttribute("aria-invalid", "true");
         $("#xoxd").setAttribute("aria-invalid", "true");
@@ -1390,7 +1827,7 @@
     }));
     $("[data-resume]").addEventListener("click", (event) => {
       const button = event.currentTarget;
-      mutate(button, () => post("/api/resume", {}), ["Resumed", "Stillgreen is keeping you green again."])
+      mutate(button, () => post("/api/resume", {}), ["Resumed", "Stillgreen is helping keep you active again."])
         .then((r) => { if (r) $('[data-pause="1h"]').focus(); });
     });
 
@@ -1482,6 +1919,10 @@
       $("#codeCopy").focus();
     });
 
+    // Check my setup
+    $("#diagRun").addEventListener("click", runDiagnostics);
+    $("#diagDownload").addEventListener("click", downloadReport);
+
     // Activity: show the newest few, or all.
     $("#activityToggle").addEventListener("click", () => {
       S.activityExpanded = !S.activityExpanded;
@@ -1489,7 +1930,7 @@
     });
 
     // Keep relative times fresh between polls.
-    setInterval(() => { if (S.data && !$("#app").hidden) { renderStay(); renderDaemon(); renderUpdated(); } }, 10000);
+    setInterval(() => { if (S.data && !$("#app").hidden) { renderStay(); renderDaemon(); renderUpdated(); renderSignals(); } }, 10000);
 
     // Polling follows tab visibility.
     document.addEventListener("visibilitychange", () => {

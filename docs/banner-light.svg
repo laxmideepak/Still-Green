@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1280" height="400" viewBox="0 0 1280 400" role="img" aria-labelledby="title desc">
   <title id="title">Stillgreen</title>
-  <desc id="desc">Stillgreen. Your Slack status, green on your schedule. A status pill reads: Active, until 5:00 PM.</desc>
+  <desc id="desc">Stillgreen helps keep your Slack status green on your schedule. A status pill labeled Sample reads: Active, until 5:00 PM.</desc>
   <defs>
     <clipPath id="frame"><rect x="0.5" y="0.5" width="1279" height="399" rx="20"/></clipPath>
     <pattern id="dots" width="24" height="24" patternUnits="userSpaceOnUse">
@@ -46,9 +46,9 @@
     <text x="132" y="104" fill="#0a0a0a" font-size="26" font-weight="600" letter-spacing="-0.6">Stillgreen</text>
 
     <!-- Tagline -->
-    <text x="70" y="214" fill="#0a0a0a" font-size="54" font-weight="700" letter-spacing="-2">Your Slack status,</text>
-    <text x="70" y="278" fill="#0a0a0a" font-size="54" font-weight="700" letter-spacing="-2">green on your schedule<tspan fill="#15803d">.</tspan></text>
-    <text x="72" y="330" fill="#525252" font-size="20" letter-spacing="-0.2">Runs on your own computer or server. Free and open source.</text>
+    <text x="70" y="200" fill="#0a0a0a" font-size="44" font-weight="700" letter-spacing="-1.6">Helps keep your Slack status</text>
+    <text x="70" y="256" fill="#0a0a0a" font-size="44" font-weight="700" letter-spacing="-1.6">green on your schedule<tspan fill="#15803d">.</tspan></text>
+    <text x="72" y="314" fill="#525252" font-size="20" letter-spacing="-0.2">Runs on your own computer or server. Free and open source.</text>
 
     <!-- Stylised Slack profile card -->
     <g filter="url(#shadow)">
@@ -70,5 +70,6 @@
     <rect x="868" y="234" width="234" height="36" rx="18" fill="#f0fdf4" stroke="#bbf7d0"/>
     <circle cx="890" cy="252" r="5" fill="#16a34a"/>
     <text x="904" y="257.5" fill="#15803d" font-size="15" font-weight="600">Active<tspan fill="#525252" font-weight="500"> · until 5:00 PM</tspan></text>
+    <text x="1114" y="256.5" fill="#737373" font-size="12" font-weight="600" letter-spacing="0.2">Sample</text>
   </g>
 </svg>

@@ -239,3 +239,25 @@ class ReconcileTests(TempConfig):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PidAliveTests(unittest.TestCase):
+    @unittest.skipUnless(Path("/proc/self/stat").exists(), "needs /proc (Linux)")
+    def test_exited_but_uncollected_process_is_not_alive(self) -> None:
+        import subprocess
+        import sys
+        import time
+
+        from sg_local import state
+
+        child = subprocess.Popen([sys.executable, "-c", "pass"])
+        try:
+            # Wait for it to exit without collecting it, so it stays a zombie.
+            deadline = time.monotonic() + 10
+            while time.monotonic() < deadline and not state._is_zombie(child.pid):
+                time.sleep(0.05)
+            self.assertTrue(state._is_zombie(child.pid))
+            self.assertFalse(state.pid_alive(child.pid))
+        finally:
+            child.wait(timeout=10)
+        self.assertTrue(state.pid_alive(os.getpid()))

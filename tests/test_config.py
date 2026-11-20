@@ -80,6 +80,22 @@ class ValidationTests(unittest.TestCase):
             config.parse_duration("0m")
 
 
+class IsoTimeTests(unittest.TestCase):
+    """Browsers send "...Z" times; Python 3.9 and 3.10 cannot read the Z alone."""
+
+    def test_parse_iso_reads_z(self) -> None:
+        parsed = config.parse_iso("2026-10-31T21:00:00.000Z")
+        self.assertEqual(parsed, datetime(2026, 10, 31, 21, 0, tzinfo=timezone.utc))
+        self.assertEqual(config.parse_iso("2026-10-31T21:00:00+02:00").utcoffset(), timedelta(hours=2))
+        with self.assertRaises(ValueError):
+            config.parse_iso("not a time")
+
+    def test_parse_until_accepts_browser_time(self) -> None:
+        moment = datetime.now(timezone.utc) + timedelta(hours=2)
+        text = moment.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+        self.assertEqual(config.parse_until(text), moment.replace(microsecond=0))
+
+
 class PermissionTests(unittest.TestCase):
     def test_secure_and_insecure_modes(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

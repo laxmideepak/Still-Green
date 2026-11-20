@@ -251,6 +251,10 @@ code {
   background: var(--success);
 }
 
+.host-dot[data-tone="info"] {
+  background: var(--info);
+}
+
 .host-dot[data-tone="warning"] {
   background: var(--warning);
 }
@@ -1052,8 +1056,30 @@ code {
   white-space: nowrap;
 }
 
-.facts dd.mono {
+.facts dd.mono,
+.facts dd .mono {
   font-size: var(--font-size-xs);
+}
+
+/* A short plain sentence under a fact, e.g. how to turn on start at login. */
+.fact-note {
+  display: block;
+  max-width: 30ch;
+  margin-top: 2px;
+  margin-left: auto;
+  color: var(--text-subtle);
+  font-size: var(--font-size-xs);
+  line-height: var(--line-height-xs);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.fact-note[hidden] {
+  display: none;
+}
+
+.fact-note code {
+  color: var(--text);
 }
 
 /* ---------- Footer ----------
@@ -1321,6 +1347,351 @@ html.has-dialog {
 }
 
 /* ---------- Responsive ---------- */
+/* ---------- Status signals (presence card) ----------
+   Same look as components/dashboard-health.module.css. */
+.signals {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-top: 1px solid var(--border);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.signal {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-6);
+}
+
+.signal + .signal {
+  border-left: 1px solid var(--border);
+}
+
+.signal-icon {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--surface-2);
+  color: var(--text-subtle);
+}
+
+.signal-icon svg {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+}
+
+.signal-icon i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.signal-icon[data-tone="pass"] {
+  border-color: var(--success-border);
+  background: var(--success-soft);
+  color: var(--success-text);
+}
+
+.signal-icon[data-tone="warn"] {
+  border-color: var(--warning-border);
+  background: var(--warning-soft);
+  color: var(--warning-text);
+}
+
+.signal-icon[data-tone="fail"] {
+  border-color: var(--danger-border);
+  background: var(--danger-soft);
+  color: var(--danger-text);
+}
+
+.signal-text,
+.check-text,
+.step-text {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.signal-label {
+  color: var(--text-subtle);
+  font-size: var(--font-size-xs);
+  line-height: var(--line-height-xs);
+}
+
+.signal-value {
+  color: var(--text);
+  font-weight: var(--font-weight-medium);
+  font-variant-numeric: tabular-nums;
+}
+
+.signal[data-tone="fail"] .signal-value {
+  color: var(--danger-text);
+}
+
+.signal-detail {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  line-height: var(--line-height-xs);
+}
+
+/* ---------- Problem text (workspace rows, Check my setup) ---------- */
+.ws-problem,
+.diag-error {
+  display: flex;
+  gap: var(--space-2);
+  color: var(--danger-text);
+  font-size: var(--font-size-xs);
+  line-height: var(--line-height-xs);
+}
+
+.ws-problem {
+  margin-top: var(--space-2);
+}
+
+.diag-error {
+  margin-bottom: var(--space-3);
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-sm);
+}
+
+.ws-problem > svg,
+.diag-error > svg {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.problem-title {
+  font-weight: var(--font-weight-medium);
+}
+
+.problem-message,
+.problem-action {
+  color: var(--text-muted);
+}
+
+.problem-action b,
+.check-action b {
+  color: var(--text);
+  font-weight: var(--font-weight-medium);
+}
+
+/* ---------- Check my setup ---------- */
+.diag-body.is-flush {
+  padding: 0;
+}
+
+.diag-body.is-flush .diag-error {
+  margin: 0;
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--border);
+}
+
+.diag-intro {
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-sm);
+}
+
+.checks {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.check {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-5);
+  border-bottom: 1px solid var(--border);
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-sm);
+}
+
+.check:last-child {
+  border-bottom: 0;
+}
+
+.check-label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: var(--font-weight-medium);
+}
+
+.check-detail,
+.check-action {
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.diag-foot {
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.diag-note {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 200px;
+  gap: var(--space-2);
+}
+
+.diag-note svg {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  flex-shrink: 0;
+  margin-top: 3px;
+  color: var(--accent);
+}
+
+/* ---------- Setup checklist ---------- */
+.setup-card {
+  margin-top: var(--space-4);
+  border-color: var(--info-border);
+}
+
+.setup-steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.setup-step {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-5);
+  border-bottom: 1px solid var(--border);
+}
+
+.setup-step:last-child {
+  border-bottom: 0;
+}
+
+.step-icon {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  place-items: center;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+}
+
+.step-icon svg {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+}
+
+.step-icon[data-status="done"] {
+  border-color: var(--success-border);
+  background: var(--success-soft);
+  color: var(--success-text);
+}
+
+.step-icon[data-status="problem"] {
+  border-color: var(--danger-border);
+  background: var(--danger-soft);
+  color: var(--danger-text);
+}
+
+.step-icon[data-status="waiting"] {
+  border-color: var(--info-border);
+  background: var(--info-soft);
+  color: var(--info-text);
+}
+
+.step-text {
+  flex: 1;
+}
+
+.step-title {
+  font-weight: var(--font-weight-medium);
+}
+
+.setup-step[data-status="done"] .step-title {
+  color: var(--text-muted);
+}
+
+.step-detail {
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-sm);
+}
+
+.step-state {
+  flex-shrink: 0;
+  color: var(--text-subtle);
+  font-size: var(--font-size-xs);
+}
+
+.step-state[data-status="problem"] {
+  color: var(--danger-text);
+}
+
+/* ---------- Honesty note ---------- */
+.honesty {
+  display: flex;
+  max-width: 72ch;
+  gap: var(--space-2);
+  margin-top: var(--space-6);
+  color: var(--text-subtle);
+  font-size: var(--font-size-xs);
+  line-height: var(--line-height-xs);
+}
+
+.honesty svg {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+@media (max-width: 767px) {
+  .signals {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .signal {
+    padding: var(--space-3) var(--space-4);
+  }
+
+  .signal + .signal {
+    border-left: 0;
+    border-top: 1px solid var(--border);
+  }
+
+  .setup-step {
+    flex-wrap: wrap;
+    padding: var(--space-3) var(--space-4);
+  }
+
+  .setup-step > .btn {
+    margin-left: 40px;
+  }
+
+  .check {
+    padding: var(--space-3) var(--space-4);
+  }
+}
+
 @media (max-width: 1023px) {
   .layout {
     grid-template-columns: minmax(0, 1fr);
