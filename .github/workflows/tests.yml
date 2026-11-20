@@ -120,5 +120,7 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Type check
         run: npx tsc --noEmit
+      - name: Logo mood unit tests
+        run: npm run test:unit
       - name: Build the dashboard and run the browser tests
         run: npm run test:e2e

@@ -1,7 +1,7 @@
 .brand {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
+  gap: 9px;
   border-radius: var(--radius-sm);
   color: var(--text);
   text-decoration: none;
@@ -12,26 +12,101 @@
   box-shadow: var(--focus-ring);
 }
 
-/* The mark: a dark rounded square holding a green "online" dot. It stays
-   dark in both themes, like a Slack presence dot on a dark avatar. */
+/* The mark: a 2:1 pill switch. Its colours are the logo's own, not theme
+   tokens; only the "off" grey changes with the theme. Copied from the approved
+   artwork (logo-on.svg, logo-off-light.svg, logo-off-dark.svg); the same
+   values live in sg_local/static/app.css and extension/popup.css, and
+   tests/test_logo_mark.py keeps all three in step. */
 .mark {
-  display: grid;
-  width: 24px;
+  --sg-on-face: #10b981;
+  --sg-off-track: #d4d4d8;
+  --sg-off-face: #a1a1aa;
+  --sg-ease: 250ms ease;
+  display: block;
+  width: 48px;
   height: 24px;
   flex-shrink: 0;
-  place-items: center;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 7px;
-  background: linear-gradient(180deg, #1f2023, #121315);
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.12);
+  overflow: visible;
 }
 
-.dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #22c55e;
-  box-shadow: 0 0 0 2.5px rgba(34, 197, 94, 0.2), 0 0 8px rgba(34, 197, 94, 0.7);
+@media (prefers-color-scheme: dark) {
+  :global(:root:not([data-theme="light"])) .mark {
+    --sg-off-track: #3f3f46;
+    --sg-off-face: #71717a;
+  }
+}
+
+:global(:root[data-theme="dark"]) .mark {
+  --sg-off-track: #3f3f46;
+  --sg-off-face: #71717a;
+}
+
+.trackOn,
+.trackOff {
+  transition: opacity var(--sg-ease);
+}
+
+.trackOff {
+  fill: var(--sg-off-track);
+  opacity: 0;
+}
+
+.knob {
+  transform: translateX(28px);
+  transition: transform var(--sg-ease);
+}
+
+.faceOn,
+.faceOff {
+  transition: opacity var(--sg-ease);
+}
+
+.faceOn {
+  stroke: var(--sg-on-face);
+}
+
+.grin {
+  fill: var(--sg-on-face);
+  stroke: none;
+}
+
+.faceOff {
+  opacity: 0;
+  fill: var(--sg-off-face);
+  stroke: var(--sg-off-face);
+}
+
+.faceOff path {
+  fill: none;
+}
+
+/* The sad eyes are filled dots; a stroke would make them bigger than drawn. */
+.faceOff circle {
+  stroke: none;
+}
+
+.mark[data-mood="off"] .trackOff,
+.mark[data-mood="off"] .faceOff {
+  opacity: 1;
+}
+
+.mark[data-mood="off"] .trackOn,
+.mark[data-mood="off"] .faceOn {
+  opacity: 0;
+}
+
+.mark[data-mood="off"] .knob {
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .trackOn,
+  .trackOff,
+  .knob,
+  .faceOn,
+  .faceOff {
+    transition: none;
+  }
 }
 
 .word {
@@ -41,15 +116,13 @@
   letter-spacing: -0.02em;
 }
 
-.sm .mark {
-  width: 20px;
-  height: 20px;
-  border-radius: 6px;
+.sm {
+  gap: 8px;
 }
 
-.sm .dot {
-  width: 7px;
-  height: 7px;
+.sm .mark {
+  width: 44px;
+  height: 22px;
 }
 
 .sm .word {

@@ -533,6 +533,7 @@
     $("#loginError").replaceChildren(...(message ? [icon("alert"), h("span", { text: message })] : []));
     $("#accessCode").setAttribute("aria-invalid", message ? "true" : "false");
     document.title = "Stillgreen · Locked";
+    renderMood();
     setTimeout(() => $("#accessCode").focus(), 30);
   }
 
@@ -639,6 +640,17 @@
     }
     setBadge(pill, tone, label, text);
     $("#hostDot").dataset.tone = tone;
+    renderMood();
+  }
+
+  // The logo switch is on (laughing) while Stillgreen is keeping you green:
+  // the headline says Active, or Connected and waiting for Slack to confirm
+  // (the same rule as the web dashboard). Anything else (paused, stopped,
+  // offline, off schedule, no workspace) flips it off.
+  function renderMood() {
+    const p = !S.offline && S.data ? presenceSummary(S.data) : null;
+    const on = !!p && p.keepingGreen === true;
+    document.querySelectorAll(".logo").forEach((mark) => { mark.dataset.mood = on ? "on" : "off"; });
   }
 
   function banner(tone, glyph, title, bodyNodes, action) {
@@ -837,6 +849,7 @@
   // The big line at the top, in plain words (lib/dashboard.ts presenceSummary).
   // It says "Active" only when Slack itself recently confirmed it.
   // Tones: green, amber, blue (off schedule, waiting), red, muted.
+  // keepingGreen marks the summaries where the logo switch is on.
   function presenceSummary(d) {
     const total = d.workspaces.length;
     const online = onlineCount(d);
@@ -846,6 +859,7 @@
     const confirmedIn = `Slack confirmed you as active in ${confirmed} of ${plural(total, "workspace", "workspaces")}.`;
     const waiting = {
       tone: "blue",
+      keepingGreen: true,
       title: "Connected",
       detail: "waiting for Slack to confirm",
       description: "Stillgreen has a live connection, like the Slack web app. Slack decides your final status; Stillgreen asks it about once a minute.",
@@ -856,7 +870,7 @@
     if (d.stay_active) {
       const after = `When it ends, ${afterStay(d).replace(/^then /, "")}.`;
       if (confirmed) {
-        return { tone: "green", title: "Active", detail: d.stay_until ? `Staying online until ${fmtWhen(d.stay_until)}` : "Staying online", description: `${confirmedIn} ${after}` };
+        return { tone: "green", keepingGreen: true, title: "Active", detail: d.stay_until ? `Staying online until ${fmtWhen(d.stay_until)}` : "Staying online", description: `${confirmedIn} ${after}` };
       }
       if (online || connected) return { ...waiting, description: `Keep me online is on. Stillgreen is connected and waiting for Slack to confirm. ${after}` };
       return { tone: "amber", title: "Connecting", detail: d.stay_until ? `Staying online until ${fmtWhen(d.stay_until)}` : "Staying online", description: `Stillgreen is connecting to Slack. ${after}` };
@@ -898,6 +912,7 @@
     const next = sched.mode === "scheduled" && sched.next_change ? fmtWhen(sched.next_change) : "";
     return {
       tone: "green",
+      keepingGreen: true,
       title: "Active",
       detail: sched.mode === "always" || !sched.mode ? "Always on" : next ? `Until ${next}` : "On schedule",
       description: confirmedIn + (sched.mode === "scheduled" ? " Your schedule ends it on its own." : " Stillgreen keeps helping until you pause it."),

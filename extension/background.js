@@ -356,18 +356,73 @@ async function capture() {
   };
 }
 
+// --------------------------------------------------------- keeping you green
+// The popup's logo switch is on only where the control page's and the
+// dashboard's presenceSummary set keepingGreen (sg_local/static/app.js,
+// lib/dashboard.ts): Active, or Connected and waiting for Slack. Paused, off
+// schedule, stopped, no workspace or nothing connected are all off.
+
+const PRESENCE_FRESH_MS = 5 * 60000;
+
+function presenceConfirmed(w, d) {
+  if (w.paused) return false;
+  const reports = w.presence_verified_at !== undefined || w.presence !== undefined;
+  if (!reports) return Boolean(w.connected && w.status === "active");
+  if (w.presence === "away" || w.presence === "manual_away") return false;
+  const verified = new Date(w.presence_verified_at || "").getTime();
+  if (Number.isNaN(verified)) return false;
+  const server = new Date(d.server_time || "").getTime();
+  return Math.max(0, (Number.isNaN(server) ? Date.now() : server) - verified) <= PRESENCE_FRESH_MS;
+}
+
+function keepingGreen(d) {
+  if (!d || d.config_error || !d.daemon || !d.daemon.running) return false;
+  const list = Array.isArray(d.workspaces) ? d.workspaces : [];
+  if (!list.length) return false;
+  const confirmed = d.paused && !d.stay_active ? 0 : list.filter((w) => presenceConfirmed(w, d)).length;
+  const connected = list.filter((w) => w.connected && !w.paused).length;
+  if (!d.stay_active) {
+    if (d.paused || list.every((w) => w.paused)) return false;
+    const schedule = d.schedule || {};
+    if (schedule.mode === "scheduled" && !schedule.active) return false;
+  }
+  return confirmed > 0 || connected > 0;
+}
+
+// Asks the running daemon whether it is keeping you green. The access code
+// goes only to the address the person agreed to. On any failure the answer is
+// left out, and the popup shows the switch off.
+async function readKeepingGreen(daemonUrl, bridgeCode) {
+  try {
+    const response = await fetch(`${daemonUrl}/api/state`, {
+      cache: "no-store",
+      headers: { Authorization: `Bearer ${bridgeCode}` },
+    });
+    if (!response.ok) return {};
+    return { keepingGreen: keepingGreen(await response.json()) };
+  } catch {
+    return {};
+  }
+}
+
 async function ping() {
-  const { daemonUrl, urlProblem } = await settings();
+  const { daemonUrl, urlProblem, bridgeCode, consented } = await settings();
   if (urlProblem) {
     return { ok: false, daemonUrl, error: urlProblem };
   }
+  let health;
   try {
     const response = await fetch(`${daemonUrl}/api/health`, { cache: "no-store" });
     const body = await response.json();
-    return { ok: response.ok && body.app === "stillgreen", daemonUrl, daemon: !!body.daemon };
+    health = { ok: response.ok && body.app === "stillgreen", daemonUrl, daemon: !!body.daemon };
   } catch {
     return { ok: false, daemonUrl, error: "unreachable", hint: unreachable(daemonUrl) };
   }
+  // /api/health stays unauthenticated and says nothing about presence.
+  if (health.ok && health.daemon && bridgeCode && consented) {
+    Object.assign(health, await readKeepingGreen(daemonUrl, bridgeCode));
+  }
+  return health;
 }
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {

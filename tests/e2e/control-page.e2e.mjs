@@ -193,6 +193,9 @@ describe("daemon control page (cloud mode)", () => {
     await dialog.waitFor({ state: "hidden" });
     await page.locator("#workspaceList").getByText("E2E Workspace").waitFor();
     assert.equal((await daemonState()).workspaces.length, 1);
+    // The logo switch turns on once Stillgreen is keeping you green.
+    const logo = page.locator("#app .topbar .logo");
+    await logo.and(page.locator('[data-mood="on"]')).waitFor({ timeout: 20000 });
 
     await page.getByRole("button", { name: "Pause E2E Workspace" }).click();
     await page.getByRole("button", { name: "Resume E2E Workspace" }).waitFor();
@@ -206,9 +209,11 @@ describe("daemon control page (cloud mode)", () => {
     await overview.getByRole("button", { name: "Pause 1 h" }).click();
     await overview.getByRole("heading", { name: /^Paused · Until \d{1,2}:\d\d/ }).waitFor();
     assert.equal((await daemonState()).paused, true);
+    assert.equal(await logo.getAttribute("data-mood"), "off");
     await overview.getByRole("button", { name: "Resume all", exact: true }).click();
     await overview.getByRole("button", { name: "Pause 1 h" }).waitFor();
     assert.equal((await daemonState()).paused, false);
+    await logo.and(page.locator('[data-mood="on"]')).waitFor({ timeout: 20000 });
 
     // Pause with no end time, then resume.
     await overview.getByRole("button", { name: "Pause until I resume" }).click();

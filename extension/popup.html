@@ -13,10 +13,30 @@
     <div class="app">
       <header class="head">
         <span class="logo">
-          <span class="logo-mark" aria-hidden="true"><span class="logo-dot"></span></span>
+          <!-- The switch is on (laughing) while Stillgreen is keeping you active, off (sad) otherwise. popup.js sets data-mood. Artwork copied from the approved logo-on / logo-off SVGs, like components/brand.tsx and sg_local/static/index.html. -->
+          <svg id="logoMark" class="logo-mark" data-mood="off" viewBox="0 0 64 32" aria-hidden="true" focusable="false">
+            <defs>
+              <linearGradient id="sg-popup-on" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#a3e635"/><stop offset="1" stop-color="#10b981"/></linearGradient>
+            </defs>
+            <rect class="logo-track-off" width="64" height="32" rx="16"/>
+            <rect class="logo-track-on" width="64" height="32" rx="16" fill="url(#sg-popup-on)"/>
+            <g class="logo-knob">
+              <circle cx="18" cy="16" r="12.5" fill="#fff"/>
+              <g class="logo-face-on" fill="none" stroke="#10b981" stroke-width="1.88" stroke-linecap="round">
+                <path d="M11.38 14.31A2.13 2.13 0 0 1 15.63 14.31"/>
+                <path d="M20.38 14.31A2.13 2.13 0 0 1 24.63 14.31"/>
+                <path d="M11.75 17H24.25A6.25 6.25 0 0 1 11.75 17Z" fill="#10b981" stroke="none"/>
+              </g>
+              <g class="logo-face-off">
+                <circle cx="13.75" cy="14.13" r="1.38"/>
+                <circle cx="22.25" cy="14.13" r="1.38"/>
+                <path d="M13.5 22.25A5.17 5.17 0 0 1 22.5 22.25" fill="none" stroke-width="1.88" stroke-linecap="round"/>
+              </g>
+            </g>
+          </svg>
           <span class="logo-word">Stillgreen</span>
         </span>
-        <span id="status" class="badge badge-neutral" role="status" aria-live="polite"><span class="dot" aria-hidden="true"></span><span id="statusText">Not connected yet</span></span>
+        <span id="status" class="badge badge-neutral" role="status" aria-live="polite"><span class="dot" aria-hidden="true"></span><span id="statusText">Not connected yet</span><span id="statusMood" class="visually-hidden"></span></span>
       </header>
 
       <!-- Shown before the first capture, again when CONSENT_VERSION changes, and
