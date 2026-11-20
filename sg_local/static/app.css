@@ -75,25 +75,79 @@ code {
   letter-spacing: -0.02em;
 }
 
-/* The mark stays dark in both themes, like a presence dot on a dark avatar. */
+/* The mark is a switch: on (green track, knob right, laughing face) while
+   Stillgreen is keeping you active, off (grey track, knob left, sad face)
+   otherwise. app.js sets data-mood="on|off". Same artwork as the website,
+   copied from the approved logo-on / logo-off-light / logo-off-dark SVGs;
+   components/brand.module.css and extension/popup.css hold the same values
+   (tests/test_logo_mark.py keeps them in step). */
 .logo {
-  display: grid;
-  width: 24px;
-  height: 24px;
+  --logo-off-track: #d4d4d8;
+  --logo-off-face: #a1a1aa;
+  display: block;
+  width: 44px;
+  height: 22px;
   flex-shrink: 0;
-  place-items: center;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 7px;
-  background: linear-gradient(180deg, #1f2023, #121315);
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.12);
+  overflow: visible;
 }
 
-.logo i {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #22c55e;
-  box-shadow: 0 0 0 2.5px rgba(34, 197, 94, 0.2), 0 0 8px rgba(34, 197, 94, 0.7);
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .logo {
+    --logo-off-track: #3f3f46;
+    --logo-off-face: #71717a;
+  }
+}
+
+:root[data-theme="dark"] .logo {
+  --logo-off-track: #3f3f46;
+  --logo-off-face: #71717a;
+}
+
+.logo-track {
+  fill: var(--logo-off-track);
+}
+
+.logo-face-off {
+  fill: var(--logo-off-face);
+  stroke: var(--logo-off-face);
+}
+
+.logo-face-off circle {
+  stroke: none;
+}
+
+.logo-track-on,
+.logo-face-on,
+.logo-face-off,
+.logo-knob {
+  transition: opacity 250ms ease, transform 250ms ease;
+}
+
+.logo-track-on,
+.logo-face-on {
+  opacity: 0;
+}
+
+.logo[data-mood="on"] .logo-track-on,
+.logo[data-mood="on"] .logo-face-on {
+  opacity: 1;
+}
+
+.logo[data-mood="on"] .logo-face-off {
+  opacity: 0;
+}
+
+.logo[data-mood="on"] .logo-knob {
+  transform: translateX(28px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .logo-track-on,
+  .logo-face-on,
+  .logo-face-off,
+  .logo-knob {
+    transition: none;
+  }
 }
 
 /* ---------- Login ---------- */

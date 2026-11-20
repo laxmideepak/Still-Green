@@ -81,6 +81,7 @@ import {
   nextChangeText,
   onlineCount,
   presenceSummary,
+  brandMood,
   setupSteps,
   since,
   statusSignals,
@@ -175,6 +176,7 @@ function TopBar({
   version,
   preview,
   unreachable,
+  mood,
   onDisconnect,
   onConnect,
 }: {
@@ -182,13 +184,15 @@ function TopBar({
   version: string;
   preview?: boolean;
   unreachable?: boolean;
+  mood: "on" | "off";
   onDisconnect?: () => void;
   onConnect?: () => void;
 }) {
   return (
     <header className={styles.topbar}>
       <div className={cx("container", styles.topbarInner)}>
-        <Brand size="sm" />
+        {/* The mark follows the live status; the status card says it in words. */}
+        <Brand size="sm" mood={mood} />
         <span className={styles.crumbSep} aria-hidden="true">
           /
         </span>
@@ -1350,6 +1354,7 @@ export function DashboardView({
         version={state.version}
         preview={preview}
         unreachable={unreachable}
+        mood={brandMood(state, unreachable, now)}
         onDisconnect={() => setDisconnecting(true)}
         onConnect={onConnect}
       />
@@ -1476,7 +1481,7 @@ export function DashboardSkeleton({ message = "Loading the dashboard…" }: { me
     <>
       <header className={styles.topbar}>
         <div className={cx("container", styles.topbarInner)}>
-          <Brand size="sm" />
+          <Brand size="sm" mood="off" />
           <span className={styles.crumbSep} aria-hidden="true">
             /
           </span>

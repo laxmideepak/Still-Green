@@ -18,6 +18,8 @@ const captureLabel = document.getElementById("captureLabel");
 const results = document.getElementById("results");
 const status = document.getElementById("status");
 const statusText = document.getElementById("statusText");
+const logoMark = document.getElementById("logoMark");
+const statusMood = document.getElementById("statusMood");
 const statusNote = document.getElementById("statusNote");
 const statusNoteTitle = document.getElementById("statusNoteTitle");
 const statusNoteText = document.getElementById("statusNoteText");
@@ -95,10 +97,21 @@ const STATUS_TONES = {
   idle: "badge-neutral",
 };
 
-function setStatus(kind, text) {
+// The switch is on only while Stillgreen is keeping you green (the worker asks
+// the daemon, with the same rule as the control page and the dashboard).
+// keepingGreen: true or false when the daemon answered, undefined when it was
+// not asked, null to leave the switch as it is (while checking).
+function setStatus(kind, text, keepingGreen) {
   status.className = `badge ${STATUS_TONES[kind] || STATUS_TONES.idle}`;
   status.dataset.state = kind;
   statusText.textContent = text;
+  // The mark is hidden from screen readers; say its state in words here.
+  statusMood.textContent =
+    kind === "live" && typeof keepingGreen === "boolean"
+      ? keepingGreen ? ", keeping you active" : ", not keeping you active right now"
+      : "";
+  if (keepingGreen === null) return;
+  logoMark.dataset.mood = kind === "live" && keepingGreen === true ? "on" : "off";
 }
 
 function setStatusNote(tone, title, parts) {
@@ -338,13 +351,13 @@ async function checkDaemon() {
     setStatusNote(null);
     return false;
   }
-  setStatus("idle", "Checking…");
+  setStatus("idle", "Checking…", null);
   const response = await chrome.runtime.sendMessage({ type: "ping" });
   daemonRunning = Boolean(response && response.ok && response.daemon);
   const host = currentHost() || "Stillgreen";
   if (response && response.ok) {
     if (response.daemon) {
-      setStatus("live", "Stillgreen running");
+      setStatus("live", "Stillgreen running", response.keepingGreen);
       setStatusNote(null);
     } else {
       setStatus("warn", "Stillgreen stopped");

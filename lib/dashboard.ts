@@ -304,6 +304,8 @@ export type PresenceSummary = {
   /** Shown after a dot, quieter. */
   detail?: string;
   description: string;
+  /** True only while Stillgreen is keeping you green: Active, or Connected and waiting for Slack. */
+  keepingGreen?: boolean;
 };
 
 /**
@@ -664,6 +666,7 @@ export function presenceSummary(state: DaemonState, unreachable: boolean, now = 
   const confirmedIn = `Slack confirmed you as active in ${confirmed} of ${total} ${total === 1 ? "workspace" : "workspaces"}.`;
   const waiting: PresenceSummary = {
     tone: "info",
+    keepingGreen: true,
     title: "Connected",
     detail: "waiting for Slack to confirm",
     description:
@@ -704,6 +707,7 @@ export function presenceSummary(state: DaemonState, unreachable: boolean, now = 
     if (confirmed > 0) {
       return {
         tone: "success",
+        keepingGreen: true,
         title: "Active",
         detail: state.stay_until ? `Staying online until ${when(state.stay_until, now)}` : "Staying online",
         description: `${confirmedIn} ${after}`,
@@ -756,11 +760,22 @@ export function presenceSummary(state: DaemonState, unreachable: boolean, now = 
   const next = state.schedule.mode === "scheduled" && state.schedule.next_change ? when(state.schedule.next_change, now) : "";
   return {
     tone: "success",
+    keepingGreen: true,
     title: "Active",
     detail: state.schedule.mode === "always" ? "Always on" : next ? `Until ${next}` : "On schedule",
     description:
       confirmedIn + (state.schedule.mode === "always" ? " Stillgreen keeps helping until you pause it." : " Your schedule ends it on its own."),
   };
+}
+
+/**
+ * The logo's mood on the dashboard: "on" (laughing) only while Stillgreen is
+ * actually keeping you green, meaning Slack confirmed it or a live connection
+ * is waiting on Slack. Paused, stopped, unreachable, off schedule, no
+ * workspace or not connected yet are all "off" (sad).
+ */
+export function brandMood(state: DaemonState, unreachable: boolean, now = Date.now()): "on" | "off" {
+  return presenceSummary(state, unreachable, now).keepingGreen ? "on" : "off";
 }
 
 // ------------------------------------------------------------------ setup checklist

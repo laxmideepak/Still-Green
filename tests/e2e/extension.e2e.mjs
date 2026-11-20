@@ -309,6 +309,25 @@ describe("capture extension", () => {
     assert.deepEqual(await teamIds(), [TEAM_ID]);
     assert.deepEqual(problems, []);
     await page.close();
+
+    // The logo switch follows the daemon: on once the workspace is
+    // connected, off while Stillgreen is paused.
+    await waitFor(async () => (await api("GET", "/api/state")).body.workspaces.some((w) => w.connected), "workspace connected");
+    const mood = async () => {
+      const { page: popup } = await openPopup();
+      await popup.locator("#status", { hasText: "Stillgreen running" }).waitFor();
+      const value = await popup.locator("#logoMark").getAttribute("data-mood");
+      const words = await popup.locator("#statusMood").textContent();
+      await popup.close();
+      return { value, words };
+    };
+    assert.deepEqual(await mood(), { value: "on", words: ", keeping you active" });
+    assert.equal((await api("POST", "/api/pause", {})).status, 200);
+    try {
+      assert.deepEqual(await mood(), { value: "off", words: ", not keeping you active right now" });
+    } finally {
+      assert.equal((await api("POST", "/api/resume", {})).status, 200);
+    }
   });
 
   test("saves every team in localConfig_v2", async () => {
