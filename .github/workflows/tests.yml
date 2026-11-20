@@ -16,7 +16,9 @@ concurrency:
 jobs:
   python:
     name: Python tests (${{ matrix.python }})
-    runs-on: ubuntu-latest
+    # GitHub has no Python 3.9 build for the newest Ubuntu image, so the
+    # 3.9 job runs on Ubuntu 24.04.
+    runs-on: ${{ matrix.python == '3.9' && 'ubuntu-24.04' || 'ubuntu-latest' }}
     timeout-minutes: 15
     strategy:
       fail-fast: false
@@ -48,12 +50,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # macos-14 is Apple Silicon. GitHub retired the macos-13 Intel image,
-        # so Intel uses macos-15-intel.
-        os: [macos-14, macos-15-intel]
+        # macos-latest is Apple Silicon (the macos-14 image no longer gets a
+        # runner). GitHub retired the macos-13 Intel image, so Intel uses
+        # macos-15-intel.
+        os: [macos-latest, macos-15-intel]
         python: ["3.9", "3.12", "system"]
         include:
-          - os: macos-14
+          - os: macos-latest
             arch: Apple Silicon
           - os: macos-15-intel
             arch: Intel
