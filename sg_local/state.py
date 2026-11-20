@@ -69,15 +69,27 @@ def write_state(payload: dict[str, Any]) -> None:
 def _is_zombie(pid: int) -> bool:
     """A process that has exited but was not yet collected by its parent.
 
-    Only Linux shows this cheaply (/proc); elsewhere this says False.
+    Linux shows this in /proc. Elsewhere (macOS) ``ps`` reports the state;
+    if neither is available this says False.
     """
     try:
         stat = Path(f"/proc/{pid}/stat").read_text(encoding="ascii", errors="replace")
     except OSError:
+        pass
+    else:
+        # Format: "pid (name) state ..."; the name may contain spaces or ")".
+        fields = stat.rpartition(")")[2].split()
+        return bool(fields) and fields[0] == "Z"
+    try:
+        result = subprocess.run(
+            ["ps", "-p", str(pid), "-o", "stat="],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError):
         return False
-    # Format: "pid (name) state ..."; the name may contain spaces or ")".
-    fields = stat.rpartition(")")[2].split()
-    return bool(fields) and fields[0] == "Z"
+    return result.stdout.strip().startswith("Z")
 
 
 def pid_alive(pid: int) -> bool:

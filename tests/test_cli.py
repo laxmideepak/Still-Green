@@ -193,6 +193,7 @@ class CliTests(TempConfig):
         self.assertIn("too short", err)
         execve.assert_not_called()
 
+    @unittest.skipUnless(Path("/proc/self/cmdline").exists(), "the no-ps path reads /proc (Linux)")
     def test_daemon_is_recognised_without_ps(self) -> None:
         from sg_local import state
 
@@ -242,7 +243,6 @@ if __name__ == "__main__":
 
 
 class PidAliveTests(unittest.TestCase):
-    @unittest.skipUnless(Path("/proc/self/stat").exists(), "needs /proc (Linux)")
     def test_exited_but_uncollected_process_is_not_alive(self) -> None:
         import subprocess
         import sys
@@ -261,3 +261,23 @@ class PidAliveTests(unittest.TestCase):
         finally:
             child.wait(timeout=10)
         self.assertTrue(state.pid_alive(os.getpid()))
+
+    def test_zombie_check_uses_ps_without_proc(self) -> None:
+        from sg_local import state
+
+        real_read = Path.read_text
+
+        def no_proc(path: Path, *args, **kwargs):
+            if str(path).startswith("/proc/"):
+                raise OSError("no /proc")
+            return real_read(path, *args, **kwargs)
+
+        answer = mock.Mock(stdout="Z+\n")
+        with mock.patch.object(Path, "read_text", no_proc), \
+                mock.patch.object(state.subprocess, "run", return_value=answer) as run:
+            self.assertTrue(state._is_zombie(12345))
+        self.assertEqual(run.call_args.args[0], ["ps", "-p", "12345", "-o", "stat="])
+        answer.stdout = "S\n"
+        with mock.patch.object(Path, "read_text", no_proc), \
+                mock.patch.object(state.subprocess, "run", return_value=answer):
+            self.assertFalse(state._is_zombie(12345))
