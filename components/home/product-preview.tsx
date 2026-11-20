@@ -26,7 +26,7 @@ const ticks = ["12 AM", "6 AM", "12 PM", "6 PM", "12 AM"];
  */
 export function ProductPreview() {
   return (
-    <figure className={styles.figure} aria-label="Preview of the Stillgreen dashboard">
+    <figure className={styles.figure} aria-label="Preview of the Stillgreen dashboard, with sample data">
       <div className={styles.frame} inert>
         <div className={styles.chrome}>
           <span className={styles.dots}>
@@ -48,7 +48,7 @@ export function ProductPreview() {
             </span>
             <span className={styles.statusText}>
               <strong>Active</strong>
-              <span>Online until 5:00 PM</span>
+              <span>Slack confirmed · until 5:00 PM</span>
             </span>
             <Button size="sm" icon={<Pause />}>
               Pause
@@ -94,7 +94,7 @@ export function ProductPreview() {
         </span>
         <span className={styles.toastText}>
           <strong>Schedule started</strong>
-          <span>Active in Acme Corp at 9:00 AM</span>
+          <span>Slack confirmed you as active in Acme Corp</span>
         </span>
       </div>
     </figure>

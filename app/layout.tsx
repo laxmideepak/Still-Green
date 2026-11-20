@@ -16,9 +16,9 @@ const mono = JetBrains_Mono({
   display: "swap",
 });
 
-const title = "Stillgreen — keep your Slack status green on your schedule";
+const title = "Stillgreen — help keep your Slack status active on your schedule";
 const description =
-  "Stillgreen keeps your Slack status green during the hours you choose. It is free and runs on your own computer or your own cloud server. Your tokens never go to this website.";
+  "Stillgreen keeps a Slack connection open like the Slack web app during the hours you choose, which helps keep you active. Slack decides your final status. It is free and runs on your own computer. Your tokens never go to this website.";
 
 export const metadata: Metadata = {
   title: {

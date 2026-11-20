@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import fcntl
+import functools
+import hashlib
 import json
 import os
 import signal
@@ -15,6 +17,36 @@ from typing import Any
 from . import config
 
 DAEMON_MARKER = "sg_local.daemon"
+
+
+UPDATE_MESSAGE = "Stillgreen was updated after it started. Run ./sg-local restart to finish the update."
+
+
+@functools.lru_cache(maxsize=1)
+def build_id() -> str:
+    """A short fingerprint of the program files and requirements.lock.
+
+    The daemon saves the one it started with; when the files on disk change
+    (after ``git pull``), the CLI and the pages can say "restart to finish the
+    update". Read once per process, so a running daemon keeps its own.
+    """
+    digest = hashlib.sha256()
+    package = Path(__file__).resolve().parent
+    files = sorted(package.glob("*.py")) + sorted((package / "static").glob("*"))
+    files.append(config.PROJECT_ROOT / "requirements.lock")
+    for path in files:
+        try:
+            data = path.read_bytes()
+        except OSError:
+            continue
+        digest.update(path.name.encode("utf-8") + b"\0" + data + b"\0")
+    return digest.hexdigest()[:16]
+
+
+def update_pending(runtime: dict[str, Any] | None) -> bool:
+    """Is the running daemon older than the program files on disk?"""
+    running = str((runtime or {}).get("build") or "")
+    return bool(running) and running != build_id()
 
 
 def read_json(path: Path) -> dict[str, Any] | None:
@@ -34,6 +66,32 @@ def write_state(payload: dict[str, Any]) -> None:
     config.atomic_write(config.STATE_PATH, json.dumps(payload, indent=2, sort_keys=False) + "\n")
 
 
+def _is_zombie(pid: int) -> bool:
+    """A process that has exited but was not yet collected by its parent.
+
+    Linux shows this in /proc. Elsewhere (macOS) ``ps`` reports the state;
+    if neither is available this says False.
+    """
+    try:
+        stat = Path(f"/proc/{pid}/stat").read_text(encoding="ascii", errors="replace")
+    except OSError:
+        pass
+    else:
+        # Format: "pid (name) state ..."; the name may contain spaces or ")".
+        fields = stat.rpartition(")")[2].split()
+        return bool(fields) and fields[0] == "Z"
+    try:
+        result = subprocess.run(
+            ["ps", "-p", str(pid), "-o", "stat="],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return result.stdout.strip().startswith("Z")
+
+
 def pid_alive(pid: int) -> bool:
     if pid <= 0:
         return False
@@ -43,7 +101,8 @@ def pid_alive(pid: int) -> bool:
         return False
     except PermissionError:
         return True
-    return True
+    # A stopped daemon whose parent has not collected it yet is not running.
+    return not _is_zombie(pid)
 
 
 def _command_line(pid: int) -> str:

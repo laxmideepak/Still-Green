@@ -1,4 +1,7 @@
 const DEFAULT_DAEMON = "http://127.0.0.1:8765";
+// Bump when the consent text in popup.html changes; everyone is asked again.
+// Keep in sync with CONSENT_VERSION in background.js, which enforces it.
+const CONSENT_VERSION = 1;
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]"]);
 const SVG_NS = "http://www.w3.org/2000/svg";
 let daemonRunning = false;
@@ -20,6 +23,15 @@ const statusNoteTitle = document.getElementById("statusNoteTitle");
 const statusNoteText = document.getElementById("statusNoteText");
 const hint = document.getElementById("hint");
 const target = document.getElementById("target");
+const mainView = document.getElementById("mainView");
+const consentView = document.getElementById("consent");
+const consentTitle = document.getElementById("consentTitle");
+const consentHost = document.getElementById("consentHost");
+const consentAccept = document.getElementById("consentAccept");
+const consentCancel = document.getElementById("consentCancel");
+const consentChanged = document.getElementById("consentChanged");
+const consentChangedText = document.getElementById("consentChangedText");
+const consentRemote = document.getElementById("consentRemote");
 
 // Line icons (paths copied from components/icons.tsx).
 const ICONS = {
@@ -164,16 +176,102 @@ function showDestination() {
   return true;
 }
 
-// A plain next step for the errors people can fix themselves.
-function nextStep(error) {
-  const text = String(error || "");
-  if (/access code was rejected/i.test(text)) {
+// A plain next step. Newer workers send it; older messages are matched here.
+function nextStep(item) {
+  if (item.next) return item.next;
+  const text = String(item.error || "");
+  if (/access code was (rejected|not accepted)/i.test(text)) {
     return "Check the access code. Run ./sg-local web --show-code to see it.";
   }
   if (/rejected these tokens|invalid_auth|not_authed|token_revoked/i.test(text)) {
     return "Reload app.slack.com, make sure you're signed in, then capture again.";
   }
   return "";
+}
+
+// ---------------------------------------------------------------- consent
+
+function originOf(url) {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return "";
+  }
+}
+
+function currentOrigin() {
+  return originOf(normalizeUrl(daemonInput.value));
+}
+
+// The OK is for this notice and this Stillgreen address only.
+// Mirrors consentFits() in background.js, which is the one that is enforced.
+function consentFits(consent, origin) {
+  return Boolean(consent && consent.version === CONSENT_VERSION && origin && consent.origin === origin);
+}
+
+async function storedConsent() {
+  const { consent } = await chrome.storage.local.get({ consent: null });
+  return consent;
+}
+
+async function hasConsent() {
+  return consentFits(await storedConsent(), currentOrigin());
+}
+
+// Show the notice and wait for an answer: true for "I understand, continue".
+// `previous` is the earlier OK, if any, to say what changed.
+function askConsent(previous) {
+  const host = currentHost() || "127.0.0.1:8765";
+  consentHost.textContent = host;
+  const origin = currentOrigin();
+  const moved = Boolean(previous && previous.version === CONSENT_VERSION && previous.origin && previous.origin !== origin);
+  consentChanged.hidden = !moved;
+  if (moved) {
+    let before = previous.origin;
+    try {
+      before = new URL(previous.origin).host;
+    } catch {
+      // keep the text as it is
+    }
+    consentChangedText.textContent = `You changed the Stillgreen address from ${before} to ${host}. Your Slack login will go to the new address, so please read this again.`;
+  }
+  let remote = false;
+  try {
+    remote = !LOOPBACK_HOSTS.has(new URL(origin).hostname);
+  } catch {
+    remote = false;
+  }
+  consentRemote.hidden = !remote;
+  mainView.hidden = true;
+  consentView.hidden = false;
+  consentTitle.focus();
+  return new Promise((resolve) => {
+    const done = async (accepted) => {
+      consentAccept.removeEventListener("click", accept);
+      consentCancel.removeEventListener("click", cancel);
+      document.removeEventListener("keydown", escape);
+      if (accepted) {
+        await chrome.storage.local.set({
+          consent: { version: CONSENT_VERSION, origin, acceptedAt: new Date().toISOString() },
+        });
+      }
+      consentView.hidden = true;
+      mainView.hidden = false;
+      captureButton.focus();
+      resolve(accepted);
+    };
+    const accept = () => done(true);
+    const cancel = () => done(false);
+    const escape = (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        done(false);
+      }
+    };
+    consentAccept.addEventListener("click", accept);
+    consentCancel.addEventListener("click", cancel);
+    document.addEventListener("keydown", escape);
+  });
 }
 
 function renderItems(items) {
@@ -201,7 +299,7 @@ function renderItems(items) {
     detail.textContent = item.ok ? "Added to Stillgreen" : item.error;
     body.append(title, detail);
 
-    const step = item.ok ? "" : nextStep(item.error);
+    const step = item.ok ? "" : nextStep(item);
     if (step) {
       const next = document.createElement("span");
       next.className = "result-next";
@@ -251,7 +349,7 @@ async function checkDaemon() {
     } else {
       setStatus("warn", "Stillgreen stopped");
       setStatusNote("warning", "Stillgreen is stopped", [
-        "It won't keep you green until you run ",
+        "It won't keep a Slack connection open until you run ",
         { code: "./sg-local start" },
         ". You can still add workspaces now.",
       ]);
@@ -260,10 +358,15 @@ async function checkDaemon() {
   }
   setStatus("down", "Can't connect");
   const problem = response && response.error && response.error !== "unreachable" ? response.error : "";
+  const secure = /^https:/i.test(normalizeUrl(daemonInput.value));
   setStatusNote(
     "danger",
-    `Can't reach ${host}`,
-    problem ? [problem] : ["Check the address below, or start Stillgreen with ", { code: START_COMMAND }, "."],
+    secure ? `Can't make a secure connection to ${host}` : `Stillgreen is not running at ${host}`,
+    problem
+      ? [problem]
+      : secure
+        ? ["The server did not answer, or Chrome does not trust its certificate. Open the address in a tab to check."]
+        : ["Start it with ", { code: START_COMMAND }, ", or check the address below."],
   );
   return false;
 }
@@ -359,10 +462,24 @@ captureButton.addEventListener("click", async () => {
   results.hidden = true;
 
   try {
+    // Ask first: nothing is read from Slack before the person agrees.
+    const previous = await storedConsent();
+    if (!consentFits(previous, currentOrigin())) {
+      setBusy(false);
+      const accepted = await askConsent(previous);
+      if (!accepted) {
+        showCaptureError("Nothing was captured. Stillgreen needs your OK before it reads your Slack login.");
+        return;
+      }
+      setBusy(true);
+    }
     // Can't reach Stillgreen? Say that, not a Slack hint.
     if (normalizeCode(codeInput.value) && !(await checkDaemon())) {
+      const secure = /^https:/i.test(normalizeUrl(daemonInput.value));
       showCaptureError(
-        `Can't reach ${currentHost() || "Stillgreen"}. Start Stillgreen with ${START_COMMAND}, or check the address.`,
+        secure
+          ? `Can't make a secure connection to ${currentHost() || "Stillgreen"}. The server did not answer, or Chrome does not trust its certificate.`
+          : `Stillgreen is not running at ${currentHost() || "this address"}. Start it with ${START_COMMAND}, or check the address.`,
       );
       return;
     }
@@ -371,7 +488,7 @@ captureButton.addEventListener("click", async () => {
     if (!result || (!result.workspaces && !result.error)) {
       showCaptureError("No answer from the extension. Close this popup and open it again.");
     } else if (result.error) {
-      if (/access code/i.test(result.error)) {
+      if (result.codeRejected || /access code/i.test(result.error)) {
         codeInput.setAttribute("aria-invalid", "true");
       }
       showCaptureError(result.error);
@@ -384,8 +501,8 @@ captureButton.addEventListener("click", async () => {
         fill(
           hint,
           daemonRunning
-            ? [`${lead} Stillgreen now follows your schedule. Open the dashboard to check it.`]
-            : [`${lead} Run `, { code: "./sg-local start" }, " to start keeping you green."],
+            ? [`${lead} Stillgreen now follows your schedule. The dashboard shows when Slack confirms your status.`]
+            : [`${lead} Run `, { code: "./sg-local start" }, " to start it."],
         );
       }
       results.scrollIntoView({ block: "nearest" });

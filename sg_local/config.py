@@ -61,11 +61,32 @@ DEFAULT_SCHEDULE: dict[str, Any] = {
 
 
 class ConfigError(Exception):
-    """Raised for invalid configuration or user input."""
+    """Raised for invalid configuration or user input.
+
+    ``code`` is an optional error-catalogue code (see sg_local.errors) when
+    the problem is one the catalogue explains, for example
+    ``slack_auth_rejected`` when Slack refuses tokens being added.
+    """
+
+    def __init__(self, message: str = "", code: str | None = None) -> None:
+        super().__init__(message)
+        self.code = code
 
 
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def parse_iso(value: str) -> datetime:
+    """``datetime.fromisoformat`` that also reads a trailing ``Z``.
+
+    Browsers send times like ``2026-10-31T21:00:00.000Z``; Python before
+    3.11 cannot read the ``Z``. Raises ValueError for text that is not a time.
+    """
+    text = str(value).strip()
+    if text[-1:] in {"Z", "z"}:
+        text = text[:-1] + "+00:00"
+    return datetime.fromisoformat(text)
 
 
 def default_config() -> dict[str, Any]:
@@ -306,7 +327,7 @@ def parse_until(value: str) -> datetime:
             now = datetime.now().astimezone()
             moment = now.replace(hour=int(clock.group(1)), minute=int(clock.group(2)), second=0, microsecond=0)
         else:
-            moment = datetime.fromisoformat(text)
+            moment = parse_iso(text)
     except ValueError:
         raise ConfigError("Use a time like 17:00 or 2026-10-31T17:00:00-04:00") from None
     if moment.tzinfo is None:
@@ -329,7 +350,7 @@ def _read_timestamped(path: Path) -> dict[str, Any] | None:
     until = payload.get("until")
     if until:
         try:
-            deadline = datetime.fromisoformat(str(until))
+            deadline = parse_iso(str(until))
             if deadline.tzinfo is None:
                 deadline = deadline.replace(tzinfo=timezone.utc)
             # Expired files read as absent. They are not deleted here: a

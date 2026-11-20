@@ -17,6 +17,7 @@ import asyncio
 import json
 import logging
 import re
+import socket
 import ssl
 import time
 import urllib.error
@@ -26,6 +27,9 @@ from typing import Any
 
 import websockets
 from websockets.exceptions import ConnectionClosed, InvalidStatus
+
+from . import errors
+from .tls import create_ssl_context
 
 API_BASE = "https://slack.com/api"
 WS_URL = "wss://wss-primary.slack.com/?token={token}"
@@ -55,10 +59,20 @@ def redact(text: str, *secrets: str) -> str:
 class SlackAPIError(Exception):
     """A Slack Web API returned ``ok: false`` or an HTTP error."""
 
-    def __init__(self, error: str, token_invalid: bool = False) -> None:
+    def __init__(
+        self,
+        error: str,
+        token_invalid: bool = False,
+        cause: BaseException | None = None,
+        http_status: int | None = None,
+    ) -> None:
         super().__init__(error)
         self.error = error
         self.token_invalid = token_invalid
+        self.http_status = http_status
+        # The network exception behind a "Network error", if any. Kept so the
+        # error catalogue (sg_local.errors) can explain it; never logged.
+        self.cause = cause
 
 
 def get_http_headers(xoxc: str, xoxd: str) -> dict[str, str]:
@@ -93,8 +107,10 @@ class SlackClient:
         self._xoxc = xoxc
         self._xoxd = xoxd
         self.user_id = user_id
+        # One verifying TLS context for this workspace's HTTPS and WSS.
+        self.ssl_context = create_ssl_context()
         self._opener = urllib.request.build_opener(
-            urllib.request.HTTPSHandler(context=ssl.create_default_context()), _NoRedirect()
+            urllib.request.HTTPSHandler(context=self.ssl_context), _NoRedirect()
         )
 
     def _read_json(self, response: Any) -> dict[str, Any]:
@@ -129,12 +145,17 @@ class SlackClient:
             try:
                 payload = self._read_json(exc)
             except SlackAPIError:
-                raise SlackAPIError(f"Slack HTTP {exc.code}") from None
+                raise SlackAPIError(f"Slack HTTP {exc.code}", http_status=exc.code) from None
         except urllib.error.URLError as exc:
             reason = redact(str(exc.reason), self._xoxc, self._xoxd)
-            raise SlackAPIError(f"Network error: {reason}") from None
-        except TimeoutError:
-            raise SlackAPIError("Network timeout contacting Slack") from None
+            cause = exc.reason if isinstance(exc.reason, BaseException) else exc
+            raise SlackAPIError(f"Network error: {reason}", cause=cause) from None
+        except (socket.timeout, TimeoutError) as exc:
+            # socket.timeout is not TimeoutError before Python 3.10.
+            raise SlackAPIError("Network timeout contacting Slack", cause=exc) from None
+        except ssl.SSLError as exc:
+            reason = redact(str(exc), self._xoxc, self._xoxd)
+            raise SlackAPIError(f"Network error: {reason}", cause=exc) from None
 
         if not payload.get("ok"):
             error = str(payload.get("error") or "unknown_error")
@@ -208,6 +229,16 @@ class PresenceSession:
         self.status = "starting"
         self.invalid_token = False
         self.last_error: str | None = None
+        # Error catalogue code for last_error (see sg_local.errors).
+        self.last_error_code: str | None = None
+        # "ok" once Slack accepted the tokens, "rejected" once it refused them.
+        self.auth = "unknown"
+        # Last time users.getPresence said "active" (epoch seconds).
+        self.presence_verified_at: float | None = None
+        # Last time a request reached Slack, and the last network failure.
+        self.slack_ok_at: float | None = None
+        self.slack_fail_at: float | None = None
+        self.slack_fail_code: str | None = None
         self.started_at: float | None = None
         self.connected_at: float | None = None
         self.last_presence: str | None = None
@@ -236,6 +267,35 @@ class PresenceSession:
     def _safe(self, exc: BaseException) -> str:
         return redact(str(exc), self.client._xoxc, self.client._xoxd)
 
+    def _error(self, exc_or_code: BaseException | str, text: str | None = None) -> str:
+        """Remember a problem: the redacted text and its catalogue code."""
+        if isinstance(exc_or_code, str):
+            code = exc_or_code
+            message = text or errors.entry(code)["title"]
+        else:
+            code = errors.classify(exc_or_code)
+            message = text if text is not None else self._safe(exc_or_code)
+        self.last_error = message
+        self.last_error_code = code
+        if code in errors.NETWORK_CODES:
+            self.slack_fail_at = time.time()
+            self.slack_fail_code = code
+        return message
+
+    def _reached_slack(self) -> None:
+        """Slack answered: the network path to Slack works."""
+        self.slack_ok_at = time.time()
+
+    @property
+    def presence(self) -> str:
+        """Last presence Slack reported: active, away, manual_away or unknown."""
+        value = self.last_presence
+        if value in {"active", "manual_away"}:
+            return value
+        if value in {"away", "auto_away"}:
+            return "away"
+        return "unknown"
+
     async def _sleep(self, seconds: float) -> bool:
         """Sleep unless stopped; returns True when a stop was requested."""
         if seconds <= 0:
@@ -243,7 +303,7 @@ class PresenceSession:
         try:
             await asyncio.wait_for(self._stop_event.wait(), timeout=seconds)
             return True
-        except TimeoutError:
+        except (asyncio.TimeoutError, TimeoutError):  # different before 3.11
             return False
 
     # ------------------------------------------------------------------- run
@@ -296,7 +356,7 @@ class PresenceSession:
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # keep the daemon alive, report the failure
-            self.last_error = self._safe(exc)
+            self._error(exc)
             self.status = "error"
             self._log(logging.ERROR, "session error: %s", self.last_error)
         finally:
@@ -314,7 +374,8 @@ class PresenceSession:
             return
         self.invalid_token = True
         self.status = "invalid_token"
-        self.last_error = message
+        self.auth = "rejected"
+        self._error("slack_auth_rejected", message)
         self._log(logging.ERROR, "%s", message)
         self._stop_event.set()
 
@@ -327,18 +388,28 @@ class PresenceSession:
         try:
             await asyncio.to_thread(self.client.auth_test)
         except SlackAPIError as exc:
+            if exc.cause is None:
+                self._reached_slack()
             return exc.token_invalid
         except Exception:
             return False
+        self._reached_slack()
         return False
 
     # ------------------------------------------------------------- websocket
 
     async def _connect(self) -> bool:
         url = WS_URL.format(token=self.client._xoxc)
+        # Pass the verifying context explicitly so WSS uses the same trusted
+        # certificates as HTTPS. (A plain ws:// URL, used only by the tests'
+        # fake Slack, must not get one.)
+        tls: dict[str, Any] = {}
+        if url.startswith("wss://"):
+            tls["ssl"] = self.client.ssl_context
         try:
             ws = await websockets.connect(
                 url,
+                **tls,
                 origin=ORIGIN,
                 additional_headers={"Cookie": f"d={self.client._xoxd}"},
                 user_agent_header=USER_AGENT,
@@ -359,14 +430,14 @@ class PresenceSession:
                     "the xoxc/xoxd tokens are invalid or expired"
                 )
             else:
-                self.last_error = f"WebSocket handshake failed (HTTP {code})"
+                self._error(exc, f"WebSocket handshake failed (HTTP {code})")
                 self.status = "error"
                 self._log(logging.WARNING, "%s", self.last_error)
             return False
         except asyncio.CancelledError:
             raise
         except Exception as exc:
-            self.last_error = self._safe(exc)
+            self._error(exc)
             self.status = "error"
             self._log(logging.WARNING, "WebSocket connection failed: %s", self.last_error)
             return False
@@ -377,6 +448,9 @@ class PresenceSession:
             self.reconnects += 1
         self.connected_at = time.time()
         self.status = "connected"
+        # Slack only opens the presence connection for a valid login.
+        self.auth = "ok"
+        self._reached_slack()
         self._last_ping = time.time()
         self._last_tickle = time.time()
         self._last_presence_check = time.time()
@@ -418,7 +492,7 @@ class PresenceSession:
                 self.status = "reconnecting"
         except Exception as exc:
             if not self._stop_event.is_set():
-                self.last_error = self._safe(exc)
+                self._error(exc)
                 self._log(logging.WARNING, "WebSocket reader error: %s", self.last_error)
                 self.status = "reconnecting"
         finally:
@@ -476,7 +550,7 @@ class PresenceSession:
             self.ping_count += 1
             self._last_ping = time.time()
         except Exception as exc:
-            self.last_error = self._safe(exc)
+            self._error(exc)
             self._log(logging.WARNING, "ping failed: %s", self.last_error)
             await self._close()
 
@@ -497,7 +571,7 @@ class PresenceSession:
             self._last_tickle = time.time()
             self._log(logging.DEBUG, "sent activity tickle")
         except Exception as exc:
-            self.last_error = self._safe(exc)
+            self._error(exc)
             self._log(logging.WARNING, "tickle failed: %s", self.last_error)
             await self._close()
 
@@ -513,20 +587,28 @@ class PresenceSession:
             if exc.token_invalid:
                 self._mark_invalid("Slack rejected the tokens during a presence check")
                 return
-            self.last_error = str(exc)
-            self._log(logging.WARNING, "presence check failed: %s", exc)
+            if exc.cause is None:
+                self._reached_slack()  # Slack answered, with an error
+            self._error(exc, self._safe(exc))
+            self._log(logging.WARNING, "presence check failed: %s", self.last_error)
             return
         except Exception as exc:
-            self.last_error = self._safe(exc)
+            self._error(exc)
             self._log(logging.WARNING, "presence check failed: %s", self.last_error)
             return
 
         self.presence_checks += 1
+        self._reached_slack()
+        self.auth = "ok"
+        # A good answer from Slack means earlier problems are over.
+        self.last_error = None
+        self.last_error_code = None
         kind = presence_kind(data)
         changed = kind != self.last_presence
         self.last_presence = kind
 
         if kind == "active":
+            self.presence_verified_at = time.time()
             self.away_count = 0
             self.status = "active"
             if changed:
@@ -563,7 +645,12 @@ class PresenceSession:
             "connected": self._ws is not None,
             "invalid_token": self.invalid_token,
             "last_error": self.last_error,
+            "last_error_code": self.last_error_code if self.last_error else None,
             "last_presence": self.last_presence,
+            "auth": self.auth,
+            # Without a connection the last answer may be out of date.
+            "presence": self.presence if self._ws is not None else "unknown",
+            "presence_verified_at": _iso(self.presence_verified_at),
             "started_at": _iso(self.started_at),
             "connected_at": _iso(self.connected_at),
             "uptime_seconds": int(now - self.started_at) if self.started_at else 0,

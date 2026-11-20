@@ -233,13 +233,38 @@ def wait_for(check, what: str, timeout: float = 20.0, interval: float = 0.2) -> 
     raise TimeoutError(f"timed out waiting for {what}")
 
 
+def handle_command(stack: Stack, line: str) -> dict[str, Any]:
+    """Run one test command sent as a JSON line on stdin.
+
+    Lets the browser tests change what fake Slack answers while everything
+    runs, for example ``{"slack": {"presence": "away"}}``. Only the fake
+    Slack fields below can be changed.
+    """
+    try:
+        command = json.loads(line)
+    except ValueError:
+        return {"ok": False, "error": "not JSON"}
+    changes = command.get("slack") if isinstance(command, dict) else None
+    if not isinstance(changes, dict):
+        return {"ok": False, "error": "unknown command"}
+    allowed = {"presence", "manual_away", "revoked", "close_after_hello"}
+    for key, value in changes.items():
+        if key not in allowed:
+            return {"ok": False, "error": f"cannot change {key}"}
+        setattr(stack.slack, key, value)
+    return {"ok": True}
+
+
 if __name__ == "__main__":
     # Used by the browser test: start everything, print the details, and keep
-    # running until stdin closes or the process is stopped.
+    # running until stdin closes or the process is stopped. Each line on stdin
+    # is a command (see handle_command); the answer is one JSON line.
     stack = Stack().start()
     print(json.dumps({"base": stack.base, "code": CODE}), flush=True)
     try:
-        sys.stdin.read()
+        for line in sys.stdin:
+            if line.strip():
+                print(json.dumps(handle_command(stack, line)), flush=True)
     except KeyboardInterrupt:
         pass
     finally:

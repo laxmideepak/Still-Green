@@ -4,13 +4,14 @@
 //
 //   node --test tests/e2e/control-page.e2e.mjs
 //
-// Needs Python 3.11+ with `websockets` (set PYTHON to pick the interpreter)
+// Needs Python 3.9+ with `websockets` (set PYTHON to pick the interpreter)
 // and Playwright's Chromium. The host name stillgreen.test is mapped to
 // 127.0.0.1 inside Chromium, so the page is same-origin but not loopback.
 
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { createInterface } from "node:readline";
+import { readFile } from "node:fs/promises";
 import { after, before, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
@@ -178,6 +179,14 @@ describe("daemon control page (cloud mode)", () => {
     await page.locator("#workspacesCard").getByRole("button", { name: "Add workspace" }).first().click();
     const dialog = page.getByRole("dialog", { name: "Add a Slack workspace" });
     await dialog.waitFor();
+    // Slack refuses a wrong token: plain words, both fields marked.
+    await dialog.getByLabel("xoxc token").fill("xoxc-e2e-wrong-token");
+    await dialog.getByLabel("xoxd cookie").fill(GOOD_XOXD);
+    await dialog.getByRole("button", { name: "Verify & add" }).click();
+    await dialog.locator("#addError", { hasText: "Slack didn't accept these values" }).waitFor();
+    assert.equal(await dialog.getByLabel("xoxc token").getAttribute("aria-invalid"), "true");
+    assert.equal((await daemonState()).workspaces.length, 0);
+
     await dialog.getByLabel("xoxc token").fill(GOOD_XOXC);
     await dialog.getByLabel("xoxd cookie").fill(GOOD_XOXD);
     await dialog.getByRole("button", { name: "Verify & add" }).click();
@@ -235,7 +244,7 @@ describe("daemon control page (cloud mode)", () => {
     }, target);
     await card.getByLabel("Until").fill(target);
     await card.getByRole("button", { name: "Keep on" }).click();
-    await card.getByText(`staying online until ${shown}`).waitFor();
+    await card.getByText(`is helping until ${shown}`).waitFor();
     const state = await daemonState();
     assert.equal(state.stay_active, true);
     const local = new Intl.DateTimeFormat("en-GB", {
@@ -244,7 +253,7 @@ describe("daemon control page (cloud mode)", () => {
     assert.equal(local, target);
 
     await card.getByRole("button", { name: "Cancel" }).click();
-    await card.getByText(/staying online until/).waitFor({ state: "hidden" });
+    await card.getByText(/is helping until/).waitFor({ state: "hidden" });
     await waitFor(async () => !(await daemonState()).stay_active, "override cleared");
 
     // A duration chip only picks; "Keep on" applies it.
@@ -252,7 +261,7 @@ describe("daemon control page (cloud mode)", () => {
     assert.equal(await card.getByRole("button", { name: "2 h", exact: true }).getAttribute("aria-pressed"), "true");
     assert.equal((await daemonState()).stay_active, false);
     await card.getByRole("button", { name: "Keep on for 2 h" }).click();
-    await card.getByText(/staying online until/).waitFor();
+    await card.getByText(/is helping until/).waitFor();
     const minutes = (new Date((await daemonState()).stay_until) - Date.now()) / 60000;
     assert.ok(minutes > 115 && minutes <= 121, `stay lasts about 2 hours, got ${minutes} min`);
     await card.getByRole("button", { name: "Cancel" }).click();
@@ -289,6 +298,71 @@ describe("daemon control page (cloud mode)", () => {
     await confirm.waitFor({ state: "hidden" });
     await page.getByRole("heading", { name: "No workspaces yet" }).waitFor();
     assert.equal((await daemonState()).workspaces.length, 0);
+
+    assert.deepEqual(problems, []);
+    await context.close();
+  });
+
+  test("shows status signals, the setup checklist and Check my setup", async () => {
+    for (const workspace of (await daemonState()).workspaces) await api("DELETE", `/api/workspaces/${workspace.team_id}`);
+    const { context, page, problems } = await openPage();
+    await unlock(page);
+
+    // No workspace yet: the checklist shows, worked out from live state.
+    const setup = page.locator("#setupCard");
+    await setup.getByRole("heading", { name: "Finish setting up" }).waitFor();
+    assert.equal(await setup.locator('[data-step="running"]').getAttribute("data-status"), "done");
+    assert.equal(await setup.locator('[data-step="slack"]').getAttribute("data-status"), "todo");
+    // Hours count as chosen only once they are saved, even if the default is kept.
+    const hours = setup.locator('[data-step="hours"]');
+    assert.equal((await daemonState()).schedule.saved, false);
+    assert.equal(await hours.getAttribute("data-status"), "todo");
+    await hours.getByRole("button", { name: "Choose hours" }).click();
+    const save = page.locator("#scheduleSave");
+    await waitFor(async () => !(await save.isDisabled()), "Save schedule is enabled for unsaved hours");
+    await save.click();
+    await waitFor(async () => (await daemonState()).schedule.saved === true, "hours saved", 10000);
+    await waitFor(async () => (await hours.getAttribute("data-status")) === "done", "hours step done", 15000);
+    const signals = page.getByRole("list", { name: "Status checks" });
+    assert.equal(await signals.getByRole("listitem").count(), 3);
+    assert.match(await signals.locator('[data-signal="login"]').innerText(), /No workspace yet/);
+
+    // Once a workspace is added, the checklist goes away and the signals follow.
+    await ensureWorkspace();
+    await setup.waitFor({ state: "hidden", timeout: 30000 });
+    await waitFor(async () => /Valid/.test(await signals.locator('[data-signal="login"]').innerText()), "login valid", 30000);
+    const title = (await page.locator("#overviewTitle").innerText()).replace(/\s+/g, " ").trim();
+    assert.match(title, /^(Active|Connected · waiting for Slack to confirm)/);
+    // Fake Slack's status check answers "active", so all three turn green.
+    await waitFor(
+      async () => (await signals.locator('[data-signal="presence"]').getAttribute("data-tone")) === "pass",
+      "presence confirmed",
+      40000,
+    );
+    for (const id of ["running", "login", "presence"]) {
+      assert.equal(await signals.locator(`[data-signal="${id}"]`).getAttribute("data-tone"), "pass", id);
+    }
+    await page.locator("#overviewTitle", { hasText: /^Active/ }).waitFor({ timeout: 30000 });
+
+    // Check my setup lists every check with a status.
+    const card = page.locator("#diagCard");
+    await card.getByRole("button", { name: "Check my setup" }).click();
+    await card.locator("[data-check]").first().waitFor({ timeout: 40000 });
+    const ids = await card.locator("[data-check]").evaluateAll((items) => items.map((item) => item.dataset.check));
+    assert.ok(ids.includes("tls") && ids.includes("presence"), ids.join());
+
+    const [download] = await Promise.all([
+      page.waitForEvent("download"),
+      card.getByRole("button", { name: "Download report" }).click(),
+    ]);
+    assert.equal(download.suggestedFilename(), "stillgreen-diagnostics.txt");
+    const report = await readFile(await download.path(), "utf8");
+    assert.match(report, /Stillgreen diagnostics report/);
+    for (const secret of [daemon.code, daemon.code.replace(/-/g, ""), GOOD_XOXC, GOOD_XOXD]) {
+      assert.ok(!report.includes(secret), "report must not contain a secret");
+    }
+    assert.doesNotMatch(report, /xox[cdp]-[A-Za-z0-9-]+/);
+    assert.doesNotMatch(report, /SG-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}/);
 
     assert.deepEqual(problems, []);
     await context.close();

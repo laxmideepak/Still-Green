@@ -1,0 +1,64 @@
+/* /privacy. Shared docs layout lives in components/setup/docs.module.css. */
+
+.layout {
+  max-width: 800px;
+  padding-block: var(--space-12) var(--space-16);
+}
+
+.body {
+  margin-top: var(--space-4);
+}
+
+.table {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
+.table > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-sm);
+}
+
+.table > div + div {
+  border-top: 1px solid var(--border);
+}
+
+.table dt {
+  color: var(--text);
+  font-weight: var(--font-weight-medium);
+}
+
+.table dd {
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.iconLine {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.iconLine svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  margin-top: 4px;
+  color: var(--accent);
+}
+
+@media (max-width: 640px) {
+  .layout {
+    padding-block: var(--space-8) var(--space-12);
+  }
+
+  .table > div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-1);
+  }
+}

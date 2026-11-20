@@ -5,7 +5,7 @@
 //
 // No real Slack account is used. app.slack.com is answered by a routed page
 // that holds the fake tokens from tests/e2e/fake_slack.py, and the daemon
-// checks them against fake Slack. Needs Python 3.11+ with `websockets` (set
+// checks them against fake Slack. Needs Python 3.9+ with `websockets` (set
 // PYTHON to pick the interpreter) and Playwright's Chromium. Extensions need
 // the full Chromium build, not the headless shell, so the browser is launched
 // with channel "chromium" (new headless mode).
@@ -152,10 +152,34 @@ async function openPopup() {
   return { page, problems };
 }
 
-async function capture(popup, daemonUrl, code = daemon.code) {
+async function storedConsent(popup) {
+  return (await popup.evaluate(() => chrome.storage.local.get({ consent: null }))).consent;
+}
+
+function originOf(url) {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return "";
+  }
+}
+
+// Fill the popup and click Capture. The first capture (and the first one to
+// a new Stillgreen address) shows the consent notice; accept it unless told
+// not to.
+async function capture(popup, daemonUrl, code = daemon.code, { accept = true } = {}) {
+  const saved = await storedConsent(popup);
+  const asked = !saved || saved.origin !== originOf(daemonUrl);
   await popup.getByLabel("Stillgreen address").fill(daemonUrl);
   await popup.getByLabel("Access code").fill(code);
   await popup.getByRole("button", { name: "Capture from Slack" }).click();
+  if (asked && accept) {
+    const consent = popup.getByRole("region", { name: "Before you capture" });
+    // A bad address is refused before the notice; only accept if it shows.
+    if (await consent.isVisible().catch(() => false) || (await consent.waitFor({ timeout: 1500 }).then(() => true, () => false))) {
+      await consent.getByRole("button", { name: "I understand, continue" }).click();
+    }
+  }
 }
 
 function team(id, name, token) {
@@ -163,6 +187,116 @@ function team(id, name, token) {
 }
 
 describe("capture extension", () => {
+  test("capture is blocked until consent is given", async () => {
+    await openSlack({ [TEAM_ID]: team(TEAM_ID, "E2E Workspace", GOOD_XOXC) });
+    const { page, problems } = await openPopup();
+    await page.evaluate(() => chrome.storage.local.remove("consent"));
+
+    // The worker refuses on its own, even if the popup is skipped.
+    const direct = await page.evaluate(async ({ daemonUrl, code }) => {
+      await chrome.storage.local.set({ daemonUrl, bridgeCode: code });
+      return chrome.runtime.sendMessage({ type: "capture" });
+    }, { daemonUrl: daemon.base, code: daemon.code });
+    assert.equal(direct.ok, false);
+    assert.equal(direct.code, "consent_required");
+    assert.deepEqual(await teamIds(), []);
+
+    // The popup shows the notice first; Cancel reads nothing.
+    await capture(page, daemon.base, daemon.code, { accept: false });
+    const consent = page.getByRole("region", { name: "Before you capture" });
+    await consent.waitFor();
+    const text = await consent.innerText();
+    assert.match(text, /session token and the .d. cookie/);
+    assert.match(text, /act as you in Slack/);
+    assert.match(text, /Only to the Stillgreen address you set/);
+    assert.match(text, /file only your user can read/);
+    assert.match(text, /Sign out of all other sessions/);
+    assert.match(text, /does not officially support/);
+    await consent.getByRole("button", { name: "Cancel" }).click();
+    await consent.waitFor({ state: "hidden" });
+    const message = page.locator(".message.bad");
+    await message.waitFor();
+    assert.match(await message.innerText(), /Nothing was captured/);
+    assert.equal(await storedConsent(page), null);
+    assert.deepEqual(await teamIds(), []);
+
+    // "I understand, continue" saves the answer and captures.
+    await page.getByRole("button", { name: "Capture from Slack" }).click();
+    await consent.waitFor();
+    await consent.getByRole("button", { name: "I understand, continue" }).click();
+    await page.locator(".result.ok", { hasText: "E2E Workspace" }).waitFor();
+    const saved = await storedConsent(page);
+    assert.equal(saved.version, 1);
+    assert.equal(saved.origin, new URL(daemon.base).origin);
+    assert.ok(!Number.isNaN(Date.parse(saved.acceptedAt)));
+    assert.deepEqual(await teamIds(), [TEAM_ID]);
+    assert.deepEqual(problems, []);
+    await page.close();
+  });
+
+  test("asks again when the consent notice changes", async () => {
+    await openSlack({ [TEAM_ID]: team(TEAM_ID, "E2E Workspace", GOOD_XOXC) });
+    const { page } = await openPopup();
+    await page.evaluate(() => chrome.storage.local.set({ consent: { version: 0, acceptedAt: "2020-01-01T00:00:00Z" } }));
+
+    await page.getByLabel("Stillgreen address").fill(daemon.base);
+    await page.getByLabel("Access code").fill(daemon.code);
+    await page.getByRole("button", { name: "Capture from Slack" }).click();
+    const consent = page.getByRole("region", { name: "Before you capture" });
+    await consent.waitFor();
+    await consent.getByRole("button", { name: "I understand, continue" }).click();
+    await page.locator(".result.ok", { hasText: "E2E Workspace" }).waitFor();
+    assert.equal((await storedConsent(page)).version, 1);
+    await page.close();
+  });
+
+  test("asks again when the Stillgreen address changes", async () => {
+    await openSlack({ [TEAM_ID]: team(TEAM_ID, "E2E Workspace", GOOD_XOXC) });
+    const { page, problems } = await openPopup();
+    const local = new URL(daemon.base);
+    // Agreed for this computer's address ...
+    await page.evaluate((origin) => chrome.storage.local.set({
+      consent: { version: 1, origin, acceptedAt: "2026-01-01T00:00:00Z" },
+    }), local.origin);
+    // ... then the address is changed to another host: the worker refuses on
+    // its own, without reading Slack, even if the popup is skipped.
+    const other = `http://localhost:${local.port}`;
+    const remote = "https://stillgreen.example.com";
+    for (const address of [other, remote]) {
+      const direct = await page.evaluate(async ({ daemonUrl, code }) => {
+        await chrome.storage.local.set({ daemonUrl, bridgeCode: code });
+        return chrome.runtime.sendMessage({ type: "capture" });
+      }, { daemonUrl: address, code: daemon.code });
+      assert.equal(direct.ok, false);
+      assert.equal(direct.code, "consent_required");
+      assert.match(direct.error, /address changed/);
+    }
+    assert.deepEqual(await teamIds(), []);
+
+    // The popup shows the notice again, names the new address and says it changed.
+    await page.reload();
+    await page.getByLabel("Stillgreen address").fill(remote);
+    await page.getByLabel("Access code").fill(daemon.code);
+    await page.getByRole("button", { name: "Capture from Slack" }).click();
+    const consent = page.getByRole("region", { name: "Before you capture" });
+    await consent.waitFor();
+    const text = await consent.innerText();
+    assert.match(text, /stillgreen\.example\.com/);
+    assert.match(text, new RegExp(`changed the Stillgreen address from ${local.host.replace(/\./g, "\\.")} to stillgreen\\.example\\.com`));
+    assert.match(text, /not this computer/);
+    await consent.getByRole("button", { name: "Cancel" }).click();
+    await consent.waitFor({ state: "hidden" });
+    assert.equal((await storedConsent(page)).origin, local.origin);
+
+    // Agreeing for another local address stores that address.
+    await capture(page, other);
+    await page.locator(".result.ok", { hasText: "E2E Workspace" }).waitFor();
+    assert.equal((await storedConsent(page)).origin, other);
+    assert.deepEqual(await teamIds(), [TEAM_ID]);
+    assert.deepEqual(problems, []);
+    await page.close();
+  });
+
   test("captures the Slack session into the daemon", async () => {
     await openSlack({ [TEAM_ID]: team(TEAM_ID, "E2E Workspace", GOOD_XOXC) });
     const { page, problems } = await openPopup();
@@ -200,7 +334,11 @@ describe("capture extension", () => {
 
     const row = page.locator(".result.bad", { hasText: "E2E Workspace" });
     await row.waitFor();
-    assert.match(await row.innerText(), /rejected these tokens/);
+    // Plain words and a next step, not the raw daemon error.
+    // Older daemons send only text; newer ones send the error catalogue's words.
+    assert.match(await row.innerText(), /Slack didn't accept this login|Slack signed you out/);
+    assert.match(await row.innerText(), /signed in|Sign in at app\.slack\.com/);
+    assert.doesNotMatch(await row.innerText(), /invalid_auth|rejected these tokens/);
     assert.deepEqual(await teamIds(), []);
     await page.close();
   });
@@ -228,6 +366,24 @@ describe("capture extension", () => {
     const message = page.locator(".message.bad");
     await message.waitFor();
     assert.match(await message.innerText(), /must not contain a username or password/);
+    assert.deepEqual(await teamIds(), []);
+    await page.close();
+  });
+
+  test("explains a wrong access code and an address where nothing runs", async () => {
+    await openSlack({ [TEAM_ID]: team(TEAM_ID, "E2E Workspace", GOOD_XOXC) });
+    const { page } = await openPopup();
+
+    await capture(page, daemon.base, "SG-WRNG-WRNG-WRNG");
+    const message = page.locator(".message.bad");
+    await message.waitFor();
+    assert.match(await message.innerText(), /access code (was )?not accepted/i);
+    assert.match(await message.innerText(), /sg-local web --show-code/);
+    assert.equal(await page.getByLabel("Access code").getAttribute("aria-invalid"), "true");
+
+    // Port 9 (discard) on this machine: nothing answers.
+    await capture(page, "http://127.0.0.1:9");
+    await page.locator(".message.bad", { hasText: "Stillgreen is not running at 127.0.0.1:9" }).waitFor();
     assert.deepEqual(await teamIds(), []);
     await page.close();
   });

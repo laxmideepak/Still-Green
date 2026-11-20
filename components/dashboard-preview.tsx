@@ -6,7 +6,7 @@
 import { useMemo, useRef, useState } from "react";
 import { DashboardView, type DashboardApi, type DashboardNotice, type SchedulePayload } from "./dashboard-kit";
 import { Button } from "./ui";
-import type { ActivityEntry, DaemonState, WorkspaceState } from "@/lib/bridge";
+import type { ActivityEntry, DaemonState, Diagnostics, WorkspaceState } from "@/lib/bridge";
 import { DAYS, clockFromHHMM, daysSummary } from "@/lib/dashboard";
 
 const SAMPLE_HOST = "127.0.0.1:8765";
@@ -64,6 +64,10 @@ function sampleState(): DaemonState {
       last_presence: "active",
       last_error: null,
       stats: { pings: 412, presence_checks: 96, reconnects: 1 },
+      auth: "ok",
+      presence: "active",
+      presence_verified_at: iso(new Date(now.getTime() - 40000)),
+      last_error_info: null,
     },
     {
       team_id: "T02SAMPLE",
@@ -76,6 +80,10 @@ function sampleState(): DaemonState {
       last_presence: null,
       last_error: null,
       stats: {},
+      auth: "ok",
+      presence: "unknown",
+      presence_verified_at: null,
+      last_error_info: null,
     },
   ];
   return settle({
@@ -114,8 +122,36 @@ function sampleState(): DaemonState {
       entry(minutesAgo(now, 141), workHours ? "mode: inside schedule" : "mode: always on", "muted"),
     ],
     config_error: null,
+    health: { daemon: true, slack_reachable: true, checked_at: iso(now) },
   });
 }
+
+/** Sample "Check my setup" results: the same checks a real Stillgreen runs. */
+function sampleDiagnostics(): Diagnostics {
+  const pass = (id: string, label: string, detail: string) => ({ id, label, status: "pass" as const, detail, action: "" });
+  return {
+    generated_at: new Date().toISOString(),
+    checks: [
+      pass("python", "Python", "Python 3.12 (sample)."),
+      pass("daemon", "Stillgreen running", "Running for 6 days."),
+      pass("config", "Settings file", "Read without problems."),
+      pass("permissions", "File permissions", "Only your user can read the saved Slack login."),
+      pass("dns", "Find slack.com", "slack.com was found."),
+      pass("tls", "Secure connection to Slack", "Slack's certificate is trusted."),
+      { id: "proxy", label: "Proxy", status: "skip" as const, detail: "No proxy is set.", action: "" },
+      pass("clock", "Clock", "This computer's clock is right."),
+      pass("workspaces", "Slack login", "Slack accepts the login for 2 workspaces."),
+      pass("presence", "Presence confirmed", "Slack confirmed you as active 40 s ago."),
+    ],
+  };
+}
+
+const SAMPLE_REPORT = `Stillgreen diagnostics report (SAMPLE from the website preview)
+
+This is sample data. Connect your own Stillgreen and click Download report
+to get a real report. Real reports never contain Slack tokens, cookies or
+your access code.
+`;
 
 /** Work out each workspace's status the way the daemon would. */
 function settle(state: DaemonState): DaemonState {
@@ -127,6 +163,8 @@ function settle(state: DaemonState): DaemonState {
       status: off ? "paused" : "active",
       connected: !off,
       last_presence: off ? null : "active",
+      presence: off ? ("unknown" as const) : ("active" as const),
+      presence_verified_at: off ? workspace.presence_verified_at ?? null : new Date(Date.now() - 40000).toISOString(),
     };
   });
   return {
@@ -250,13 +288,19 @@ export function DashboardPreview({ notice, onConnect }: Props) {
           (current) => `Removed ${nameOf(current, teamId)}`,
           "muted",
         ),
+      diagnostics: () => new Promise((resolve) => window.setTimeout(() => resolve(sampleDiagnostics()), 600)),
+      report: () =>
+        later({
+          blob: new Blob([SAMPLE_REPORT], { type: "text/plain;charset=utf-8" }),
+          filename: "stillgreen-diagnostics-sample.txt",
+        }),
     };
   }, []);
 
   const banner: DashboardNotice = notice ?? {
     tone: "info",
     title: "Preview mode · sample data",
-    body: "Nothing here is real yet. Connect your Stillgreen to control your own Slack status. Stillgreen is free and runs on your own computer or cloud server.",
+    body: "This is a demo. Nothing here is your real Slack status, and nothing you click is sent anywhere. Connect your Stillgreen to see your own. Stillgreen is free and runs on your own computer or your own server.",
     actions: (
       <>
         <Button variant="primary" size="sm" onClick={onConnect}>

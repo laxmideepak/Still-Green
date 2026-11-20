@@ -1,5 +1,9 @@
 #!/bin/sh
-# Install a user-level launcher in ~/.local/bin (no sudo, no network).
+# Set up Stillgreen and add the `sg-local` command to ~/.local/bin.
+# No sudo. Needs Python 3.9 or newer (macOS and most Linux have it).
+#
+# The first run of ./sg-local makes a private Python environment in .venv
+# (inside this folder) and downloads the packages it needs from pypi.org.
 set -eu
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
@@ -8,7 +12,12 @@ TARGET="${BIN_DIR}/sg-local"
 
 chmod +x "${SCRIPT_DIR}/sg-local"
 
-"${SCRIPT_DIR}/sg-local" --version >/dev/null
+# Sets up .venv the first time (with progress lines), then prints the version.
+if ! VERSION=$("${SCRIPT_DIR}/sg-local" --version); then
+    echo >&2
+    echo "Stillgreen could not be set up. Read the message above, fix it, and run ./install.sh again." >&2
+    exit 1
+fi
 
 mkdir -p "${BIN_DIR}"
 if [ -e "${TARGET}" ] && [ ! -L "${TARGET}" ]; then
@@ -17,7 +26,7 @@ if [ -e "${TARGET}" ] && [ ! -L "${TARGET}" ]; then
 fi
 ln -sfn "${SCRIPT_DIR}/sg-local" "${TARGET}"
 
-echo "Installed: ${TARGET}"
+echo "Installed ${VERSION}: ${TARGET}"
 case ":${PATH}:" in
     *":${BIN_DIR}:"*) ;;
     *) echo "Add ${BIN_DIR} to PATH, for example:"
