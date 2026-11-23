@@ -31,21 +31,8 @@ export const DAYS: readonly DayInfo[] = [
 
 export const WEEKDAY_KEYS: readonly DayKey[] = DAYS.slice(0, 5).map((day) => day.key);
 
-export type Tone = "green" | "muted" | "amber";
-
 /** Badge tones from components/ui. */
 export type StatusTone = "success" | "neutral" | "warning" | "danger" | "info" | "violet";
-
-export function initials(name: string) {
-  return (
-    name
-      .split(/\s+/)
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((part) => part[0]?.toUpperCase())
-      .join("") || "S"
-  );
-}
 
 /** The first letter of a workspace name, for its avatar. */
 export function initial(name: string) {
@@ -53,14 +40,14 @@ export function initial(name: string) {
   return match ? match[0].toUpperCase() : "#";
 }
 
-export function toMinutes(value: string) {
+function toMinutes(value: string) {
   const [hours, minutes] = (value || "0:0").split(":").map(Number);
   return (hours || 0) * 60 + (minutes || 0);
 }
 
 // Length of one daily window in hours. An end before the start runs past
 // midnight; an empty or zero-length window counts as no time.
-export function windowHours(start: string, end: string) {
+function windowHours(start: string, end: string) {
   if (!start || !end) return 0;
   const span = toMinutes(end) - toMinutes(start);
   if (span === 0) return 0;
@@ -74,32 +61,6 @@ export function weeklyHours(dayCount: number, start: string, end: string) {
 
 export function isOvernight(start: string, end: string) {
   return Boolean(start && end) && toMinutes(end) < toMinutes(start);
-}
-
-export function formatHours(value: number) {
-  if (Number.isInteger(value)) return `${value}h`;
-  return `${value.toFixed(1)}h`;
-}
-
-// Green only for a confirmed active session; unknown statuses never look online.
-export function statusTone(status: string): Tone {
-  if (status === "active") return "green";
-  if (
-    [
-      "connected",
-      "starting",
-      "reconnecting",
-      "restarting",
-      "invalid_token",
-      "invalid_config",
-      "error",
-      "away",
-      "auto_away",
-    ].includes(status)
-  ) {
-    return "amber";
-  }
-  return "muted";
 }
 
 // ------------------------------------------------------------------ time
@@ -328,15 +289,15 @@ export function onlineCount(
  * How long a "Slack says you are active" check counts as fresh. The daemon
  * asks Slack about once a minute, so this allows a few missed checks.
  */
-export const PRESENCE_FRESH_MS = 5 * 60000;
+const PRESENCE_FRESH_MS = 5 * 60000;
 
 /** Whether this daemon sends the presence fields (newer daemons do). */
-export function reportsPresence(workspace: WorkspaceState): boolean {
+function reportsPresence(workspace: WorkspaceState): boolean {
   return workspace.presence_verified_at !== undefined || workspace.presence !== undefined;
 }
 
 /** Milliseconds between Slack's last "active" answer and the daemon's clock, or null. */
-export function presenceAge(
+function presenceAge(
   workspace: WorkspaceState,
   state: Partial<Pick<DaemonState, "server_time">>,
 ): number | null {
@@ -352,7 +313,7 @@ export function presenceAge(
  * daemons don't send the time; they only report "active" after Slack said so,
  * so a live "active" counts there.
  */
-export function presenceConfirmed(
+function presenceConfirmed(
   workspace: WorkspaceState,
   state: Partial<Pick<DaemonState, "server_time">>,
 ): boolean {
@@ -364,7 +325,7 @@ export function presenceConfirmed(
 }
 
 /** Workspaces where Slack recently confirmed you as active. */
-export function confirmedCount(
+function confirmedCount(
   state: Pick<DaemonState, "workspaces" | "paused" | "stay_active" | "server_time">,
 ): number {
   if (state.paused && !state.stay_active) return 0;
@@ -372,7 +333,7 @@ export function confirmedCount(
 }
 
 /** Did Slack accept the saved login? Older daemons: worked out from the status. */
-export function workspaceAuth(workspace: WorkspaceState): AuthState {
+function workspaceAuth(workspace: WorkspaceState): AuthState {
   if (workspace.auth === "ok" || workspace.auth === "rejected" || workspace.auth === "unknown") return workspace.auth;
   if (workspace.status === "invalid_token") return "rejected";
   if (workspace.connected || ["active", "away", "auto_away", "manual_away", "connected"].includes(workspace.status)) {

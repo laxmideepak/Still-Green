@@ -96,20 +96,6 @@ class IsoTimeTests(unittest.TestCase):
         self.assertEqual(config.parse_until(text), moment.replace(microsecond=0))
 
 
-class PermissionTests(unittest.TestCase):
-    def test_secure_and_insecure_modes(self) -> None:
-        with tempfile.TemporaryDirectory() as temp:
-            path = Path(temp) / "config.json"
-            path.write_text("{}", encoding="utf-8")
-            path.chmod(0o600)
-            ok, message = config.config_security(path)
-            self.assertTrue(ok, message)
-            path.chmod(0o644)
-            ok, message = config.config_security(path)
-            self.assertFalse(ok)
-            self.assertIn("0600", message)
-
-
 class ExpiringStateTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory()

@@ -7,7 +7,6 @@ import {
   type InputHTMLAttributes,
   type ReactNode,
   type Ref,
-  type TextareaHTMLAttributes,
 } from "react";
 import { AlertCircle, Clock } from "../icons";
 import { cx } from "./cx";
@@ -125,20 +124,4 @@ export type TimeInputProps = Omit<InputProps, "type" | "mono" | "icon">;
  */
 export function TimeInput({ className, ...rest }: TimeInputProps) {
   return <Input type="time" icon={<Clock />} className={cx(styles.time, className)} {...rest} />;
-}
-
-export type TextareaProps = TextareaHTMLAttributes<HTMLTextAreaElement> & {
-  mono?: boolean;
-  ref?: Ref<HTMLTextAreaElement>;
-};
-
-export function Textarea({ mono, className, ...rest }: TextareaProps) {
-  const wired = useFieldProps(rest);
-  return (
-    <textarea
-      {...rest}
-      {...wired}
-      className={cx(styles.input, styles.textarea, mono && styles.mono, className)}
-    />
-  );
 }
