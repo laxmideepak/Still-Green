@@ -200,7 +200,7 @@ function TopBar({
         {preview ? (
           <span className={styles.hostPill} data-tone="demo">
             <span className={styles.hostDot} aria-hidden="true" />
-            Demo · sample data
+            Demo<span className={styles.demoDetail}> · sample data</span>
           </span>
         ) : (
           <span

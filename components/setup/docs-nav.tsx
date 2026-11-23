@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { ChevronDown } from "../icons";
 import { cx } from "../ui";
 import styles from "./docs.module.css";
 
@@ -20,10 +21,14 @@ const OFFSET = 120;
 
 /**
  * The left "On this page" list. On wide screens it sticks beside the content
- * and marks the section being read; on phones it is a plain list at the top.
+ * and marks the section being read. On phones it folds into one button that
+ * names the current section, so the guide starts on the first screen.
  */
 export function DocsNav({ items, label = "On this page" }: { items: DocsNavItem[]; label?: string }) {
   const [active, setActive] = useState(items[0]?.id ?? "");
+  const [open, setOpen] = useState(false);
+  const listId = useId();
+  const toggleRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     let frame = 0;
@@ -52,17 +57,39 @@ export function DocsNav({ items, label = "On this page" }: { items: DocsNavItem[
   }, [items]);
 
   const numbered = items.some((item) => item.number || item.icon);
+  const current = items.find((item) => item.id === active)?.label;
+
+  const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    if (event.key === "Escape" && open) {
+      setOpen(false);
+      toggleRef.current?.focus();
+    }
+  };
 
   return (
-    <nav className={styles.nav} aria-label={label}>
+    <nav className={cx(styles.nav, open && styles.navOpen)} aria-label={label} onKeyDown={onKeyDown}>
       <p className={styles.navTitle}>{label}</p>
-      <ol className={cx(styles.navList, !numbered && styles.navPlain)}>
+      {/* Phones only (see docs.module.css). */}
+      <button
+        ref={toggleRef}
+        type="button"
+        className={styles.navToggle}
+        aria-expanded={open}
+        aria-controls={listId}
+        onClick={() => setOpen((value) => !value)}
+      >
+        <span className={styles.navToggleLabel}>{label}</span>
+        {current && <span className={styles.navToggleCurrent}>{current}</span>}
+        <ChevronDown className={styles.navToggleIcon} aria-hidden="true" />
+      </button>
+      <ol id={listId} className={cx(styles.navList, !numbered && styles.navPlain)}>
         {items.map((item) => (
           <li key={item.id}>
             <a
               href={`#${item.id}`}
               className={cx(styles.navLink, item.sub && styles.navSub)}
               aria-current={active === item.id ? "location" : undefined}
+              onClick={() => setOpen(false)}
             >
               {(item.number || item.icon) && (
                 <span className={styles.navNumber} aria-hidden="true">

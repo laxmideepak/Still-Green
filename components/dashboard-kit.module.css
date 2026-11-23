@@ -980,6 +980,9 @@
 }
 
 .footerLinks a {
+  display: inline-flex;
+  min-height: 24px;
+  align-items: center;
   border-radius: var(--radius-xs);
   color: var(--text-muted);
   text-decoration: none;
@@ -1061,6 +1064,16 @@
 }
 
 @media (max-width: 639px) {
+  /* "Demo · sample data" does not fit beside the brand; keep it for screen readers. */
+  .demoDetail {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
   .topbarActions .hideSmall,
   .crumbSep,
   .crumb,
