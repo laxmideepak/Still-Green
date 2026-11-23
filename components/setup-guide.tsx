@@ -2,9 +2,10 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { SiteFooter } from "./site-footer";
 import { SiteHeader } from "./site-header";
-import { ArrowRight, Check, Clock, Github, Info, Laptop, Lock, Shield, Terminal } from "./icons";
+import { ArrowRight, Check, Clock, Github, Info, Laptop, Lock, Shield, Sparkles, Terminal } from "./icons";
 import { Badge, Banner, Button, CodeBlock, Kbd } from "./ui";
 import { DocsNav, type DocsNavItem } from "./setup/docs-nav";
+import { AI_SETUP_PROMPT } from "@/lib/ai-setup";
 import { CLOUD_GUIDE_URL, GITHUB_URL, ISSUES_URL } from "@/lib/site";
 import docs from "./setup/docs.module.css";
 import styles from "./setup-guide.module.css";
@@ -13,6 +14,7 @@ const REPO_GIT = `${GITHUB_URL}.git`;
 const LOCAL_URL = "http://127.0.0.1:8765";
 
 const navItems: DocsNavItem[] = [
+  { id: "ai", label: "Set up with AI", icon: <Sparkles /> },
   { id: "install", label: "Install", number: "1" },
   { id: "start", label: "Start", number: "2" },
   { id: "add-slack", label: "Add your Slack", number: "3" },
@@ -258,6 +260,44 @@ export function SetupGuide() {
           </aside>
 
           <div className={docs.content}>
+            <section id="ai" className={docs.section} aria-labelledby="ai-title">
+              <div className={docs.sectionHead}>
+                <span className={docs.stepNumber} aria-hidden="true">
+                  <Sparkles />
+                </span>
+                <h2 id="ai-title" className={docs.h2}>
+                  Set up with an AI assistant
+                </h2>
+              </div>
+              <p className={docs.sectionLead}>
+                Prefer help? Copy this prompt into Claude Code, Cursor, Codex, ChatGPT or Claude. It walks you through
+                the same steps as this guide.
+              </p>
+              <div className={`${docs.prose} ${styles.stepBody}`}>
+                <CodeBlock code={AI_SETUP_PROMPT} copyLabel="Copy the AI setup prompt" className={styles.aiPrompt} />
+                <ul className={docs.bullets}>
+                  <li>
+                    <strong>Claude Code, Cursor or Codex</strong> can run the commands for you. Open a terminal (or
+                    Cursor&apos;s agent chat), paste the prompt, and approve each command. Inside the{" "}
+                    <code>Still-Green</code> folder they also read <code>AGENTS.md</code>, which has the full steps.
+                  </li>
+                  <li>
+                    <strong>ChatGPT or Claude</strong> in the browser can&apos;t run commands. They give you one command
+                    at a time; run it in Terminal and paste back what it prints.
+                  </li>
+                  <li>
+                    You still add Slack yourself with the Chrome extension (step 3). An assistant can&apos;t do that
+                    part.
+                  </li>
+                </ul>
+                <Banner tone="warning" title="Keep your Slack login out of the chat">
+                  Never paste your Slack token (<code>xoxc-...</code>), the <code>d</code> cookie (
+                  <code>xoxd-...</code>) or your access code into any AI chat. The prompt tells the assistant not to ask
+                  for them.
+                </Banner>
+              </div>
+            </section>
+
             <Step
               id="install"
               number="1"
