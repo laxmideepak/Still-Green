@@ -52,6 +52,3 @@ export function Banner({ tone = "neutral", title, children, actions, icon, class
     </div>
   );
 }
-
-/** Same as Banner. */
-export const Alert = Banner;

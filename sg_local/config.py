@@ -191,16 +191,6 @@ def update_config(change: Callable[[dict[str, Any]], Any]) -> Any:
         return result
 
 
-def config_security(path: Path | None = None) -> tuple[bool, str]:
-    path = path or CONFIG_PATH
-    if not path.exists():
-        return True, "not created yet"
-    mode = stat.S_IMODE(path.stat().st_mode)
-    if mode & 0o077:
-        return False, f"{path} has mode {mode:04o}; expected 0600"
-    return True, f"{path} has mode {mode:04o}"
-
-
 def clean_xoxc(value: str) -> str:
     text = (value or "").strip().strip('"').strip("'")
     if text.lower().startswith("authorization:"):

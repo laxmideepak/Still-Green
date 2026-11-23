@@ -237,7 +237,7 @@ function pageOrigin(): string {
  * all look the same), so the action covers the likely causes for that kind
  * of address.
  */
-export function networkErrorInfo(error: unknown, url: string): ErrorInfo {
+function networkErrorInfo(error: unknown, url: string): ErrorInfo {
   if (error instanceof DOMException && error.name === "AbortError") {
     return {
       code: "network_timeout",
@@ -280,7 +280,7 @@ export function networkErrorInfo(error: unknown, url: string): ErrorInfo {
 }
 
 /** A daemon reply that was not OK, in plain words. */
-export function httpErrorInfo(status: number, payload: unknown): ErrorInfo {
+function httpErrorInfo(status: number, payload: unknown): ErrorInfo {
   const text = errorText(payload);
   if (status === 401) {
     return {
@@ -501,7 +501,7 @@ export async function fetchDiagnostics(config: BridgeConfig): Promise<Diagnostic
   };
 }
 
-export const REPORT_FILENAME = "stillgreen-diagnostics.txt";
+const REPORT_FILENAME = "stillgreen-diagnostics.txt";
 
 /**
  * The redacted setup report (GET /api/diagnostics/report) as a file. The
@@ -616,39 +616,6 @@ export function removeWorkspace(config: BridgeConfig, teamId: string): Promise<D
   return request<RemoveResult>(config, `/api/workspaces/${encodeURIComponent(teamId)}`, {
     method: "DELETE",
   }).then((result) => asState(result?.state));
-}
-
-export function workspaceTime(iso: string | null): string {
-  if (!iso) return "—";
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "—";
-  return new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(date);
-}
-
-export function statusLabel(status: string): string {
-  const labels: Record<string, string> = {
-    active: "Active",
-    connected: "Connected",
-    away: "Away",
-    auto_away: "Away",
-    manual_away: "Away (set by you)",
-    paused: "Paused",
-    scheduled_off: "Off schedule",
-    daemon_stopped: "Stopped",
-    starting: "Starting",
-    reconnecting: "Reconnecting",
-    restarting: "Restarting",
-    stopped: "Stopped",
-    invalid_token: "Signed out",
-    invalid_config: "Check config",
-    error: "Error",
-  };
-  return labels[status] || status;
 }
 
 /**

@@ -115,17 +115,6 @@ export function Copy(props: IconProps) {
   );
 }
 
-export function Sliders(props: IconProps) {
-  return (
-    <Icon {...props}>
-      <path d="M4 6h8M16 6h4M4 12h3M11 12h9M4 18h10M18 18h2" />
-      <circle cx="14" cy="6" r="2" />
-      <circle cx="9" cy="12" r="2" />
-      <circle cx="16" cy="18" r="2" />
-    </Icon>
-  );
-}
-
 export function Signal(props: IconProps) {
   return (
     <Icon {...props}>
@@ -297,16 +286,6 @@ export function Settings(props: IconProps) {
     <Icon {...props}>
       <circle cx="12" cy="12" r="3" />
       <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z" />
-    </Icon>
-  );
-}
-
-export function MoreHorizontal(props: IconProps) {
-  return (
-    <Icon {...props}>
-      <circle cx="5" cy="12" r="1" fill="currentColor" />
-      <circle cx="12" cy="12" r="1" fill="currentColor" />
-      <circle cx="19" cy="12" r="1" fill="currentColor" />
     </Icon>
   );
 }

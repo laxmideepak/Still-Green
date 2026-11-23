@@ -1,6 +1,6 @@
 // Stillgreen UI primitives. Docs and examples: docs/design-system.md
 export { Badge, type BadgeProps, type BadgeTone } from "./badge";
-export { Alert, Banner, type BannerProps, type BannerTone } from "./banner";
+export { Banner, type BannerProps, type BannerTone } from "./banner";
 export { buttonClassName } from "./button-class";
 export {
   Button,
@@ -17,7 +17,7 @@ export { CodeBlock, copyText, type CodeBlockProps } from "./code-block";
 export { cx } from "./cx";
 export { ConfirmDialog, Dialog, type ConfirmDialogProps, type DialogProps } from "./dialog";
 export { EmptyState, type EmptyStateProps } from "./empty-state";
-export { Field, Input, Textarea, TimeInput, type FieldProps, type InputProps } from "./field";
+export { Field, Input, TimeInput, type FieldProps, type InputProps } from "./field";
 export { Kbd } from "./kbd";
 export { SegmentedControl, type SegmentedControlProps, type SegmentedOption } from "./segmented-control";
 export { Skeleton, type SkeletonProps } from "./skeleton";

@@ -228,7 +228,7 @@ uses an `h2`; change it with `titleAs`. `CardBody flush` removes padding for
 lists whose rows bring their own. A `CardFooter` sticks to the bottom of a
 stretched card.
 
-### Field, Input, TimeInput, Textarea
+### Field, Input, TimeInput
 
 `Field` wires the label, hint and error to the control (`id`,
 `aria-describedby`, `aria-invalid`). The error replaces the hint and is
@@ -362,7 +362,7 @@ toast({ tone: "danger", title: "Couldn't reach your daemon", duration: 0 });
 Use a toast to confirm something the person just did. Use a `Banner` for a
 problem that stays until fixed.
 
-### Banner (also exported as Alert)
+### Banner
 
 ```tsx
 <Banner tone="warning" title="Slack rejected the tokens for Acme Corp"
