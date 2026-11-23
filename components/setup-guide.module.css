@@ -41,6 +41,35 @@
   line-height: 22px;
 }
 
+.promptActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+/* "Show the prompt": people can read what they paste before they paste it. */
+.promptDetails > summary {
+  width: fit-content;
+  border-radius: var(--radius-xs);
+  color: var(--accent-text);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+}
+
+.promptDetails > summary:hover {
+  text-decoration: underline;
+}
+
+.promptDetails > summary:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.promptDetails[open] > summary {
+  margin-bottom: var(--space-3);
+}
+
 /* The AI prompt is prose, so wrap it instead of scrolling sideways. */
 .aiPrompt pre {
   max-height: 360px;

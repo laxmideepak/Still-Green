@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { CopyPromptButton } from "@/components/copy-prompt";
 import { ProductPreview } from "@/components/home/product-preview";
 import {
   ArrowRight,
@@ -24,7 +25,7 @@ import {
 } from "@/components/icons";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
-import { Badge, Button, CodeBlock } from "@/components/ui";
+import { Badge, Button } from "@/components/ui";
 import { CLOUD_GUIDE_URL, GITHUB_URL, ISSUES_URL } from "@/lib/site";
 import styles from "./page.module.css";
 
@@ -56,28 +57,28 @@ const features: { icon: ReactNode; title: string; body: string }[] = [
   },
   {
     icon: <Lock />,
-    title: "Private: tokens stay with you",
-    body: "Your Slack login is saved on your computer or server and sent only to Slack. Never to this website. No analytics, no tracking.",
+    title: "Private: your login stays with you",
+    body: "Your Slack login is saved on your own computer and sent only to Slack. Never to this website. No analytics, no tracking.",
   },
 ];
 
 const faqs: { q: string; a: ReactNode }[] = [
   {
     q: "Is Stillgreen really free?",
-    a: "Yes. There is no account and no paid plan. Running it on your own computer costs nothing. The advanced cloud option uses a Google Cloud e2-micro server, which is free within Google's limits but needs a card on file.",
+    a: "Yes. There is no account and no paid plan. Running it on your own computer costs nothing. The optional always-on setup uses a small Google Cloud server. It is free within Google's limits, but Google needs a card on file.",
   },
   {
     q: "Does my computer need to stay on?",
     a: (
       <>
         On your own computer, yes. Stillgreen stops when the computer sleeps or shuts down. To keep it running with
-        your laptop closed, you can <a href="#cloud">run it on a small cloud server</a> (advanced).
+        your laptop closed, you can <a href="#cloud">run it on a small cloud server</a> instead.
       </>
     ),
   },
   {
     q: "Does Slack support this? Will I always show as active?",
-    a: "No, and no. Slack's official API can't force a person to be active, so Stillgreen uses your own web session and keeps a connection open like the Slack web app. Slack decides your final status. It may stop working if Slack changes, and Slack does not officially support it.",
+    a: "No, and no. Slack has no official way to keep someone active, so Stillgreen signs in as you and keeps Slack open, the same way Slack in your browser does. Slack decides your final status. It may stop working if Slack changes, and Slack does not officially support it.",
   },
   {
     q: "What if I set myself away in Slack?",
@@ -128,7 +129,7 @@ export default function HomePage() {
             <div className={styles.heroCopy}>
               <Link href="#how" className={styles.announce}>
                 <span className={styles.announcePill}>Free</span>
-                <span className={styles.announceText}>Open source, runs on your own computer</span>
+                <span className={styles.announceText}>Runs on your own computer, no account</span>
                 <ChevronRight />
               </Link>
               <h1 className={styles.h1} id="hero-title">
@@ -136,17 +137,14 @@ export default function HomePage() {
                 <br /> on your schedule.
               </h1>
               <p className={styles.heroLead}>
-                Stillgreen keeps a connection open like the Slack web app during the hours you choose, which helps
-                keep you active. Slack decides your final status. It runs on your own computer, so your login stays
-                with you.
+                Stillgreen helps you show as active in Slack during the hours you choose: your work day, a late
+                night, or just until 6 PM. It runs on your own computer, so your Slack login stays with you.
               </p>
               <div className={styles.ctas}>
                 <Button href="/setup" variant="primary" size="lg" iconRight={<ArrowRight />}>
                   Set it up
                 </Button>
-                <Button href="/dashboard" size="lg">
-                  Open dashboard
-                </Button>
+                <CopyPromptButton />
               </div>
               <ul className={styles.meta}>
                 <li>
@@ -159,14 +157,14 @@ export default function HomePage() {
                 </li>
                 <li>
                   <Check />
-                  Your tokens stay with you
+                  Your login stays with you
                 </li>
               </ul>
               <p className={styles.honest}>
                 <Info aria-hidden="true" />
                 <span>
-                  Slack&apos;s official API can&apos;t force a person to be active, so this uses your web session. It
-                  may stop working if Slack changes, and your workspace may not allow it.
+                  Slack decides your final status. This isn&apos;t an official Slack feature, so it may stop working
+                  if Slack changes, and your workplace may not allow it.
                 </span>
               </p>
             </div>
@@ -183,7 +181,7 @@ export default function HomePage() {
               id="how-title"
               eyebrow="How it works"
               title="Three steps. About five minutes."
-              lead="Stillgreen has three small parts: a program that keeps a Slack connection open, a Chrome extension that adds your Slack, and a dashboard to set your hours."
+              lead="Download it, add your Slack with one click, and pick your hours. The setup guide walks you through each step."
             />
             <ol className={styles.steps}>
               <li className={styles.step}>
@@ -195,16 +193,20 @@ export default function HomePage() {
                 </div>
                 <h3 className={styles.h3}>Run it on your computer</h3>
                 <p className={styles.body}>
-                  Download Stillgreen from GitHub and start it with one command. It sets itself up the first time.
-                  Advanced: put it on a cloud server so it keeps going when your laptop is closed.
+                  Download Stillgreen and start it. It sets itself up the first time and opens its own page, where you
+                  can see that it&apos;s running. An AI assistant can do this step for you.
                 </p>
-                <div className={`${styles.stepVisual} ${styles.stepVisualBare}`}>
-                  <CodeBlock
-                    prompt="$"
-                    code="./sg-local web --daemon --open"
-                    copyLabel="Copy start command"
-                    className={styles.fitCode}
-                  />
+                <div className={styles.stepVisual} aria-hidden="true">
+                  <div className={styles.miniPopup}>
+                    <div className={styles.miniRow}>
+                      <span>Stillgreen</span>
+                      <span className={styles.miniOn}>Running</span>
+                    </div>
+                    <span className={styles.miniButton}>
+                      <Laptop />
+                      On this computer
+                    </span>
+                  </div>
                 </div>
               </li>
               <li className={styles.step}>
@@ -222,8 +224,8 @@ export default function HomePage() {
                 <div className={styles.stepVisual} aria-hidden="true">
                   <div className={styles.miniPopup}>
                     <div className={styles.miniRow}>
-                      <span>Address</span>
-                      <span className={styles.miniMono}>127.0.0.1:8765</span>
+                      <span>Slack</span>
+                      <span className={styles.miniOn}>Signed in</span>
                     </div>
                     <span className={styles.miniButton}>
                       <Puzzle />
@@ -289,14 +291,14 @@ export default function HomePage() {
             <div>
               <SectionHead
                 id="cloud-title"
-                eyebrow="Advanced: run it in the cloud"
+                eyebrow="Optional: always on"
                 title="Keep it running with your laptop closed."
-                lead="On your own computer, Stillgreen stops when the computer sleeps. If you are comfortable looking after a server, you can put it on a small one that is always on. Most people should start on their own computer."
+                lead="On your own computer, Stillgreen stops when the computer sleeps. If you are comfortable looking after a small online server, you can run it there instead. Most people should start on their own computer."
               />
               <ul className={styles.checks}>
                 <li>
                   <Check />
-                  One script sets it up, with a secure https:// address
+                  A step-by-step guide, about 15 minutes
                 </li>
                 <li>
                   <Check />
@@ -310,19 +312,15 @@ export default function HomePage() {
                 </li>
                 <li>
                   <AlertTriangle aria-hidden="true" />
-                  The free tier has limits. Going past them, or a static IP address, can cost money.
+                  Going past Google&apos;s free limits can cost money.
                 </li>
                 <li>
                   <AlertTriangle aria-hidden="true" />
-                  The server&apos;s IP address can change unless you reserve one.
+                  You keep the server updated and safe.
                 </li>
                 <li>
                   <AlertTriangle aria-hidden="true" />
-                  You keep the server updated and secure.
-                </li>
-                <li>
-                  <AlertTriangle aria-hidden="true" />
-                  Your Slack session lives on that server. That is more risk than keeping it on your own computer.
+                  Your Slack login lives on that server. That is more risk than keeping it on your own computer.
                 </li>
               </ul>
               <div className={styles.ctas}>
@@ -338,19 +336,19 @@ export default function HomePage() {
                   <Cloud />
                 </span>
                 <div className={styles.serverTitle}>
-                  <h3 className={styles.h3}>Google Cloud</h3>
-                  <p>The setup from our guide</p>
+                  <h3 className={styles.h3}>Always-on server</h3>
+                  <p>Google Cloud, from our guide</p>
                 </div>
                 <Badge tone="warning">Advanced</Badge>
               </div>
               <dl className={styles.specs}>
                 <div>
-                  <dt>Server</dt>
-                  <dd className={styles.miniMono}>e2-micro</dd>
+                  <dt>Runs</dt>
+                  <dd>All day, every day</dd>
                 </div>
                 <div>
-                  <dt>Region</dt>
-                  <dd className={styles.miniMono}>us-central1</dd>
+                  <dt>Laptop</dt>
+                  <dd>Can be closed</dd>
                 </div>
                 <div>
                   <dt>Cost</dt>
@@ -362,8 +360,7 @@ export default function HomePage() {
                 </div>
               </dl>
               <div className={styles.serverFoot}>
-                <p>Run this on the server. It prints your address and access code.</p>
-                <CodeBlock prompt="$" code="sudo sh deploy/setup-vm.sh" copyLabel="Copy setup command" />
+                <p>The guide has every step, from creating the server to connecting your dashboard.</p>
               </div>
             </div>
           </div>
@@ -390,10 +387,10 @@ export default function HomePage() {
                     <Lock />
                   </span>
                   <div>
-                    <h3 className={styles.h3}>Saved only on your machine</h3>
+                    <h3 className={styles.h3}>Saved only on your computer</h3>
                     <p className={styles.body}>
-                      Your tokens live on your computer or server, readable only by you. Anyone who gets them can act
-                      as you in Slack, so keep that machine safe.
+                      Your Slack login is saved on your computer, where only you can read it. Anyone who gets it could
+                      act as you in Slack, so keep that computer safe.
                     </p>
                   </div>
                 </li>
@@ -403,7 +400,7 @@ export default function HomePage() {
                   </span>
                   <div>
                     <h3 className={styles.h3}>Locked with an access code</h3>
-                    <p className={styles.body}>Every request to your Stillgreen needs your private access code.</p>
+                    <p className={styles.body}>Only you can control it. The dashboard needs your private access code.</p>
                   </div>
                 </li>
                 <li>
@@ -411,10 +408,13 @@ export default function HomePage() {
                     <Github />
                   </span>
                   <div>
-                    <h3 className={styles.h3}>Code you can read</h3>
+                    <h3 className={styles.h3}>Open for anyone to check</h3>
                     <p className={styles.body}>
-                      All of it is on <a href={GITHUB_URL} target="_blank" rel="noreferrer">GitHub</a>. No account, no
-                      tracking.
+                      All the code is public on{" "}
+                      <a href={GITHUB_URL} target="_blank" rel="noreferrer">
+                        GitHub
+                      </a>
+                      . No account, no tracking.
                     </p>
                   </div>
                 </li>

@@ -2,10 +2,11 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { SiteFooter } from "./site-footer";
 import { SiteHeader } from "./site-header";
-import { ArrowRight, Check, Clock, Github, Info, Laptop, Lock, Shield, Terminal } from "./icons";
+import { ArrowRight, Check, Clock, Info, Laptop, Lock, Shield, Terminal } from "./icons";
 import { Badge, Banner, Button, CodeBlock, Kbd } from "./ui";
 import { DocsNav, type DocsNavItem } from "./setup/docs-nav";
 import { AI_SETUP_PROMPT } from "@/lib/ai-setup";
+import { CopyPromptButton } from "./copy-prompt";
 import { CLOUD_GUIDE_URL, GITHUB_URL, ISSUES_URL } from "@/lib/site";
 import docs from "./setup/docs.module.css";
 import styles from "./setup-guide.module.css";
@@ -247,9 +248,7 @@ export function SetupGuide() {
               <Button href="/start" iconRight={<ArrowRight />}>
                 Quick start
               </Button>
-              <Button href={GITHUB_URL} variant="ghost" icon={<Github />}>
-                GitHub
-              </Button>
+              <CopyPromptButton />
             </div>
           </div>
         </header>
@@ -270,25 +269,27 @@ export function SetupGuide() {
                 </h2>
               </div>
               <p className={docs.sectionLead}>
-                Prefer help? Copy this prompt into Claude Code, Cursor, Codex, ChatGPT or Claude. It walks you through
+                Prefer help? Copy the prompt and paste it into Claude, ChatGPT, Cursor or Copilot. It walks you through
                 the same steps as this guide.
               </p>
               <div className={`${docs.prose} ${styles.stepBody}`}>
-                <CodeBlock code={AI_SETUP_PROMPT} copyLabel="Copy the AI setup prompt" className={styles.aiPrompt} />
+                <div className={styles.promptActions}>
+                  <CopyPromptButton />
+                </div>
+                <details className={styles.promptDetails}>
+                  <summary>Show the prompt</summary>
+                  <CodeBlock code={AI_SETUP_PROMPT} copyLabel="Copy the AI setup prompt" className={styles.aiPrompt} />
+                </details>
                 <ul className={docs.bullets}>
                   <li>
-                    <strong>Claude Code, Cursor or Codex</strong> can run the commands for you. Open a terminal (or
-                    Cursor&apos;s agent chat), paste the prompt, and approve each command. Inside the{" "}
-                    <code>Still-Green</code> folder they also read <code>AGENTS.md</code>, which has the full steps.
+                    <strong>Claude Code, Cursor or Codex</strong> can run the steps for you. Paste the prompt and
+                    approve each step.
                   </li>
                   <li>
-                    <strong>ChatGPT or Claude</strong> in the browser can&apos;t run commands. They give you one command
-                    at a time; run it in Terminal and paste back what it prints.
+                    <strong>ChatGPT or Claude</strong> in the browser give you one step at a time. Run it in Terminal
+                    and paste back what it prints.
                   </li>
-                  <li>
-                    You still add Slack yourself with the Chrome extension (step 3). An assistant can&apos;t do that
-                    part.
-                  </li>
+                  <li>You still add Slack yourself with the Chrome extension (step 3).</li>
                 </ul>
                 <Banner tone="warning" title="Keep your Slack login out of the chat">
                   Never paste your Slack token (<code>xoxc-...</code>), the <code>d</code> cookie (

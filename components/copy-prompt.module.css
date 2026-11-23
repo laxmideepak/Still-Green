@@ -1,0 +1,30 @@
+/* Small round logo badges inside the Copy prompt button. */
+.logos {
+  display: inline-flex;
+  align-items: center;
+}
+
+.logo {
+  display: inline-grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.logo + .logo {
+  margin-left: -6px;
+}
+
+/* Beats the button's own "svg is 16px" rule. */
+.logos .logo svg {
+  width: 13px;
+  height: 13px;
+}
+
+.check {
+  color: var(--accent-text);
+}

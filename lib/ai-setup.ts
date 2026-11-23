@@ -1,7 +1,8 @@
 /**
  * The prompt people paste into an AI assistant (Claude Code, Cursor, Codex,
- * ChatGPT, Claude) to get help setting up Stillgreen. Shown with a copy button
- * on /setup and copied into README.md; tests/test_ai_setup.py keeps the two the
+ * ChatGPT, Claude) to get help setting up Stillgreen. Copied by the "Copy prompt"
+ * button (components/copy-prompt.tsx) on the home page and /setup, shown in full
+ * on /setup, and copied into README.md; tests/test_ai_setup.py keeps the two the
  * same. The full rules for coding assistants are in AGENTS.md.
  */
 export const AI_SETUP_PROMPT = `Help me set up Stillgreen (https://github.com/laxmideepak/Still-Green) on this computer. It is open source and runs only on my computer.

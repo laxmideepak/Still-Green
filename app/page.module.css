@@ -379,22 +379,6 @@
   background: var(--surface-2);
 }
 
-/* Step 1's command box already has a frame; don't put it in a second box. */
-.stepVisualBare {
-  padding: 0;
-  border: 0;
-  background: none;
-}
-
-/* The card is narrow. Give the command the room the fade takes, so it fits
-   on one line (wrapping would split "--open"). If it still doesn't fit, it
-   scrolls and can be reached with the keyboard. */
-.fitCode pre {
-  padding-right: var(--space-1);
-  -webkit-mask-image: none;
-  mask-image: none;
-}
-
 .miniPopup {
   display: flex;
   flex-direction: column;
@@ -412,6 +396,23 @@
 
 .miniRow .miniMono {
   color: var(--text);
+}
+
+/* A small "on" state in the step pictures (Running, Signed in). */
+.miniOn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--success-text);
+  font-weight: var(--font-weight-medium);
+}
+
+.miniOn::before {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: var(--success);
+  content: "";
 }
 
 /* Looks like a button but is only a picture. */
