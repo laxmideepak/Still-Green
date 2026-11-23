@@ -20,6 +20,7 @@
   <a href="https://stillgreen.vercel.app"><strong>Website</strong></a> ·
   <a href="https://stillgreen.vercel.app/dashboard"><strong>Open dashboard</strong></a> ·
   <a href="#quick-start-5-minutes"><strong>Quick start</strong></a> ·
+  <a href="#set-up-with-an-ai-assistant"><strong>Set up with AI</strong></a> ·
   <a href="#check-my-setup"><strong>Check my setup</strong></a> ·
   <a href="#privacy-and-security"><strong>Privacy</strong></a> ·
   <a href="#faq"><strong>FAQ</strong></a>
@@ -145,6 +146,37 @@ Your browser remembers these, so you only do this once. You can also skip this a
 
 > [!NOTE]
 > On your own computer, Stillgreen stops when the computer sleeps or shuts down. To keep it running when your laptop is closed, you can [run it in the cloud](#run-it-in-the-cloud-advanced) (advanced).
+
+## Set up with an AI assistant
+
+Prefer help? Copy this prompt into **Claude Code**, **Cursor**, **Codex**, **ChatGPT** or **Claude**. It walks you through the same steps as the [Quick start](#quick-start-5-minutes).
+
+````text
+Help me set up Stillgreen (https://github.com/laxmideepak/Still-Green) on this computer. It is open source and runs only on my computer.
+
+If you can run terminal commands, run the steps yourself and tell me in one line what each command does first. If you cannot, give me one command at a time, wait for me to paste the output, then tell me the next step. Use plain, simple words.
+
+Steps:
+1. Check that this is macOS or Linux, that git works, and that "python3 --version" is 3.9 or newer.
+2. git clone https://github.com/laxmideepak/Still-Green.git && cd Still-Green
+3. ./sg-local web --daemon --open  (the first run sets itself up in about a minute)
+4. ./sg-local doctor  (explain anything that is not OK, and how to fix it)
+5. Walk me through adding Slack with the Stillgreen Chrome extension: open chrome://extensions, turn on Developer mode, click Load unpacked and choose the "extension" folder inside Still-Green, paste the access code shown on the control page at http://127.0.0.1:8765, sign in at https://app.slack.com, then click Capture from Slack. I do this part myself.
+6. ./sg-local doctor --check-tokens  (confirm everything is OK)
+
+Rules:
+- Never ask me for my Slack token (xoxc-...), my Slack "d" cookie (xoxd-...) or my access code, and never ask me to paste them into this chat. If I paste one by mistake, tell me to sign out of Slack's other sessions so it stops working.
+- Do not use sudo, do not install anything outside the Still-Green folder, and never turn off certificate (TLS) checks.
+- If something fails, read the error message (and .venv-setup.log if setup failed) and explain it before you try something else.
+- If the repository has an AGENTS.md file, follow it.
+````
+
+- **Claude Code, Cursor or Codex** can run the commands for you. Paste the prompt in a terminal (or Cursor's agent chat) and approve each command. Inside the `Still-Green` folder they also read [AGENTS.md](AGENTS.md), which has the full steps and rules.
+- **ChatGPT or Claude** in the browser can't run commands. They give you one command at a time; run it in Terminal and paste back what it prints.
+- You still add Slack yourself with the Chrome extension. An assistant can't do that part.
+
+> [!WARNING]
+> Never paste your Slack token (`xoxc-...`), the `d` cookie (`xoxd-...`) or your access code into any AI chat. The prompt tells the assistant not to ask for them.
 
 ## Check my setup
 

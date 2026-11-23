@@ -314,3 +314,12 @@ export function Laptop(props: IconProps) {
     </Icon>
   );
 }
+
+export function Sparkles(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M10 3.5 11.6 8a2 2 0 0 0 1.2 1.2l4.5 1.6-4.5 1.6a2 2 0 0 0-1.2 1.2L10 18.1l-1.6-4.5a2 2 0 0 0-1.2-1.2l-4.5-1.6 4.5-1.6A2 2 0 0 0 8.4 8L10 3.5Z" />
+      <path d="M18 14.5v5M15.5 17h5" />
+    </Icon>
+  );
+}

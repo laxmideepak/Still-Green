@@ -41,6 +41,16 @@
   line-height: 22px;
 }
 
+/* The AI prompt is prose, so wrap it instead of scrolling sideways. */
+.aiPrompt pre {
+  max-height: 360px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+
 @media (max-width: 640px) {
   .stepBody {
     margin-top: var(--space-5);
