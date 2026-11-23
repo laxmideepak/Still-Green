@@ -13,7 +13,7 @@
     "test:e2e": "next build && node --test tests/e2e/dashboard.e2e.mjs tests/e2e/extension.e2e.mjs tests/e2e/control-page.e2e.mjs"
   },
   "dependencies": {
-    "next": "16.4.3",
+    "next": "16.4.6",
     "react": "19.3.1",
     "react-dom": "19.3.1"
   },
