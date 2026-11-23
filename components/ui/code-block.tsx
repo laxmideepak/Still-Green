@@ -37,6 +37,12 @@ export async function copyText(text: string): Promise<boolean> {
   }
 }
 
+/** "Copy the AI setup prompt" -> "Code: the AI setup prompt", so each scrolling box has its own name. */
+function codeName(copyLabel: string) {
+  const what = copyLabel.replace(/^Copy:?\s*/i, "").trim();
+  return what ? `Code: ${what}` : "Code";
+}
+
 /**
  * A command or snippet in JetBrains Mono with a copy button.
  *
@@ -45,9 +51,25 @@ export async function copyText(text: string): Promise<boolean> {
 export function CodeBlock({ code, prompt, copyLabel = "Copy", noCopy, className }: CodeBlockProps) {
   const [copied, setCopied] = useState(false);
   const timer = useRef<number | undefined>(undefined);
+  const preRef = useRef<HTMLPreElement>(null);
+  const [scrolls, setScrolls] = useState(false);
   const multiline = code.includes("\n");
 
   useEffect(() => () => window.clearTimeout(timer.current), []);
+
+  // A box whose text scrolls must be reachable with the keyboard (Safari does
+  // not do this on its own). Boxes that fit stay out of the Tab order.
+  useEffect(() => {
+    const el = preRef.current;
+    if (!el) return;
+    const check = () =>
+      setScrolls(el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 1);
+    check();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(check);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [code]);
 
   const onCopy = async () => {
     if (await copyText(code)) {
@@ -64,7 +86,13 @@ export function CodeBlock({ code, prompt, copyLabel = "Copy", noCopy, className 
           {prompt}
         </span>
       )}
-      <pre className={styles.code}>
+      <pre
+        ref={preRef}
+        className={styles.code}
+        tabIndex={scrolls ? 0 : undefined}
+        role={scrolls ? "region" : undefined}
+        aria-label={scrolls ? codeName(copyLabel) : undefined}
+      >
         <code>{code}</code>
       </pre>
       {!noCopy && (

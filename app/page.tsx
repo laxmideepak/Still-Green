@@ -198,8 +198,13 @@ export default function HomePage() {
                   Download Stillgreen from GitHub and start it with one command. It sets itself up the first time.
                   Advanced: put it on a cloud server so it keeps going when your laptop is closed.
                 </p>
-                <div className={styles.stepVisual}>
-                  <CodeBlock prompt="$" code="./sg-local web --daemon --open" copyLabel="Copy start command" />
+                <div className={`${styles.stepVisual} ${styles.stepVisualBare}`}>
+                  <CodeBlock
+                    prompt="$"
+                    code="./sg-local web --daemon --open"
+                    copyLabel="Copy start command"
+                    className={styles.fitCode}
+                  />
                 </div>
               </li>
               <li className={styles.step}>

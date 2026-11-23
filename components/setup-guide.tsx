@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { SiteFooter } from "./site-footer";
 import { SiteHeader } from "./site-header";
-import { ArrowRight, Check, Clock, Github, Info, Laptop, Lock, Shield, Sparkles, Terminal } from "./icons";
+import { ArrowRight, Check, Clock, Github, Info, Laptop, Lock, Shield, Terminal } from "./icons";
 import { Badge, Banner, Button, CodeBlock, Kbd } from "./ui";
 import { DocsNav, type DocsNavItem } from "./setup/docs-nav";
 import { AI_SETUP_PROMPT } from "@/lib/ai-setup";
@@ -14,7 +14,7 @@ const REPO_GIT = `${GITHUB_URL}.git`;
 const LOCAL_URL = "http://127.0.0.1:8765";
 
 const navItems: DocsNavItem[] = [
-  { id: "ai", label: "Set up with AI", icon: <Sparkles /> },
+  { id: "ai", label: "Set up with AI", icon: <Terminal /> },
   { id: "install", label: "Install", number: "1" },
   { id: "start", label: "Start", number: "2" },
   { id: "add-slack", label: "Add your Slack", number: "3" },
@@ -263,7 +263,7 @@ export function SetupGuide() {
             <section id="ai" className={docs.section} aria-labelledby="ai-title">
               <div className={docs.sectionHead}>
                 <span className={docs.stepNumber} aria-hidden="true">
-                  <Sparkles />
+                  <Terminal />
                 </span>
                 <h2 id="ai-title" className={docs.h2}>
                   Set up with an AI assistant
@@ -575,7 +575,7 @@ export function SetupGuide() {
                       code="sudo apt-get update && sudo apt-get install -y git"
                       label="Copy the git install command"
                     />
-                    <Cmd code={`git clone ${REPO_GIT} && cd Still-Green`} label="Copy the download command" />
+                    <Cmd code={`git clone ${REPO_GIT} && cd Still-Green`} label="Copy the server download command" />
                     <Cmd code="sudo sh deploy/setup-vm.sh" />
                   </div>
                 </li>
@@ -693,7 +693,8 @@ export function SetupGuide() {
                 </div>
                 <p>
                   Still stuck? <Ext href={ISSUES_URL}>Report a problem on GitHub</Ext> and attach the report from{" "}
-                  <strong>Download report</strong> (or <code>./sg-local doctor --report stillgreen-report.txt</code>).
+                  <strong>Download report</strong> (or{" "}
+                  <code className={docs.wrap}>./sg-local doctor --report stillgreen-report.txt</code>).
                   It leaves out your tokens and access code, but read it first. Never paste tokens.
                 </p>
               </div>
