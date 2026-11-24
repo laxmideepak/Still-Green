@@ -754,6 +754,45 @@ def cmd_logs(args: argparse.Namespace) -> int:
 # ------------------------------------------------------------------- web
 
 
+OUTDATED_MESSAGE = (
+    "Stillgreen was already running from an older copy or version. "
+    "Restarting it with this one, so the control page matches ..."
+)
+LAUNCHD_ELSEWHERE_MESSAGE = (
+    "Stillgreen still starts from another folder at login. To use this folder, run: "
+    "./sg-local install-launchd"
+)
+
+
+def _restart_if_outdated(args: argparse.Namespace, port: int) -> bool:
+    """Restart a background daemon that runs other program files than these.
+
+    A daemon left running from an older copy (or from before ``git pull``)
+    would serve this copy's page files with its own older code, and the page
+    can fail to load. Returns False only if the restart failed.
+    """
+    pid = state.daemon_pid()
+    runtime = state.read_state() if pid else None
+    if not (runtime and runtime.get("pid") in (None, pid) and state.update_pending(runtime)):
+        return True
+    print(OUTDATED_MESSAGE)
+    if cmd_restart(args) != 0:
+        return False
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline and not _control_page_up(port):
+        time.sleep(0.2)
+    # The new daemon writes its state soon after it starts.
+    new_pid = state.daemon_pid()
+    while time.monotonic() < deadline:
+        runtime = state.read_state()
+        if runtime and runtime.get("pid") == new_pid:
+            break
+        time.sleep(0.2)
+    if launchd.loaded() and state.update_pending(state.read_state()):
+        print(LAUNCHD_ELSEWHERE_MESSAGE)
+    return True
+
+
 def _control_page_up(port: int) -> bool:
     try:
         with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/health", timeout=2) as response:
@@ -800,6 +839,9 @@ def cmd_web(args: argparse.Namespace) -> int:
         deadline = time.monotonic() + 8
         while loopback and time.monotonic() < deadline and not _control_page_up(port):
             time.sleep(0.2)
+
+    if loopback and not _restart_if_outdated(args, port):
+        return 1
 
     url = f"http://127.0.0.1:{port}"
     if loopback and _control_page_up(port):

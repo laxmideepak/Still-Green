@@ -1971,13 +1971,20 @@
     paintStayPicker();
     if (S.embed) S.code = normalizeCode(boot.code);
     else S.code = normalizeCode(storageGet());
-    if (!S.code) { showLogin(""); return; }
+    if (!S.code) { showLogin(""); bootDone(); return; }
     showApp();
     renderTop();
+    bootDone();
     refresh().then((ok) => {
       if (ok && location.hash === "#add") openAdd({ manual: true });
       if (S.code) schedulePoll();
     });
+  }
+
+  // The page is drawn: drop the "didn't load" message from index.html.
+  function bootDone() {
+    const fail = document.getElementById("bootFail");
+    if (fail) fail.remove();
   }
 
   function paintEmptySchedule() {

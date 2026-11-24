@@ -15,6 +15,17 @@
 <body>
 <a class="skip" href="#main">Skip to content</a>
 
+<!-- Shown only if app.js has not started after a few seconds (app.css),
+     so a failed script never leaves a blank page. app.js removes it. -->
+<div class="boot-fail" id="bootFail">
+  <div class="boot-fail-card">
+    <h1 class="boot-fail-title">This page didn&rsquo;t load</h1>
+    <p>Stillgreen may still be running an older copy. In Terminal, go to your <code>Still-Green</code> folder and run:</p>
+    <p><code class="boot-fail-cmd">./sg-local restart</code></p>
+    <p>Then reload this page. Still blank? Run <code>./sg-local doctor</code> to see what is wrong.</p>
+  </div>
+</div>
+
 <!-- Locked: shown when the page was opened without an embedded code (cloud mode). -->
 <main class="login" id="login" hidden>
   <div class="login-wrap">
