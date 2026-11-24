@@ -3,7 +3,7 @@ import Link from "next/link";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { ArrowRight } from "@/components/icons";
-import { Badge, Button } from "@/components/ui";
+import { Button } from "@/components/ui";
 import styles from "./not-found.module.css";
 
 export const metadata: Metadata = {
@@ -23,8 +23,8 @@ const links = [
   },
   {
     href: "/start",
-    title: "Quick start",
-    text: "The short version, and every command.",
+    title: "Commands",
+    text: "Every sg-local command in one place.",
   },
 ];
 
@@ -35,7 +35,7 @@ export default function NotFound() {
       <main id="main" className={styles.main}>
         <div className="container">
           <div className={styles.inner}>
-            <Badge dot>Error 404</Badge>
+            <p className={styles.code}>404</p>
             <h1 className={styles.title}>Page not found</h1>
             <p className={styles.text}>This page doesn&apos;t exist, or it has moved. Try one of these instead.</p>
 

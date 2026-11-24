@@ -16,7 +16,7 @@ export function SiteFooter() {
           <ul>
             <li><Link href="/dashboard">Dashboard</Link></li>
             <li><Link href="/setup">Setup guide</Link></li>
-            <li><Link href="/start">Quick start</Link></li>
+            <li><Link href="/start">Commands</Link></li>
             <li><Link href="/privacy">Privacy</Link></li>
           </ul>
         </nav>

@@ -4,41 +4,65 @@
   margin-top: var(--space-6);
 }
 
-/* Troubleshooting: problem on the left, what to do on the right. */
-.trouble {
-  overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: var(--surface);
-  box-shadow: var(--shadow-card);
-}
-
-.troubleRow {
-  display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
-  gap: var(--space-6);
-  padding: var(--space-4) var(--space-5);
-}
-
-.troubleRow + .troubleRow {
+/* Fold-out sections: a list of rows split by thin lines, closed by default. */
+.moreGroup {
   border-top: 1px solid var(--border);
 }
 
-.troubleRow dt {
-  color: var(--text);
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
-  line-height: var(--line-height-sm);
+.more {
+  border-bottom: 1px solid var(--border);
+  scroll-margin-top: calc(64px + var(--space-6));
 }
 
-.troubleRow dt strong {
+.more > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  min-height: 48px;
+  margin-inline: calc(-1 * var(--space-2));
+  padding: var(--space-3) var(--space-2);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-medium);
+  line-height: 22px;
+  list-style: none;
+  cursor: pointer;
+  transition: color var(--duration-fast) var(--ease);
+}
+
+.more > summary::-webkit-details-marker {
+  display: none;
+}
+
+.more > summary:hover {
+  color: var(--accent-text);
+}
+
+.more > summary:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.more > summary strong {
   font-weight: var(--font-weight-semibold);
 }
 
-.troubleRow dd {
-  color: var(--text-muted);
-  font-size: var(--font-size-sm);
-  line-height: 22px;
+.more > summary svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  color: var(--text-subtle);
+  transition: transform var(--duration) var(--ease);
+}
+
+.more[open] > summary svg {
+  transform: rotate(180deg);
+}
+
+.moreBody {
+  padding-bottom: var(--space-6);
 }
 
 .promptActions {
@@ -84,10 +108,10 @@
   .stepBody {
     margin-top: var(--space-5);
   }
+}
 
-  .troubleRow {
-    grid-template-columns: minmax(0, 1fr);
-    gap: var(--space-1);
-    padding: var(--space-4);
+@media (prefers-reduced-motion: reduce) {
+  .more > summary svg {
+    transition: none;
   }
 }

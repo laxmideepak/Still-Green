@@ -10,11 +10,11 @@ import { Button, IconButton } from "./ui";
 import styles from "./site-header.module.css";
 
 // One name per page, used the same way in the footer and on the 404 page:
-// /setup is the "Setup guide" (nav: "Setup"), /start is the "Quick start".
+// /setup is the "Setup guide" (nav: "Setup"), /start is the command reference ("Commands").
 const nav = [
   { href: "/#how", label: "How it works", match: null },
   { href: "/setup", label: "Setup", match: "/setup" },
-  { href: "/start", label: "Quick start", match: "/start" },
+  { href: "/start", label: "Commands", match: "/start" },
 ] as const;
 
 export function SiteHeader() {
