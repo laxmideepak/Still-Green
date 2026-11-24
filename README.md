@@ -84,6 +84,19 @@ The website only sends the dashboard page to your browser. After that, your brow
 
 ## Quick start (5 minutes)
 
+> [!TIP]
+> **On a Mac with [Homebrew](https://brew.sh)?** Install with two commands, then use `sg-local` wherever this guide says `./sg-local`:
+>
+> ```bash
+> brew tap laxmideepak/stillgreen https://github.com/laxmideepak/Still-Green
+> brew install stillgreen
+> sg-local web --daemon --open
+> ```
+>
+> If Homebrew says the tap is not trusted, run `brew trust laxmideepak/stillgreen` and then `brew install stillgreen` again. Homebrew prints where the Chrome extension folder is (step 2). To start Stillgreen at every login, run `brew services start stillgreen`.
+>
+> **Rather have a Mac app?** [Join the waitlist](https://github.com/laxmideepak/Still-Green/issues/28).
+
 **You need:** macOS or Linux, Python 3.9 or newer, and Chrome (or another Chromium browser, such as Edge or Brave). A Mac already has Python: the built-in `python3` (3.9) works. On a new Mac, the first `git` or `python3` may ask to install the developer tools; click **Install**. Check with `python3 --version`; if yours is older, get a new one from <https://www.python.org/downloads/>. You do not need `pip` or `sudo`.
 
 **1. Download Stillgreen and start it**

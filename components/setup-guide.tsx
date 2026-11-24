@@ -7,7 +7,7 @@ import { Badge, Banner, Button, CodeBlock, Kbd } from "./ui";
 import { DocsNav, type DocsNavItem } from "./setup/docs-nav";
 import { AI_SETUP_PROMPT } from "@/lib/ai-setup";
 import { CopyPromptButton } from "./copy-prompt";
-import { CLOUD_GUIDE_URL, GITHUB_URL, ISSUES_URL } from "@/lib/site";
+import { BREW_INSTALL, BREW_TAP, BREW_TRUST, CLOUD_GUIDE_URL, GITHUB_URL, ISSUES_URL } from "@/lib/site";
 import docs from "./setup/docs.module.css";
 import styles from "./setup-guide.module.css";
 
@@ -323,6 +323,22 @@ export function SetupGuide() {
                   <span>A Slack workspace you can sign in to</span>
                 </li>
               </ul>
+              <h3 className={docs.h3}>On a Mac with Homebrew (easiest)</h3>
+              <p>
+                If you use <Ext href="https://brew.sh">Homebrew</Ext>, run these one at a time. Homebrew installs
+                Python and everything else for you.
+              </p>
+              <div className={docs.commands}>
+                <Cmd code={BREW_TAP} label="Copy the Homebrew tap command" />
+                <Cmd code={BREW_INSTALL} />
+              </div>
+              <p className={docs.small}>
+                If Homebrew says the tap is not trusted, run <code>{BREW_TRUST}</code>, then the install command
+                again. Then type <code>sg-local</code> wherever this guide says <code>./sg-local</code>. Homebrew prints where
+                the Chrome extension folder is. To start Stillgreen at every login, use{" "}
+                <code>brew services start stillgreen</code>.
+              </p>
+              <h3 className={docs.h3}>Without Homebrew</h3>
               <p>Run these one at a time:</p>
               <div className={docs.commands}>
                 <Cmd code={`git clone ${REPO_GIT}`} label="Copy the download command" />

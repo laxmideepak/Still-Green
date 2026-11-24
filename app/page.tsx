@@ -26,7 +26,7 @@ import {
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { Badge, Button } from "@/components/ui";
-import { CLOUD_GUIDE_URL, GITHUB_URL, ISSUES_URL } from "@/lib/site";
+import { CLOUD_GUIDE_URL, GITHUB_URL, ISSUES_URL, MAC_WAITLIST_URL } from "@/lib/site";
 import styles from "./page.module.css";
 
 const features: { icon: ReactNode; title: string; body: string }[] = [
@@ -127,11 +127,11 @@ export default function HomePage() {
         <section className={styles.hero} aria-labelledby="hero-title">
           <div className={`container ${styles.heroGrid}`}>
             <div className={styles.heroCopy}>
-              <Link href="#how" className={styles.announce}>
-                <span className={styles.announcePill}>Free</span>
-                <span className={styles.announceText}>Runs on your own computer, no account</span>
+              <a href={MAC_WAITLIST_URL} className={styles.announce} target="_blank" rel="noreferrer">
+                <span className={styles.announcePill}>Soon</span>
+                <span className={styles.announceText}>A Mac app. Join the waitlist</span>
                 <ChevronRight />
-              </Link>
+              </a>
               <h1 className={styles.h1} id="hero-title">
                 Help keep Slack <span className={styles.green}>green</span>,
                 <br /> on your schedule.
@@ -517,7 +517,13 @@ export default function HomePage() {
               <h2 className={styles.h2} id="final-title">
                 Set it up once. Let it run all week.
               </h2>
-              <p className={styles.lead}>Free, no account, and about five minutes to set up.</p>
+              <p className={styles.lead}>
+                Free, no account, and about five minutes to set up. Rather have a Mac app?{" "}
+                <a href={MAC_WAITLIST_URL} target="_blank" rel="noreferrer">
+                  Join the waitlist
+                </a>
+                .
+              </p>
               <div className={`${styles.ctas} ${styles.ctasCenter}`}>
                 <Button href="/setup" variant="primary" size="lg" iconRight={<ArrowRight />}>
                   Set it up
