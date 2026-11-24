@@ -85,15 +85,16 @@ The website only sends the dashboard page to your browser. After that, your brow
 ## Quick start (5 minutes)
 
 > [!TIP]
-> **On a Mac with [Homebrew](https://brew.sh)?** Install with two commands, then use `sg-local` wherever this guide says `./sg-local`:
+> **On a Mac with [Homebrew](https://brew.sh)?** Install with these commands, then use `sg-local` wherever this guide says `./sg-local`:
 >
 > ```bash
 > brew tap laxmideepak/stillgreen https://github.com/laxmideepak/Still-Green
+> brew trust laxmideepak/stillgreen
 > brew install stillgreen
 > sg-local web --daemon --open
 > ```
 >
-> If Homebrew says the tap is not trusted, run `brew trust laxmideepak/stillgreen` and then `brew install stillgreen` again. Homebrew prints where the Chrome extension folder is (step 2). To start Stillgreen at every login, run `brew services start stillgreen`.
+> `brew trust` tells Homebrew you trust this source; newer Homebrew asks for it once. If yours says it is an unknown command, skip it. Homebrew prints where the Chrome extension folder is (step 2). To start Stillgreen at every login, run `brew services start stillgreen`.
 >
 > **Rather have a Mac app?** [Join the waitlist](https://github.com/laxmideepak/Still-Green/issues/28).
 

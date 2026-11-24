@@ -330,13 +330,14 @@ export function SetupGuide() {
               </p>
               <div className={docs.commands}>
                 <Cmd code={BREW_TAP} label="Copy the Homebrew tap command" />
+                <Cmd code={BREW_TRUST} label="Copy the Homebrew trust command" />
                 <Cmd code={BREW_INSTALL} />
               </div>
               <p className={docs.small}>
-                If Homebrew says the tap is not trusted, run <code>{BREW_TRUST}</code>, then the install command
-                again. Then type <code>sg-local</code> wherever this guide says <code>./sg-local</code>. Homebrew prints where
-                the Chrome extension folder is. To start Stillgreen at every login, use{" "}
-                <code>brew services start stillgreen</code>.
+                The second command tells Homebrew you trust this source; newer Homebrew asks for it once. If yours
+                says <code>trust</code> is an unknown command, skip it. Then type <code>sg-local</code> wherever this
+                guide says <code>./sg-local</code>. Homebrew prints where the Chrome extension folder is. To start
+                Stillgreen at every login, use <code>brew services start stillgreen</code>.
               </p>
               <h3 className={docs.h3}>Without Homebrew</h3>
               <p>Run these one at a time:</p>
