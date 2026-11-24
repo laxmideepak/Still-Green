@@ -775,7 +775,9 @@ class Handler(BaseHTTPRequestHandler):
             )
             self.send_header("Referrer-Policy", "no-referrer")
         else:
-            self.send_header("Cache-Control", "public, max-age=300")
+            # Revalidate every time: after an update, an old app.js from the
+            # browser cache with the new page would leave the page blank.
+            self.send_header("Cache-Control", "no-cache")
         self.end_headers()
         self.wfile.write(raw)
 

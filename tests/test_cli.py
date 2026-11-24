@@ -281,3 +281,38 @@ class PidAliveTests(unittest.TestCase):
         with mock.patch.object(Path, "read_text", no_proc), \
                 mock.patch.object(state.subprocess, "run", return_value=answer):
             self.assertFalse(state._is_zombie(12345))
+
+
+class OutdatedDaemonTests(unittest.TestCase):
+    """`sg-local web` must not reuse a daemon running other program files:
+    its page then failed to load (a blank control page)."""
+
+    def run_check(self, *, pending: bool, launchd_loaded: bool = False) -> tuple[bool, mock.Mock, str]:
+        runtime = {"pid": 42, "build": "old"}
+        restart = mock.Mock(return_value=0)
+        out = io.StringIO()
+        with mock.patch.object(cli.state, "daemon_pid", return_value=42), mock.patch.object(
+            cli.state, "read_state", return_value=runtime
+        ), mock.patch.object(cli.state, "update_pending", return_value=pending), mock.patch.object(
+            cli, "cmd_restart", restart
+        ), mock.patch.object(cli, "_control_page_up", return_value=True), mock.patch.object(
+            cli.launchd, "loaded", return_value=launchd_loaded
+        ), redirect_stdout(out):
+            ok = cli._restart_if_outdated(mock.Mock(), 8765)
+        return ok, restart, out.getvalue()
+
+    def test_outdated_daemon_is_restarted_with_a_plain_message(self) -> None:
+        ok, restart, text = self.run_check(pending=True)
+        self.assertTrue(ok)
+        restart.assert_called_once()
+        self.assertIn("older copy", text)
+
+    def test_current_daemon_is_left_alone(self) -> None:
+        ok, restart, text = self.run_check(pending=False)
+        self.assertTrue(ok)
+        restart.assert_not_called()
+        self.assertEqual(text, "")
+
+    def test_login_item_from_another_folder_is_explained(self) -> None:
+        _, _, text = self.run_check(pending=True, launchd_loaded=True)
+        self.assertIn("./sg-local install-launchd", text)
