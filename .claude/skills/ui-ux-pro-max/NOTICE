@@ -1,0 +1,5 @@
+UI UX Pro Max skill, by Next Level Builder (MIT License, see LICENSE).
+Source: https://github.com/nextlevelbuilder/ui-ux-pro-max-skill
+Copied from commit cc7b20d85d64d8fa022292cfad731995d3cd4eeb, folder .claude/skills/ui-ux-pro-max.
+Changes: removed scripts/tests. Everything else is unchanged.
+Its scripts use only the Python standard library and make no network calls.
