@@ -17,6 +17,17 @@ from sg_local.slack import (
 from websockets.exceptions import InvalidStatus
 
 
+async def until(check, timeout: float = 5.0) -> None:
+    """Wait until check() is true. A fixed short sleep failed on busy CI
+    runners, where the session had not got that far yet."""
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout
+    while not check():
+        if loop.time() > deadline:
+            raise AssertionError("the session did not get there in time")
+        await asyncio.sleep(0.01)
+
+
 class FakeWebSocket:
     def __init__(self) -> None:
         self.sent: list[dict] = []
@@ -107,7 +118,7 @@ class PresenceSessionTests(unittest.IsolatedAsyncioTestCase):
         }
         with mock.patch("sg_local.slack.websockets.connect", mock.AsyncMock(return_value=self.fake)):
             task = asyncio.create_task(session.run())
-            await asyncio.sleep(0.15)
+            await until(lambda: session.ping_count >= 1 and session.tickle_count >= 1 and session.presence_checks >= 1)
             await session.stop()
             await asyncio.wait_for(task, timeout=3)
 
@@ -130,7 +141,7 @@ class PresenceSessionTests(unittest.IsolatedAsyncioTestCase):
         }
         with mock.patch("sg_local.slack.websockets.connect", mock.AsyncMock(return_value=self.fake)):
             task = asyncio.create_task(session.run())
-            await asyncio.sleep(0.1)
+            await until(lambda: session.status == "manual_away")
             self.assertEqual(session.status, "manual_away")
             self.assertEqual(session.connections, 1)
             await session.stop()
@@ -145,7 +156,7 @@ class PresenceSessionTests(unittest.IsolatedAsyncioTestCase):
         session._drop_ws = mock.AsyncMock()  # type: ignore[method-assign]
         with mock.patch("sg_local.slack.websockets.connect", mock.AsyncMock(return_value=self.fake)):
             task = asyncio.create_task(session.run())
-            await asyncio.sleep(0.08)
+            await until(lambda: session._drop_ws.await_count >= 1)  # type: ignore[attr-defined]
             await session.stop()
             await asyncio.wait_for(task, timeout=3)
         session._drop_ws.assert_awaited()  # type: ignore[attr-defined]
@@ -186,12 +197,12 @@ class PresenceSessionTests(unittest.IsolatedAsyncioTestCase):
         session = PresenceSession(workspace())
         session._reconnect_delay = 0.01
         response = SimpleNamespace(status_code=403, reason_phrase="Forbidden", headers={})
-        with mock.patch(
-            "sg_local.slack.websockets.connect",
-            mock.AsyncMock(side_effect=InvalidStatus(response)),
-        ), mock.patch.object(session.client, "auth_test", return_value={"ok": True}):
+        connect = mock.AsyncMock(side_effect=InvalidStatus(response))
+        with mock.patch("sg_local.slack.websockets.connect", connect), mock.patch.object(
+            session.client, "auth_test", return_value={"ok": True}
+        ):
             task = asyncio.create_task(session.run())
-            await asyncio.sleep(0.1)
+            await until(lambda: connect.await_count >= 2)
             await session.stop()
             await asyncio.wait_for(task, timeout=3)
         self.assertFalse(session.invalid_token)
@@ -208,7 +219,7 @@ class PresenceSessionTests(unittest.IsolatedAsyncioTestCase):
 
         with mock.patch("sg_local.slack.websockets.connect", side_effect=fail):
             task = asyncio.create_task(session.run())
-            await asyncio.sleep(0.08)
+            await until(lambda: calls >= 2)
             await session.stop()
             await asyncio.wait_for(task, timeout=3)
         self.assertGreaterEqual(calls, 2)
@@ -221,7 +232,7 @@ class PresenceSessionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(session.snapshot()["auth"], "unknown")
         with mock.patch("sg_local.slack.websockets.connect", mock.AsyncMock(return_value=self.fake)):
             task = asyncio.create_task(session.run())
-            await asyncio.sleep(0.1)
+            await until(lambda: session.snapshot()["presence_verified_at"] is not None)
             live = session.snapshot()
             await session.stop()
             await asyncio.wait_for(task, timeout=3)
@@ -240,7 +251,7 @@ class PresenceSessionTests(unittest.IsolatedAsyncioTestCase):
         session.client.get_presence = lambda user_id="": {"ok": True, "presence": "away", "manual_away": True}  # type: ignore[method-assign]
         with mock.patch("sg_local.slack.websockets.connect", mock.AsyncMock(return_value=self.fake)):
             task = asyncio.create_task(session.run())
-            await asyncio.sleep(0.08)
+            await until(lambda: session.snapshot()["presence"] == "manual_away")
             live = session.snapshot()
             await session.stop()
             await asyncio.wait_for(task, timeout=3)
@@ -256,7 +267,7 @@ class PresenceSessionTests(unittest.IsolatedAsyncioTestCase):
 
         with mock.patch("sg_local.slack.websockets.connect", side_effect=refused):
             task = asyncio.create_task(session.run())
-            await asyncio.sleep(0.05)
+            await until(lambda: session.snapshot()["last_error_code"] == "network_unreachable")
             await session.stop()
             await asyncio.wait_for(task, timeout=3)
         snap = session.snapshot()
@@ -290,7 +301,7 @@ class PresenceSessionTests(unittest.IsolatedAsyncioTestCase):
         session.client.get_presence = presence  # type: ignore[method-assign]
         with mock.patch("sg_local.slack.websockets.connect", mock.AsyncMock(return_value=self.fake)):
             task = asyncio.create_task(session.run())
-            await asyncio.sleep(0.15)
+            await until(lambda: session.presence_verified_at is not None and session.last_error is None)
             await session.stop()
             await asyncio.wait_for(task, timeout=3)
         self.assertIsNone(session.last_error)
