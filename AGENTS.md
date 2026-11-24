@@ -79,6 +79,7 @@ Run the checks that match what you changed:
 
 ```bash
 python3 -m pytest -q          # Python (needs the packages in requirements.lock)
+python3 -m pytest -q -n 16    # same, ~5x faster (pip install pytest-xdist)
 npx tsc --noEmit              # TypeScript
 npm run test:unit             # JavaScript unit tests
 npm run test:e2e              # build + browser tests (needs the Python packages)

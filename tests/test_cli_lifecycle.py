@@ -340,10 +340,18 @@ class FakeSession:
         self.slack_fail_code = None
 
     async def run(self) -> None:
-        await asyncio.sleep(3600)
+        # Runs until stop(), like the real session (otherwise stopping waits
+        # out the daemon's 8 s timeout). stop() can come before run() starts.
+        self._stopped = asyncio.Event()
+        if getattr(self, "_stop_requested", False):
+            return
+        await self._stopped.wait()
 
     async def stop(self) -> None:
-        pass
+        self._stop_requested = True
+        stopped = getattr(self, "_stopped", None)
+        if stopped is not None:
+            stopped.set()
 
     def snapshot(self) -> dict:
         return {"team_id": self.team_id, "status": "active", "connected": True, "auth": self.auth, "presence": "active"}
