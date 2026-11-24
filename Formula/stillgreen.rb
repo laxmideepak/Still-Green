@@ -1,10 +1,8 @@
 # Homebrew formula for Stillgreen. This repository doubles as its own tap:
 #
 #   brew tap laxmideepak/stillgreen https://github.com/laxmideepak/Still-Green
+#   brew trust laxmideepak/stillgreen   # newer Homebrew requires this once
 #   brew install stillgreen
-#
-# Newer Homebrew refuses taps outside Homebrew until you trust them; it then
-# says to run `brew trust laxmideepak/stillgreen` first.
 #
 # To release a new version: point `revision` at the new commit on main, bump
 # `version`, and copy any changed package versions and hashes from
