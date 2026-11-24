@@ -255,7 +255,7 @@
     if (status === 401) {
       return new ApiError("The access code was not accepted.", 401, "auth", {
         code: "access_code_wrong", title: "Access code not accepted", message: "The access code was not accepted.",
-        action: "Copy it again, or run ./sg-local web --show-code.",
+        action: "Copy it again, or run sg-local web --show-code (./sg-local in the Still-Green folder).",
       });
     }
     if (status === 429) {

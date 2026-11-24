@@ -143,7 +143,7 @@ CATALOGUE: dict[str, dict[str, str]] = {
         "title": "Access code not accepted",
         "message": "The access code does not match the one Stillgreen uses.",
         "action": (
-            "Copy the code again with ./sg-local web --show-code. "
+            "Copy the code again with sg-local web --show-code (./sg-local in the Still-Green folder). "
             "It looks like SG-ABCD-EFGH-JKLM."
         ),
     },
