@@ -456,8 +456,11 @@ describe("daemon control page", () => {
   test("loads and lists the workspace", async () => {
     const context = await browser.newContext();
     const page = await context.newPage();
-    await page.goto(daemon.base);
+    // As `sg-local web --open` opens it: with this user's open key.
+    await page.goto(`${daemon.base}/?k=${daemon.openKey}`);
     await page.getByText("E2E Workspace").first().waitFor();
+    // The key leaves the address bar once the page has the code.
+    assert.equal(new URL(page.url()).search, "");
     await context.close();
   });
 });

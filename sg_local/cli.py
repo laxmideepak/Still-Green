@@ -801,6 +801,43 @@ def _control_page_up(port: int) -> bool:
         return False
 
 
+def _health(port: int) -> dict[str, Any] | None:
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/health", timeout=2) as response:
+            payload = json.loads(response.read())
+    except (OSError, ValueError):
+        return None
+    return payload if isinstance(payload, dict) and payload.get("app") == "stillgreen" else None
+
+
+def _port_holder_problem(port: int) -> str | None:
+    """Say so when the program answering on ``port`` is not this Stillgreen.
+
+    An older daemon can keep the port after its PID file is gone (uninstall,
+    a crash); the new daemon then runs without a page while the old one
+    serves this copy's page files with its old code, and the page is blank.
+    """
+    health = _health(port)
+    if health is None or health.get("build") == state.build_id():
+        return None
+    pid = health.get("pid")
+    if pid:
+        who = f"An older Stillgreen (pid {pid})"
+        stop = f"Stop it with:  kill {pid}"
+    else:
+        who = "An older Stillgreen"
+        stop = (
+            f"Find it with:  lsof -nP -iTCP:{port} -sTCP:LISTEN\n"
+            "and stop it with:  kill <the number in the PID column>"
+        )
+    daemon = state.daemon_pid()
+    note = f" (this copy's daemon is pid {daemon})" if daemon and daemon != pid else ""
+    return (
+        f"{who} is still using port {port}, so the control page would not load{note}.\n"
+        f"{stop}\nThen run this command again."
+    )
+
+
 def _code_accepted(port: int, code: str) -> bool:
     request = urllib.request.Request(
         f"http://127.0.0.1:{port}/api/state", headers={"Authorization": f"Bearer {code}"}
@@ -844,8 +881,13 @@ def cmd_web(args: argparse.Namespace) -> int:
         return 1
 
     url = f"http://127.0.0.1:{port}"
+    # The page embeds the access code only with this user's key (web.open_key).
+    open_url = f"{url}/?k={web.open_key()}" if loopback else url
     if loopback and _control_page_up(port):
         # The background daemon already serves the page on this port.
+        problem = _port_holder_problem(port)
+        if problem:
+            return _fail(problem)
         code = web.load_code()
         print(f"Stillgreen control page: {url}")
         print(f"Access code: {code}")
@@ -857,14 +899,14 @@ def cmd_web(args: argparse.Namespace) -> int:
                 "from this shell with: ./sg-local restart"
             )
         if args.open:
-            webbrowser.open(url)
+            webbrowser.open(open_url)
         return 0
 
     web.load_code()
     if not loopback:
         print(f"Listening on {host}:{port}. Anyone who can reach that address can try the code.")
     if args.open:
-        threading.Timer(0.7, lambda: webbrowser.open(url)).start()
+        threading.Timer(0.7, lambda: webbrowser.open(open_url)).start()
     web.serve(host, port)
     return 0
 

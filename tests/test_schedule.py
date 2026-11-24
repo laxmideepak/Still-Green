@@ -158,3 +158,17 @@ class MakeScheduleTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BoundaryParsingTests(unittest.TestCase):
+    def test_schedule_is_parsed_once_per_search(self) -> None:
+        # next_boundary checks up to two weeks of minutes; re-parsing the
+        # schedule for each one made every /api/state poll slow.
+        from unittest import mock
+
+        rule = {"mode": "scheduled", "active_days": "weekdays", "start_time": "09:00", "end_time": "17:00", "timezone": "UTC"}
+        friday_evening = datetime(2026, 10, 30, 18, 0, tzinfo=timezone.utc)
+        with mock.patch.object(schedule, "parse_days", wraps=schedule.parse_days) as parse_days:
+            boundary = schedule.next_boundary(rule, friday_evening)
+        self.assertEqual(parse_days.call_count, 1)
+        self.assertEqual(boundary, datetime(2026, 11, 2, 9, 0, tzinfo=timezone.utc))

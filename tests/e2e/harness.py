@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import secrets
 import socket
 import subprocess
 import sys
@@ -260,7 +261,13 @@ if __name__ == "__main__":
     # running until stdin closes or the process is stopped. Each line on stdin
     # is a command (see handle_command); the answer is one JSON line.
     stack = Stack().start()
-    print(json.dumps({"base": stack.base, "code": CODE}), flush=True)
+    # The key `sg-local web --open` puts in the URL (sg_local.web.open_key):
+    # without it the control page does not embed the access code.
+    open_key = secrets.token_urlsafe(24)
+    key_path = stack.config_dir / "open-key"
+    key_path.write_text(open_key + "\n", encoding="utf-8")
+    key_path.chmod(0o600)
+    print(json.dumps({"base": stack.base, "code": CODE, "openKey": open_key}), flush=True)
     try:
         for line in sys.stdin:
             if line.strip():

@@ -174,6 +174,20 @@ def validate_schedule(schedule: dict[str, Any]) -> tuple[bool, str]:
     return True, ""
 
 
+def _parse_window(schedule: dict[str, Any]) -> tuple[Any, list[str], int, int] | None:
+    """(timezone, active days, start minute, end minute), or None when the
+    schedule cannot be read. Parsed once per call site: ``next_boundary``
+    checks thousands of minutes."""
+    try:
+        tz = resolve_timezone(schedule.get("timezone", "local"))
+        active_days = parse_days(schedule.get("active_days", []))
+        start = parse_time(schedule.get("start_time", "00:00"))
+        end = parse_time(schedule.get("end_time", "23:59"))
+    except ConfigError:
+        return None
+    return tz, active_days, start.hour * 60 + start.minute, end.hour * 60 + end.minute
+
+
 def is_within_schedule(
     schedule: dict[str, Any] | None, now: datetime | None = None
 ) -> bool:
@@ -182,28 +196,21 @@ def is_within_schedule(
         return True
     if schedule.get("mode", "always") == "always":
         return True
-
-    try:
-        tz = resolve_timezone(schedule.get("timezone", "local"))
-    except ConfigError:
-        return True
-    current = to_zone(now, tz)
-
-    try:
-        active_days = parse_days(schedule.get("active_days", []))
-        start = parse_time(schedule.get("start_time", "00:00"))
-        end = parse_time(schedule.get("end_time", "23:59"))
-    except ConfigError:
+    window = _parse_window(schedule)
+    if window is None:
         # A broken schedule should not silently switch presence off.
         return True
+    return _within(window, now)
 
+
+def _within(window: tuple[Any, list[str], int, int], now: datetime | None) -> bool:
+    tz, active_days, start_minutes, end_minutes = window
+    current = to_zone(now, tz)
     index = current.weekday()
     current_day = DAY_NAMES[index]
-    start_minutes = start.hour * 60 + start.minute
-    end_minutes = end.hour * 60 + end.minute
     current_minutes = current.hour * 60 + current.minute
 
-    if start == end:
+    if start_minutes == end_minutes:
         return current_day in active_days
 
     if start_minutes < end_minutes:
@@ -220,10 +227,10 @@ def next_boundary(schedule: dict[str, Any] | None, now: datetime | None = None) 
     """Return the next schedule transition (best effort), or None for always."""
     if not schedule or schedule.get("mode", "always") == "always":
         return None
-    try:
-        tz = resolve_timezone(schedule.get("timezone", "local"))
-    except ConfigError:
-        return None
+    window = _parse_window(schedule)
+    if window is None:
+        return None  # a broken schedule counts as always on: no boundary
+    tz = window[0]
     current = to_zone(now, tz)
 
     # Minute resolution is enough; scan two weeks so all weekly windows are
@@ -231,10 +238,10 @@ def next_boundary(schedule: dict[str, Any] | None, now: datetime | None = None) 
     # Step in UTC so each step is a real minute even across a DST change,
     # then report the boundary in the schedule's zone.
     cursor = current.replace(second=0, microsecond=0).astimezone(timezone.utc)
-    was_active = is_within_schedule(schedule, cursor)
+    was_active = _within(window, cursor)
     for _ in range(14 * 24 * 60):
         cursor += timedelta(minutes=1)
-        if is_within_schedule(schedule, cursor) != was_active:
+        if _within(window, cursor) != was_active:
             return to_zone(cursor, tz)
     return None
 
