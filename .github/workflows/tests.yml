@@ -56,12 +56,12 @@ jobs:
       matrix:
         # macos-latest is Apple Silicon (the macos-14 image no longer gets a
         # runner). GitHub retired the macos-13 Intel image, so Intel uses
-        # macos-15-intel. Four jobs, because GitHub runs at most five macOS
-        # jobs at once; a sixth waited in the queue and was sometimes
-        # cancelled without ever getting a runner. Every Python version runs
-        # on Apple Silicon; Intel keeps the Mac's own Python (the new-Mac case).
+        # macos-15-intel. Only three jobs: macOS runners are scarce, and extra
+        # jobs waited in the queue for minutes and were sometimes cancelled
+        # without ever getting a runner. "system" is Apple's own Python 3.9
+        # (the new-Mac case), so a separate 3.9 job added nothing; Linux also
+        # tests 3.9.
         include:
-          - { os: macos-latest, arch: Apple Silicon, python: "3.9" }
           - { os: macos-latest, arch: Apple Silicon, python: "3.12" }
           - { os: macos-latest, arch: Apple Silicon, python: system }
           - { os: macos-15-intel, arch: Intel, python: system }
@@ -125,18 +125,10 @@ jobs:
           python -m pip install --require-hashes -r requirements.lock
       # Full Chromium, not only the headless shell: the extension test loads
       # the unpacked extension, which the headless shell cannot do.
-      - name: Cache Playwright's Chromium
-        id: playwright-cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      # Not cached: restoring the browser still needs its system libraries,
+      # and installing those alone took longer (44 s) than everything (18 s).
       - name: Install Playwright Chromium
-        if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: npx playwright install --with-deps chromium
-      - name: Install Chromium's system libraries
-        if: steps.playwright-cache.outputs.cache-hit == 'true'
-        run: npx playwright install-deps chromium
       - name: Type check
         run: npx tsc --noEmit
       - name: Logo mood unit tests
