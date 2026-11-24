@@ -285,6 +285,9 @@ class UpdateNoticeTests(TempConfig):
         self.assertEqual(state.build_id(), state.build_id())
         self.assertEqual(len(state.build_id()), 16)
         self.assertFalse(state.update_pending({}))
+        self.assertFalse(state.update_pending(None))
+        # A daemon from before build fingerprints is older than any build.
+        self.assertTrue(state.update_pending({"pid": 4242, "running": True, "workspaces": []}))
         self.assertFalse(state.update_pending({"build": state.build_id()}))
         self.assertTrue(state.update_pending({"build": "0000000000000000"}))
 

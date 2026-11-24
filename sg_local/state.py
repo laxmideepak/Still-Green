@@ -44,9 +44,19 @@ def build_id() -> str:
 
 
 def update_pending(runtime: dict[str, Any] | None) -> bool:
-    """Is the running daemon older than the program files on disk?"""
-    running = str((runtime or {}).get("build") or "")
-    return bool(running) and running != build_id()
+    """Is the running daemon older than the program files on disk?
+
+    A daemon's state with a pid but no build comes from a version older than
+    build fingerprints (before 0.1.0's November 2026 updates), so it is older
+    too. Treating it as current left such a daemon serving the new page files
+    with its old code, and the control page stayed blank.
+    """
+    if not runtime:
+        return False
+    running = str(runtime.get("build") or "")
+    if not running:
+        return bool(runtime.get("pid"))
+    return running != build_id()
 
 
 def read_json(path: Path) -> dict[str, Any] | None:
