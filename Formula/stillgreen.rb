@@ -13,8 +13,8 @@ class Stillgreen < Formula
   desc "Keep your Slack status active on your schedule, from your own Mac"
   homepage "https://stillgreen.vercel.app"
   url "https://github.com/laxmideepak/Still-Green.git",
-      revision: "afcf3769b59e9cfb7c6ec46092e31b0f869d5745"
-  version "0.1.0"
+      revision: "d13040a24d70e7718ce62e1d7468ebb9be0be676"
+  version "0.1.1"
   license "MIT"
   head "https://github.com/laxmideepak/Still-Green.git", branch: "main"
 
