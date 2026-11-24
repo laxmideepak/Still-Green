@@ -2,24 +2,20 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { SiteFooter } from "./site-footer";
 import { SiteHeader } from "./site-header";
-import { ArrowRight, Cloud, Github, Grid, Laptop, Lock, Puzzle } from "./icons";
-import { Button, Card, CardBody, CardHeader, CodeBlock } from "./ui";
+import { ArrowRight } from "./icons";
+import { CodeBlock } from "./ui";
 import { DocsNav, type DocsNavItem } from "./setup/docs-nav";
 import { CommandTable, type CommandRow } from "./start/command-table";
-import { GITHUB_URL } from "@/lib/site";
 import docs from "./setup/docs.module.css";
 import styles from "./start-guide.module.css";
 
-const LOCAL_URL = "http://127.0.0.1:8765";
-
 const navItems: DocsNavItem[] = [
-  { id: "quick-start", label: "Quick start" },
-  { id: "commands", label: "Commands" },
-  { id: "cmd-daemon", label: "Start and stop", sub: true },
-  { id: "cmd-workspaces", label: "Workspaces", sub: true },
-  { id: "cmd-schedule", label: "Schedule", sub: true },
-  { id: "cmd-pause", label: "Pause and keep helping", sub: true },
-  { id: "cmd-check", label: "Check and fix", sub: true },
+  { id: "commands", label: "Before you start" },
+  { id: "cmd-daemon", label: "Start and stop" },
+  { id: "cmd-workspaces", label: "Workspaces" },
+  { id: "cmd-schedule", label: "Schedule" },
+  { id: "cmd-pause", label: "Pause and keep helping" },
+  { id: "cmd-check", label: "Check and fix" },
   { id: "formats", label: "Times and days" },
   { id: "files", label: "Your files" },
 ];
@@ -173,30 +169,6 @@ const groups: Array<{
   },
 ];
 
-function QuickStep({
-  number,
-  title,
-  id,
-  children,
-}: {
-  number: string;
-  title: string;
-  id?: string;
-  children: ReactNode;
-}) {
-  return (
-    <li className={styles.quickStep} id={id}>
-      <span className={styles.quickNumber} aria-hidden="true">
-        {number}
-      </span>
-      <div className={styles.quickBody}>
-        <h3 className={styles.quickTitle}>{title}</h3>
-        <div className={docs.prose}>{children}</div>
-      </div>
-    </li>
-  );
-}
-
 export function StartGuide() {
   return (
     <>
@@ -204,20 +176,12 @@ export function StartGuide() {
       <main id="main" className={docs.main}>
         <header className={docs.hero}>
           <div className={`container ${docs.heroInner}`}>
-            <p className={docs.eyebrow}>Quick start</p>
-            <h1 className={docs.title}>Quick start</h1>
+            <p className={docs.eyebrow}>Reference</p>
+            <h1 className={docs.title}>Commands</h1>
             <p className={docs.lead}>
-              The short version of the setup, then every <code className={styles.titleCode}>sg-local</code> command in
-              one place.
+              Every <code className={styles.titleCode}>sg-local</code> command in one place. New here? Start with the{" "}
+              <Link href="/setup">setup guide</Link>.
             </p>
-            <div className={docs.heroActions}>
-              <Button href="/setup" iconRight={<ArrowRight />}>
-                Setup guide
-              </Button>
-              <Button href={GITHUB_URL} variant="ghost" icon={<Github />}>
-                GitHub
-              </Button>
-            </div>
           </div>
         </header>
 
@@ -227,130 +191,32 @@ export function StartGuide() {
           </aside>
 
           <div className={docs.content}>
-            <section id="quick-start" className={docs.section} aria-labelledby="quick-start-title">
-              <h2 id="quick-start-title" className={docs.h2}>
-                Quick start
-              </h2>
-              <p className={docs.sectionLead}>
-                Four steps on a Mac or Linux computer with Python 3.9 or newer (Macs already have it) and Chrome.
-              </p>
-
-              <ol className={styles.quick}>
-                <QuickStep number="1" title="Download">
-                  <CodeBlock
-                    code={`git clone ${GITHUB_URL}.git\ncd Still-Green\n./sg-local --version`}
-                    copyLabel="Copy the download commands"
-                  />
-                  <p className={docs.small}>
-                    The first run sets itself up in a private <code>.venv</code> folder. No <code>pip</code>, no{" "}
-                    <code>sudo</code>.
-                  </p>
-                </QuickStep>
-                <QuickStep number="2" title="Start">
-                  <CodeBlock prompt="$" code="./sg-local web --daemon --open" copyLabel="Copy the start command" />
-                  <p>
-                    The control page opens at <code>{LOCAL_URL}</code> and shows your access code.
-                  </p>
-                </QuickStep>
-                <QuickStep number="3" title="Add your Slack">
-                  <p>
-                    Open <code>chrome://extensions</code>, turn on <strong>Developer mode</strong>, click{" "}
-                    <strong>Load unpacked</strong> and choose the <code>extension</code> folder. Paste your access code
-                    in the extension, open app.slack.com, and click <strong>Capture from Slack</strong>. The first time,
-                    read what it shares and agree.
-                  </p>
-                  <p className={docs.small}>
-                    No extension? Run <code>./sg-local add</code>.{" "}
-                    <Link href="/setup#tokens">Where to find the two values</Link>
-                  </p>
-                </QuickStep>
-                <QuickStep number="4" title="Connect the dashboard" id="connect">
-                  <p>
-                    Optional. Open the dashboard, click <strong>Connect Stillgreen</strong>, and enter{" "}
-                    <code>{LOCAL_URL}</code> and your access code.
-                  </p>
-                  <div>
-                    <Button href="/dashboard" size="sm" iconRight={<ArrowRight />}>
-                      Open dashboard
-                    </Button>
-                  </div>
-                </QuickStep>
-              </ol>
-
-              <Card as="div" className={styles.where}>
-                <CardHeader title="Where each part runs" titleAs="h3" />
-                <CardBody flush>
-                  <ul className={styles.whereList}>
-                    <li>
-                      <span className={styles.whereIcon} aria-hidden="true">
-                        <Laptop />
-                      </span>
-                      <span>
-                        <strong>Stillgreen</strong>
-                        <span>Your computer (or, advanced, your own cloud server). It holds the Slack connection.</span>
-                      </span>
-                    </li>
-                    <li>
-                      <span className={styles.whereIcon} aria-hidden="true">
-                        <Puzzle />
-                      </span>
-                      <span>
-                        <strong>Extension</strong>
-                        <span>Chrome on your computer. It copies your Slack login to your Stillgreen.</span>
-                      </span>
-                    </li>
-                    <li>
-                      <span className={styles.whereIcon} aria-hidden="true">
-                        <Grid />
-                      </span>
-                      <span>
-                        <strong>Dashboard</strong>
-                        <span>This website, or Stillgreen&apos;s own control page. It only shows the page.</span>
-                      </span>
-                    </li>
-                  </ul>
-                  <p className={styles.whereNote}>
-                    <Lock aria-hidden="true" />
-                    Your Slack login stays with your Stillgreen. It never goes to this website.
-                  </p>
-                </CardBody>
-              </Card>
-
-              <p className={`${docs.small} ${styles.cloudNote}`}>
-                <Cloud aria-hidden="true" />
-                <span>
-                  Want it to keep running when your laptop sleeps? Advanced: <Link href="/setup#cloud">run it in the
-                  cloud</Link>. It needs a card on file and some upkeep, and your Slack session then lives on that server.
-                </span>
-              </p>
-            </section>
-
             <section id="commands" className={docs.section} aria-labelledby="commands-title">
               <h2 id="commands-title" className={docs.h2}>
-                Commands
+                Before you start
               </h2>
               <div className={`${docs.prose} ${styles.sectionBody}`}>
                 <p>
-                  Run these inside the <code>Still-Green</code> folder. If you ran <code>./install.sh</code>, you can
-                  type <code>sg-local</code> instead of <code>./sg-local</code> from any folder. Words in capitals, like{" "}
-                  <code>NAME</code>, are yours to fill in.
-                </p>
-                <p>
-                  Add <code>--help</code> to any command for the details:
+                  Run these inside the <code>Still-Green</code> folder. If you installed with Homebrew or ran{" "}
+                  <code>./install.sh</code>, type <code>sg-local</code> instead of <code>./sg-local</code>, from any
+                  folder. Words in capitals, like <code>NAME</code>, are yours to fill in. Add <code>--help</code> to
+                  any command for the details:
                 </p>
                 <CodeBlock prompt="$" code="./sg-local --help" copyLabel="Copy the help command" />
               </div>
+            </section>
 
-              {groups.map((group) => (
-                <div key={group.id} className={styles.group}>
-                  <h3 id={group.id} className={docs.h3}>
-                    {group.title}
-                  </h3>
-                  {group.intro && <p className={`${docs.small} ${styles.groupIntro}`}>{group.intro}</p>}
+            {groups.map((group) => (
+              <section key={group.id} id={group.id} className={docs.section} aria-labelledby={`${group.id}-title`}>
+                <h2 id={`${group.id}-title`} className={docs.h2}>
+                  {group.title}
+                </h2>
+                {group.intro && <p className={docs.sectionLead}>{group.intro}</p>}
+                <div className={styles.sectionBody}>
                   <CommandTable rows={group.rows} caption={`${group.title} commands`} />
                 </div>
-              ))}
-            </section>
+              </section>
+            ))}
 
             <section id="formats" className={docs.section} aria-labelledby="formats-title">
               <h2 id="formats-title" className={docs.h2}>
@@ -430,12 +296,12 @@ export function StartGuide() {
 
             <nav className={docs.next} aria-label="Next">
               <Link href="/setup" className={docs.nextLink}>
-                <span className={docs.nextKicker}>Need more detail?</span>
+                <span className={docs.nextKicker}>New here?</span>
                 <span className={docs.nextTitle}>
                   Setup guide
                   <ArrowRight aria-hidden="true" />
                 </span>
-                <span className={docs.nextText}>Every step, the cloud setup and troubleshooting.</span>
+                <span className={docs.nextText}>Install, add your Slack, and troubleshooting.</span>
               </Link>
               <Link href="/dashboard" className={docs.nextLink}>
                 <span className={docs.nextKicker}>Ready?</span>

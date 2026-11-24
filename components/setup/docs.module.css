@@ -1,4 +1,4 @@
-/* Shared layout for the docs pages: /setup (guide) and /start (quick start + commands). */
+/* Shared layout for the docs pages: /setup (guide), /start (commands) and /privacy. */
 
 .main {
   background: var(--bg);
@@ -8,11 +8,10 @@
 
 .hero {
   border-bottom: 1px solid var(--border);
-  background: var(--bg-subtle);
 }
 
 .heroInner {
-  padding-block: var(--space-16) var(--space-12);
+  padding-block: var(--space-20) var(--space-16);
 }
 
 .eyebrow {
@@ -38,18 +37,32 @@
   max-width: 720px;
   margin-top: var(--space-3);
   color: var(--text);
-  font-size: var(--font-size-3xl);
+  font-size: var(--font-size-4xl);
   font-weight: var(--font-weight-semibold);
-  line-height: var(--line-height-3xl);
+  line-height: var(--line-height-4xl);
   letter-spacing: var(--tracking-tighter);
 }
 
 .lead {
-  max-width: 640px;
-  margin-top: var(--space-3);
+  max-width: 600px;
+  margin-top: var(--space-4);
+  text-wrap: pretty;
   color: var(--text-muted);
   font-size: var(--font-size-lg);
   line-height: var(--line-height-lg);
+}
+
+.lead a {
+  color: var(--text);
+  font-weight: var(--font-weight-medium);
+  text-decoration: underline;
+  text-decoration-color: var(--border-strong);
+  text-underline-offset: 3px;
+  transition: text-decoration-color var(--duration-fast) var(--ease);
+}
+
+.lead a:hover {
+  text-decoration-color: currentColor;
 }
 
 .facts {
@@ -195,8 +208,8 @@
 }
 
 .section + .section {
-  margin-top: var(--space-12);
-  padding-top: var(--space-12);
+  margin-top: var(--space-16);
+  padding-top: var(--space-16);
   border-top: 1px solid var(--border);
 }
 
@@ -208,14 +221,10 @@
 
 .stepNumber {
   display: inline-grid;
-  width: 28px;
-  height: 28px;
+  min-width: 20px;
   flex-shrink: 0;
-  place-items: center;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-full);
-  background: var(--surface);
-  color: var(--text-muted);
+  place-items: center start;
+  color: var(--accent-text);
   font-family: var(--font-mono);
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-medium);
@@ -416,11 +425,6 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-2) var(--space-6);
-  padding: var(--space-4) var(--space-5);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: var(--surface);
-  box-shadow: var(--shadow-card);
 }
 
 .checklist li {
@@ -444,27 +448,27 @@
 .next {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-4);
-  margin-top: var(--space-16);
+  gap: var(--space-8);
+  margin-top: var(--space-20);
 }
 
 .nextLink {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
-  padding: var(--space-4) var(--space-5);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: var(--surface);
-  box-shadow: var(--shadow-card);
-  transition:
-    border-color var(--duration-fast) var(--ease),
-    background-color var(--duration-fast) var(--ease);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--border-strong);
+  border-radius: 0;
+  transition: border-color var(--duration-fast) var(--ease);
 }
 
 .nextLink:hover {
-  border-color: var(--border-strong);
-  background: var(--surface-2);
+  border-color: var(--accent);
+}
+
+.nextLink:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .nextKicker {
@@ -520,11 +524,8 @@
   .nav {
     position: static;
     max-width: 720px;
-    padding: var(--space-3);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    background: var(--surface);
-    box-shadow: var(--shadow-card);
+    padding: var(--space-3) 0;
+    border-block: 1px solid var(--border);
   }
 
   .navList {
@@ -538,12 +539,12 @@
 
 @media (max-width: 640px) {
   .heroInner {
-    padding-block: var(--space-10) var(--space-8);
+    padding-block: var(--space-12) var(--space-10);
   }
 
   .title {
-    font-size: var(--font-size-2xl);
-    line-height: var(--line-height-2xl);
+    font-size: var(--font-size-3xl);
+    line-height: var(--line-height-3xl);
   }
 
   .lead {
@@ -566,7 +567,7 @@
   }
 
   .nav {
-    padding: var(--space-1);
+    padding: var(--space-1) 0;
   }
 
   .navTitle {

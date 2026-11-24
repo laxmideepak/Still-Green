@@ -524,7 +524,7 @@ Do:
   in the interface. Not "daemon", "Daemon URL" or "tokens" (the two pasted
   values keep their real names, "xoxc token" and "xoxd cookie").
 - Name the two guides the same everywhere: `/setup` is the "Setup guide"
-  ("Setup" in the top nav), `/start` is the "Quick start".
+  ("Setup" in the top nav), `/start` is "Commands", the command reference.
 - Keep to the 4px grid and the three control heights (32/36/40).
 - Give icon-only buttons a label (`IconButton label`, or `aria-label`).
 - Check both themes and a 390px-wide screen before calling a screen done.
