@@ -43,7 +43,6 @@ SYSTEM_ROOTS_KEYCHAIN = "/System/Library/Keychains/SystemRootCertificates.keycha
 # installed for all users. Only the ones with admin trust settings that say
 # "trust for secure connections" are used.
 ADMIN_KEYCHAIN = "/Library/Keychains/System.keychain"
-MACOS_KEYCHAINS = (SYSTEM_ROOTS_KEYCHAIN, ADMIN_KEYCHAIN)
 
 # Trust settings (see Apple's SecTrustSettings.h).
 _TRUST_ROOT, _TRUST_AS_ROOT, _DENY = 1, 2, 3

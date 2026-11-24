@@ -605,11 +605,8 @@ def _human(seconds: int) -> str:
 
 
 def _runtime() -> tuple[int | None, dict[str, Any]]:
-    pid = state.daemon_pid()
-    runtime = state.read_state() or {}
-    if pid and runtime.get("pid") not in (None, pid):
-        runtime = {}
-    return pid, runtime
+    pid, runtime = state.live_runtime()
+    return pid, runtime or {}
 
 
 def _live(runtime: dict[str, Any]) -> dict[str, dict[str, Any]]:

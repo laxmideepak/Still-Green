@@ -227,10 +227,6 @@ async function storedConsent() {
   return consent;
 }
 
-async function hasConsent() {
-  return consentFits(await storedConsent(), currentOrigin());
-}
-
 // Show the notice and wait for an answer: true for "I understand, continue".
 // `previous` is the earlier OK, if any, to say what changed.
 function askConsent(previous) {

@@ -491,39 +491,10 @@
   line-height: var(--line-height-sm);
 }
 
-.wsMeta .mono {
-  font-size: var(--font-size-xs);
-}
-
-.dotSep {
-  width: 3px;
-  height: 3px;
-  border-radius: 50%;
-  background: var(--border-strong);
-}
-
 .wsProblem {
   margin-top: var(--space-2);
   font-size: var(--font-size-xs);
   line-height: var(--line-height-xs);
-}
-
-.wsError {
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-  margin-top: var(--space-1);
-  color: var(--danger-text);
-  font-size: var(--font-size-xs);
-  line-height: var(--line-height-xs);
-  overflow-wrap: anywhere;
-}
-
-.wsError svg {
-  width: 13px;
-  height: 13px;
-  flex-shrink: 0;
-  margin-top: 1px;
 }
 
 .wsActions {

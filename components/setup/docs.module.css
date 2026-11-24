@@ -87,13 +87,6 @@
   color: var(--text-subtle);
 }
 
-.heroActions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-3);
-  margin-top: var(--space-8);
-}
-
 /* ── Two columns: nav + content ──────────────────────────────────── */
 
 .layout {
@@ -234,23 +227,6 @@
 .stepNumber svg {
   width: var(--icon-sm);
   height: var(--icon-sm);
-}
-
-.sectionIcon {
-  display: inline-grid;
-  width: 28px;
-  height: 28px;
-  flex-shrink: 0;
-  place-items: center;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface);
-  color: var(--text-muted);
-}
-
-.sectionIcon svg {
-  width: var(--icon-md);
-  height: var(--icon-md);
 }
 
 .h2 {
@@ -550,10 +526,6 @@
   .lead {
     font-size: var(--font-size-md);
     line-height: var(--line-height-md);
-  }
-
-  .heroActions {
-    margin-top: var(--space-6);
   }
 
   .navList,

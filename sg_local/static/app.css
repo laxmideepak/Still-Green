@@ -682,17 +682,6 @@ code {
   font-weight: var(--font-weight-medium);
 }
 
-.stay-preview-icon {
-  display: inline-flex;
-  padding-top: 3px;
-  color: var(--text-subtle);
-}
-
-.stay-preview-icon svg {
-  width: 14px;
-  height: 14px;
-}
-
 /* ---------- Workspaces ---------- */
 .ws-list {
   display: flex;
@@ -792,33 +781,6 @@ code {
   color: var(--text-subtle);
   font-size: var(--font-size-sm);
   line-height: var(--line-height-sm);
-}
-
-.meta-sep {
-  color: var(--border-strong);
-}
-
-.ws-note {
-  margin-top: var(--space-1);
-  color: var(--text-muted);
-  font-size: var(--font-size-xs);
-  line-height: var(--line-height-xs);
-}
-
-.ws-error {
-  display: flex;
-  gap: 6px;
-  margin-top: var(--space-1);
-  color: var(--danger-text);
-  font-size: var(--font-size-xs);
-  line-height: var(--line-height-xs);
-  overflow-wrap: anywhere;
-}
-
-.ws-error svg {
-  width: 14px;
-  height: 14px;
-  margin-top: 1px;
 }
 
 .ws-actions {
@@ -1265,22 +1227,6 @@ html.has-dialog {
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
-}
-
-.recommend-icon {
-  display: grid;
-  width: 24px;
-  height: 24px;
-  place-items: center;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-  color: var(--text-muted);
-}
-
-.recommend-icon svg {
-  width: 14px;
-  height: 14px;
 }
 
 .recommend-title {

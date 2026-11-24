@@ -197,6 +197,19 @@ def daemon_pid() -> int | None:
     return None
 
 
+def live_runtime() -> tuple[int | None, dict[str, Any] | None]:
+    """The live daemon's PID and its saved state.
+
+    The state is None when there is none, or when it was written by a
+    different process (an older daemon that has since stopped).
+    """
+    pid = daemon_pid()
+    runtime = read_state()
+    if runtime and pid and runtime.get("pid") not in (None, pid):
+        runtime = None
+    return pid, runtime
+
+
 def status_label() -> str:
     pid = daemon_pid()
     if pid:
