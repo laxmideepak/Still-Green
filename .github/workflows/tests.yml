@@ -32,14 +32,18 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: requirements.lock
       - name: Install dependencies
         # The same pinned, hash-checked packages ./sg-local installs. pytest
-        # is not in the lock, so it is installed in a second step.
+        # and pytest-xdist are not in the lock, so they come in a second step.
         run: |
           python -m pip install --require-hashes -r requirements.lock
-          python -m pip install pytest
+          python -m pip install pytest pytest-xdist
       - name: Run unit and end-to-end tests
-        run: python -m pytest -q
+        # The tests mostly wait (sockets, timers), so 16 workers on a 4-core
+        # runner cut ~100 s to ~20 s.
+        run: python -m pytest -q -n 16 --dist worksteal
 
   macos:
     # A clean checkout, as on a new Mac: nothing is installed with pip first.
@@ -52,14 +56,15 @@ jobs:
       matrix:
         # macos-latest is Apple Silicon (the macos-14 image no longer gets a
         # runner). GitHub retired the macos-13 Intel image, so Intel uses
-        # macos-15-intel.
-        os: [macos-latest, macos-15-intel]
-        python: ["3.9", "3.12", "system"]
+        # macos-15-intel. Only three jobs: macOS runners are scarce, and extra
+        # jobs waited in the queue for minutes and were sometimes cancelled
+        # without ever getting a runner. "system" is Apple's own Python 3.9
+        # (the new-Mac case), so a separate 3.9 job added nothing; Linux also
+        # tests 3.9.
         include:
-          - os: macos-latest
-            arch: Apple Silicon
-          - os: macos-15-intel
-            arch: Intel
+          - { os: macos-latest, arch: Apple Silicon, python: "3.12" }
+          - { os: macos-latest, arch: Apple Silicon, python: system }
+          - { os: macos-15-intel, arch: Intel, python: system }
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -92,9 +97,11 @@ jobs:
           SG_LOCAL_STATE_DIR: ${{ runner.temp }}/sg-state
         run: PATH="$SMOKE_PATH" ./sg-local doctor
       - name: Install pytest into the private environment
-        run: .venv/bin/python -m pip install --disable-pip-version-check pytest
+        run: .venv/bin/python -m pip install --disable-pip-version-check pytest pytest-xdist
       - name: Run unit and end-to-end tests
-        run: .venv/bin/python -m pytest -q
+        # macOS runners have 3-4 cores; 8 workers keep it fast without
+        # starving the timing-based tests.
+        run: .venv/bin/python -m pytest -q -n 8 --dist worksteal
 
   browser:
     name: Type check, build and browser tests
@@ -110,12 +117,16 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements.lock
       - name: Install dependencies
         run: |
           npm ci
           python -m pip install --require-hashes -r requirements.lock
       # Full Chromium, not only the headless shell: the extension test loads
       # the unpacked extension, which the headless shell cannot do.
+      # Not cached: restoring the browser still needs its system libraries,
+      # and installing those alone took longer (44 s) than everything (18 s).
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
       - name: Type check
