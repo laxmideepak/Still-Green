@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "slack-green-local"
-version = "0.1.0"
+version = "0.1.1"
 description = "Personal, local Slack presence daemon (slack.green-style, self-hosted)"
 readme = "README.md"
 license = { text = "MIT" }
