@@ -169,9 +169,6 @@ class SlackClient:
         params = {"user": user_id or self.user_id}
         return self._request("users.getPresence", {k: v for k, v in params.items() if v}, get=True)
 
-    def set_presence(self, presence: str = "auto") -> dict[str, Any]:
-        return self._request("users.setPresence", {"presence": presence})
-
 
 def presence_kind(data: dict[str, Any] | None) -> str:
     """Classify a users.getPresence response."""

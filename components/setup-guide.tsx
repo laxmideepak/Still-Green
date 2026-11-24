@@ -6,13 +6,14 @@ import { ArrowRight, Check, ChevronDown, Clock, Cloud, Info, Laptop, Shield, Tra
 import { Banner, Button, CodeBlock, Kbd } from "./ui";
 import { DocsNav, type DocsNavItem } from "./setup/docs-nav";
 import { AI_SETUP_PROMPT } from "@/lib/ai-setup";
+import { DEFAULT_DAEMON_URL } from "@/lib/bridge";
 import { CopyPromptButton } from "./copy-prompt";
 import { BREW_INSTALL, BREW_TAP, BREW_TRUST, CLOUD_GUIDE_URL, GITHUB_URL, ISSUES_URL } from "@/lib/site";
 import docs from "./setup/docs.module.css";
 import styles from "./setup-guide.module.css";
 
 const REPO_GIT = `${GITHUB_URL}.git`;
-const LOCAL_URL = "http://127.0.0.1:8765";
+const LOCAL_URL = DEFAULT_DAEMON_URL;
 
 const navItems: DocsNavItem[] = [
   { id: "install", label: "Install", number: "1" },
@@ -51,16 +52,18 @@ function More({ id, title, children }: { id?: string; title: ReactNode; children
   );
 }
 
-/** An extra section after the steps, marked with an icon instead of a number. */
-function Extra({
+/** A section of the guide: a numbered step, or (with an icon) an extra after the steps. */
+function Step({
   id,
+  number,
   icon,
   title,
   lead,
   children,
 }: {
   id: string;
-  icon: ReactNode;
+  number?: string;
+  icon?: ReactNode;
   title: string;
   lead?: ReactNode;
   children: ReactNode;
@@ -69,39 +72,10 @@ function Extra({
     <section id={id} className={docs.section} aria-labelledby={`${id}-title`}>
       <div className={docs.sectionHead}>
         <span className={docs.stepNumber} aria-hidden="true">
-          {icon}
+          {number ?? icon}
         </span>
         <h2 id={`${id}-title`} className={docs.h2}>
-          {title}
-        </h2>
-      </div>
-      {lead && <p className={docs.sectionLead}>{lead}</p>}
-      <div className={`${docs.prose} ${styles.stepBody}`}>{children}</div>
-    </section>
-  );
-}
-
-function Step({
-  id,
-  number,
-  title,
-  lead,
-  children,
-}: {
-  id: string;
-  number: string;
-  title: string;
-  lead?: ReactNode;
-  children: ReactNode;
-}) {
-  return (
-    <section id={id} className={docs.section} aria-labelledby={`${id}-title`}>
-      <div className={docs.sectionHead}>
-        <span className={docs.stepNumber} aria-hidden="true">
-          {number}
-        </span>
-        <h2 id={`${id}-title`} className={docs.h2}>
-          <span className="visually-hidden">Step {number}: </span>
+          {number && <span className="visually-hidden">Step {number}: </span>}
           {title}
         </h2>
       </div>
@@ -477,7 +451,7 @@ export function SetupGuide() {
               </p>
             </Step>
 
-            <Extra
+            <Step
               id="troubleshooting"
               icon={<Info />}
               title="Troubleshooting"
@@ -500,9 +474,9 @@ export function SetupGuide() {
                 <code className={docs.wrap}>./sg-local doctor --report stillgreen-report.txt</code>. It leaves out your
                 tokens and access code, but read it first.
               </p>
-            </Extra>
+            </Step>
 
-            <Extra
+            <Step
               id="cloud"
               icon={<Cloud />}
               title="Keep it on all the time (cloud)"
@@ -603,9 +577,9 @@ export function SetupGuide() {
                   </p>
                 </More>
               </div>
-            </Extra>
+            </Step>
 
-            <Extra
+            <Step
               id="remove"
               icon={<Trash />}
               title="Remove Stillgreen"
@@ -631,7 +605,7 @@ export function SetupGuide() {
               <p className={docs.small}>
                 On a cloud server, run <code>sudo docker compose down -v</code> in the folder, then delete the server.
               </p>
-            </Extra>
+            </Step>
 
             <nav className={docs.next} aria-label="Next">
               <Link href="/start" className={docs.nextLink}>

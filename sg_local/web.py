@@ -254,14 +254,6 @@ THROTTLE = FailureThrottle()
 # --------------------------------------------------------------------- helpers
 
 
-def _runtime() -> tuple[int | None, dict[str, Any] | None]:
-    pid = state.daemon_pid()
-    runtime = state.read_state()
-    if runtime and pid and runtime.get("pid") not in (None, pid):
-        runtime = None
-    return pid, runtime
-
-
 def _safe_workspace(
     workspace: dict[str, Any], live: dict[str, Any] | None, daemon_running: bool
 ) -> dict[str, Any]:
@@ -519,7 +511,7 @@ def build_state() -> dict[str, Any]:
     except config.ConfigError as exc:
         cfg = config.default_config()
         config_error = str(exc)
-    pid, runtime = _runtime()
+    pid, runtime = state.live_runtime()
     runtime_workspaces = {
         str(item.get("team_id")): item
         for item in (runtime or {}).get("workspaces", [])
@@ -900,7 +892,7 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/favicon.svg":
             self._static("favicon.svg", "image/svg+xml")
         elif path == "/api/health":
-            pid, _ = _runtime()
+            pid, _ = state.live_runtime()
             self._json(
                 {
                     "ok": True,
