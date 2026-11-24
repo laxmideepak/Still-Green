@@ -233,10 +233,10 @@ describe("daemon control page (cloud mode)", () => {
     const card = page.locator("#stayCard");
     await card.getByRole("button", { name: "30 min", exact: true }).waitFor();
 
-    // A time that has passed is refused in the page, without a request.
+    // A time that already passed today means that time tomorrow (working
+    // late past midnight); the preview says so before anything is sent.
     await card.getByLabel("Until").fill(`${String(Math.max(localHour - 1, 0)).padStart(2, "0")}:00`);
-    await card.getByRole("button", { name: "Keep on" }).click();
-    await card.getByText("has already passed today").waitFor();
+    await card.getByText(/keeps helping until tomorrow/).waitFor();
     assert.equal((await daemonState()).stay_active, false);
 
     const target = `${String(localHour + 2).padStart(2, "0")}:30`;

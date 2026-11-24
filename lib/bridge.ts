@@ -601,13 +601,15 @@ function isoWithOffset(date: Date): string {
   );
 }
 
-/** Today at HH:MM in this browser's timezone, or null if that time has passed. */
+/** The next HH:MM in this browser's timezone: today, or tomorrow once it has passed. */
 export function todayAt(clock: string): Date | null {
   const [hours, minutes] = clock.split(":").map(Number);
   if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
   const moment = new Date();
   moment.setHours(hours, minutes, 0, 0);
-  return moment.getTime() > Date.now() ? moment : null;
+  // "01:00" picked at 23:00 means tonight after midnight.
+  if (moment.getTime() <= Date.now()) moment.setDate(moment.getDate() + 1);
+  return moment;
 }
 
 type RemoveResult = { ok: true; removed: string; state: DaemonState };

@@ -423,15 +423,13 @@ function KeepOnlineCard({
     if (pick === "until") {
       const until = todayAt(untilTime);
       if (!until) {
-        setUntilError(
-          untilTime ? "That time has already passed today. Pick a later time." : "Pick a time.",
-        );
+        setUntilError("Pick a time.");
         return;
       }
       setUntilError("");
       void run("stay", () => api.stay({ until }), () => ({
         title: "Staying online",
-        description: `Until ${clock(until)} today`,
+        description: `Until ${when(until)}`,
       }));
       return;
     }
@@ -510,7 +508,7 @@ function KeepOnlineCard({
             <>Keep me online is on.</>
           ) : endsAt ? (
             <>
-              Stillgreen keeps helping until <strong>{clock(endsAt)}</strong>, {afterStay(state)}.
+              Stillgreen keeps helping until <strong>{when(endsAt)}</strong>, {afterStay(state)}.
             </>
           ) : (
             <>Pick how long to keep helping.</>

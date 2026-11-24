@@ -101,6 +101,24 @@ def load_code(create: bool = True) -> str:
     return _write_code(generate_code()) if create else ""
 
 
+def open_key() -> str:
+    """A key only this user can read (0600 file), put in the URL that
+    ``sg-local web --open`` opens. The page embeds the access code only when
+    the key matches, so another account on the same computer cannot read the
+    code with a plain request to 127.0.0.1."""
+    path = config.CONFIG_DIR / "open-key"
+    try:
+        key = path.read_text(encoding="utf-8").strip()
+        if key:
+            return key
+    except OSError:
+        pass
+    config.ensure_dirs()
+    key = secrets.token_urlsafe(24)
+    config.atomic_write(path, key + "\n")
+    return key
+
+
 def rotate_code() -> str:
     if env_code():
         raise config.ConfigError(
@@ -628,15 +646,9 @@ def set_resume(payload: dict[str, Any]) -> dict[str, Any]:
     if workspace_query:
         _set_workspace_paused(workspace_query, False)
         return build_state()
+    # Only the global pause: a workspace paused on its own stays paused
+    # until it is resumed on its own.
     config.clear_pause()
-
-    def change(cfg: dict[str, Any]) -> None:
-        for workspace in cfg.get("workspaces", []):
-            if workspace.get("paused"):
-                workspace["paused"] = False
-                workspace.pop("paused_at", None)
-
-    config.update_config(change)
     return build_state()
 
 
@@ -896,6 +908,10 @@ class Handler(BaseHTTPRequestHandler):
                     "version": __version__,
                     "daemon": bool(pid),
                     "auth": "bridge-code",
+                    # Which program answers, so `sg-local web` can tell an
+                    # older Stillgreen still holding the port from its own.
+                    "pid": os.getpid(),
+                    "build": state.build_id(),
                 }
             )
         elif path == "/api/state":
@@ -992,7 +1008,8 @@ class Handler(BaseHTTPRequestHandler):
         return bool(origin) and origin in {f"http://{host}", f"https://{host}"}
 
     def _embed_code(self) -> bool:
-        """Put the code in the page only for a direct visit on this machine."""
+        """Put the code in the page only for a direct visit on this machine
+        that carries this user's open key (``?k=``, see ``open_key``)."""
         if os.environ.get("SG_LOCAL_EMBED_CODE", "auto").lower() in {"0", "false", "no"}:
             return False
         if self.server.server_address[0] not in LOOPBACK_HOSTS:
@@ -1000,7 +1017,10 @@ class Handler(BaseHTTPRequestHandler):
         if self.headers.get("X-Forwarded-For") or self.headers.get("Forwarded"):
             return False  # reached through a proxy or tunnel
         host = (urlsplit(f"//{self.headers.get('Host') or ''}").hostname or "").lower()
-        return host in LOOPBACK_HOSTS
+        if host not in LOOPBACK_HOSTS:
+            return False
+        supplied = (parse_qs(urlparse(self.path).query).get("k") or [""])[0]
+        return bool(supplied) and hmac.compare_digest(supplied.encode("utf-8"), open_key().encode("utf-8"))
 
 
 # ---------------------------------------------------------------------- server

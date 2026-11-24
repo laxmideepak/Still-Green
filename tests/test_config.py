@@ -121,6 +121,11 @@ class ExpiringStateTests(unittest.TestCase):
         config.clear_pause()
         self.assertIsNone(config.read_pause())
 
+    def test_non_object_json_reads_as_absent(self) -> None:
+        for raw in ("null", "[]", '"x"', "3"):
+            config.PAUSE_PATH.write_text(raw, encoding="utf-8")
+            self.assertIsNone(config.read_pause(), raw)
+
     def test_pause_expiry(self) -> None:
         past = datetime.now(timezone.utc) - timedelta(minutes=1)
         config.write_pause(past)

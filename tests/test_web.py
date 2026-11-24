@@ -220,6 +220,16 @@ class StateTests(WebTestCase):
         self.assertFalse(body["paused"])
         self.assertIsNone(config.read_pause())
 
+    def test_global_resume_keeps_a_workspace_paused_on_its_own(self) -> None:
+        cfg = config.default_config()
+        cfg["workspaces"] = [{"team_id": "T1", "user_id": "U1", "name": "Acme", "xoxc": "xoxc-1", "xoxd": "xoxd-1", "paused": True}]
+        config.save_config(cfg)
+        config.write_pause(None)
+        status, _, _ = self.request("/api/resume", method="POST", code=self.code, body={})
+        self.assertEqual(status, 200)
+        self.assertIsNone(config.read_pause())
+        self.assertTrue(config.load_config()["workspaces"][0]["paused"])
+
     def test_stay_override(self) -> None:
         status, body, _ = self.request(
             "/api/stay", method="POST", code=self.code, body={"duration": "30m"}
@@ -339,11 +349,30 @@ class SecurityTests(WebTestCase):
     """Regression tests for the control server's security checks."""
 
     def test_page_code_is_not_readable_cross_origin(self) -> None:
+        key = web.open_key()
         for origin in ("https://evil.vercel.app", "http://localhost:3000", "chrome-extension://x"):
-            status, page, headers = self.request("/", origin=origin)
+            status, page, headers = self.request(f"/?k={key}", origin=origin)
             self.assertEqual(status, 200)
             self.assertNotIn("Access-Control-Allow-Origin", headers)
             self.assertIn(self.code, page)  # visible only to a same-origin visit
+
+    def test_code_is_embedded_only_with_the_open_key(self) -> None:
+        # Another account on this computer can reach 127.0.0.1 but cannot
+        # read the 0600 open-key file, so it gets the locked page.
+        for path in ("/", "/?k=", "/?k=wrong"):
+            status, page, _ = self.request(path)
+            self.assertEqual(status, 200)
+            self.assertNotIn(self.code, page, path)
+        status, page, _ = self.request(f"/?k={web.open_key()}")
+        self.assertIn(self.code, page)
+        mode = (self.config_dir / "open-key").stat().st_mode & 0o777
+        self.assertEqual(mode, 0o600)
+
+    def test_health_names_the_process_and_build(self) -> None:
+        status, body, _ = self.request("/api/health")
+        self.assertEqual(status, 200)
+        self.assertEqual(body["pid"], os.getpid())
+        self.assertEqual(body["build"], web.state.build_id())
 
     def test_foreign_host_is_refused(self) -> None:
         # A DNS-rebinding page reaches 127.0.0.1 under its own host name.
@@ -464,7 +493,6 @@ class DataSafetyTests(WebTestCase):
         before = config.CONFIG_PATH.read_text(encoding="utf-8")
         for path, body in (
             ("/api/schedule", {"mode": "always"}),
-            ("/api/resume", {}),
             ("/api/pause", {"workspace": "T1"}),
         ):
             status, payload, _ = self.request(path, method="POST", code=self.code, body=body)

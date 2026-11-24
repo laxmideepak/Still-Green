@@ -316,6 +316,9 @@ def parse_until(value: str) -> datetime:
         if clock:
             now = datetime.now().astimezone()
             moment = now.replace(hour=int(clock.group(1)), minute=int(clock.group(2)), second=0, microsecond=0)
+            if moment <= now:
+                # 01:00 picked at 23:00 means tonight, after midnight.
+                moment += timedelta(days=1)
         else:
             moment = parse_iso(text)
     except ValueError:
@@ -336,6 +339,8 @@ def _read_timestamped(path: Path) -> dict[str, Any] | None:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
         return None
     until = payload.get("until")
     if until:

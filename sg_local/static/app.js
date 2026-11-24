@@ -1159,8 +1159,14 @@
     if (S.stay.kind !== "until") return null;
     const m = minutesOf($("#stayUntil").value);
     if (m === null) return null;
+    return untilFrom(m);
+  }
+
+  // "01:00" picked at 23:00 means tonight after midnight, not a time that passed.
+  function untilFrom(m) {
     const until = new Date();
     until.setHours(Math.floor(m / 60), m % 60, 0, 0);
+    if (until.getTime() <= Date.now()) until.setDate(until.getDate() + 1);
     return until;
   }
 
@@ -1188,11 +1194,8 @@
     if (active) { preview.replaceChildren("Keep me online is on."); return; }
     const target = stayTarget();
     if (!target) { preview.replaceChildren("Pick how long to keep helping."); return; }
-    if (S.stay.kind === "until" && target.getTime() <= Date.now()) {
-      preview.replaceChildren("Pick a time later today.");
-      return;
-    }
-    preview.replaceChildren("Stillgreen keeps helping until ", h("strong", { className: "tnum", text: clockFmt.format(target) }),
+    const tomorrow = target.getDate() !== new Date().getDate();
+    preview.replaceChildren("Stillgreen keeps helping until ", h("strong", { className: "tnum", text: `${tomorrow ? "tomorrow " : ""}${clockFmt.format(target)}` }),
       `, ${d ? afterStay(d) : "then it ends on its own"}.`);
   }
 
@@ -1224,19 +1227,13 @@
     if (m === null) { setStayError("Pick a time."); input.focus(); return; }
     const hours = Math.floor(m / 60);
     const minutes = m % 60;
-    const until = new Date();
-    until.setHours(hours, minutes, 0, 0);
-    if (until.getTime() <= Date.now()) {
-      setStayError("That time has already passed today. Pick a later time.");
-      input.focus();
-      return;
-    }
+    const until = untilFrom(m);
     setStayError("");
     // Send this browser's offset so a server on UTC stops at the right moment.
     const pad = (n) => String(Math.abs(n)).padStart(2, "0");
     const offset = -until.getTimezoneOffset();
     const iso = `${until.getFullYear()}-${pad(until.getMonth() + 1)}-${pad(until.getDate())}T${pad(hours)}:${pad(minutes)}:00${offset >= 0 ? "+" : "-"}${pad(Math.trunc(offset / 60))}:${pad(offset % 60)}`;
-    mutate(button, () => post("/api/stay", { until: iso }), (r) => ["Staying online", `Until ${fmtWhen(r.stay_until) || clockHHMM(input.value)} today`]);
+    mutate(button, () => post("/api/stay", { until: iso }), (r) => ["Staying online", `Until ${fmtWhen(r.stay_until) || clockHHMM(input.value)}`]);
   }
 
   // After any other change, an old "Pick a time" error goes away and an
@@ -1926,7 +1923,7 @@
       });
       if (!result || !result.code) return;
       S.code = normalizeCode(result.code);
-      if (!S.embed) storageSet(S.code);
+      storageSet(S.code);
       S.revealCode = true;
       S.rotated = true;
       renderCode();
@@ -1969,8 +1966,13 @@
     bind();
     paintEmptySchedule();
     paintStayPicker();
-    if (S.embed) S.code = normalizeCode(boot.code);
-    else S.code = normalizeCode(storageGet());
+    if (S.embed) {
+      S.code = normalizeCode(boot.code);
+      // The code came with this user's open key (?k=). Remember it so a
+      // plain visit works later, and keep the key out of the address bar.
+      storageSet(S.code);
+      try { history.replaceState(null, "", location.pathname + location.hash); } catch { /* ignore */ }
+    } else S.code = normalizeCode(storageGet());
     if (!S.code) { showLogin(""); bootDone(); return; }
     showApp();
     renderTop();

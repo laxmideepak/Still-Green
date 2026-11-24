@@ -66,8 +66,11 @@ class CliTests(TempConfig):
         code, out, err = self.run_cli("stay", "--until", target)
         self.assertEqual(code, 0, err)
         self.assertIsNotNone(config.read_stay())
+        # A time that already passed today means that time tomorrow.
         earlier = (datetime.now() - timedelta(minutes=5)).strftime("%H:%M")
-        self.assertEqual(self.run_cli("stay", "--until", earlier)[0], 2)
+        self.assertEqual(self.run_cli("stay", "--until", earlier)[0], 0)
+        until = config.parse_iso(config.read_stay()["until"])
+        self.assertGreater(until - datetime.now(until.tzinfo), timedelta(hours=23))
 
     def test_pause_rejects_bad_and_huge_durations(self) -> None:
         for value in ("banana", "99999999w"):
@@ -289,6 +292,30 @@ class PidAliveTests(unittest.TestCase):
         with mock.patch.object(Path, "read_text", no_proc), \
                 mock.patch.object(state.subprocess, "run", return_value=answer):
             self.assertFalse(state._is_zombie(12345))
+
+
+class PortHolderTests(unittest.TestCase):
+    """`sg-local web` must not call an older Stillgreen on the port its own."""
+
+    def test_older_holder_is_named_with_how_to_stop_it(self) -> None:
+        with mock.patch.object(cli, "_health", return_value={"app": "stillgreen", "pid": 77094, "build": "old"}), \
+                mock.patch.object(cli.state, "daemon_pid", return_value=4242):
+            problem = cli._port_holder_problem(8765)
+        self.assertIn("pid 77094", problem)
+        self.assertIn("kill 77094", problem)
+        self.assertIn("pid 4242", problem)
+
+    def test_holder_too_old_to_say_its_pid(self) -> None:
+        with mock.patch.object(cli, "_health", return_value={"app": "stillgreen"}), \
+                mock.patch.object(cli.state, "daemon_pid", return_value=None):
+            problem = cli._port_holder_problem(8765)
+        self.assertIn("lsof -nP -iTCP:8765", problem)
+
+    def test_this_copy_or_nobody_is_fine(self) -> None:
+        with mock.patch.object(cli, "_health", return_value={"app": "stillgreen", "pid": 1, "build": cli.state.build_id()}):
+            self.assertIsNone(cli._port_holder_problem(8765))
+        with mock.patch.object(cli, "_health", return_value=None):
+            self.assertIsNone(cli._port_holder_problem(8765))
 
 
 class OutdatedDaemonTests(unittest.TestCase):
